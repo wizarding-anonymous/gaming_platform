@@ -1,0 +1,11 @@
+# Установить поведение по умолчанию для текстовых файлов
+* text=auto
+
+# Явно объявить текстовые файлы, которые всегда должны использовать LF
+*.go text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.proto text eol=lf
+*.sql text eol=lf

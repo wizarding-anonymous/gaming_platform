@@ -1,0 +1,930 @@
+# Спецификация микросервиса Notification Service
+
+## Содержание
+
+1. [Введение](#1-введение)
+2. [Требования и цели](#2-требования-и-цели)
+3. [Архитектура](#3-архитектура)
+4. [Бизнес-логика и сценарии использования](#4-бизнес-логика-и-сценарии-использования)
+5. [Структура данных и API](#5-структура-данных-и-api)
+6. [Интеграции с другими микросервисами и внешними системами](#6-интеграции-с-другими-микросервисами-и-внешними-системами)
+7. [Требования к безопасности, масштабируемости и отказоустойчивости](#7-требования-к-безопасности-масштабируемости-и-отказоустойчивости)
+8. [Рекомендации по реализации и развертыванию](#8-рекомендации-по-реализации-и-развертыванию)
+
+## 1. Введение
+
+### 1.1 Назначение документа
+
+Данный документ представляет собой полную спецификацию микросервиса Notification Service, являющегося неотъемлемой частью российского аналога платформы Steam. Документ содержит детальное описание требований, архитектуры, бизнес-логики, API, интеграций и нефункциональных требований, необходимых для разработки, развертывания и эксплуатации данного микросервиса. Спецификация предназначена для команды разработки, архитекторов, тестировщиков и менеджеров проекта, обеспечивая единое и всестороннее понимание функциональности и технических аспектов сервиса уведомлений.
+
+### 1.2 Область применения
+
+Notification Service отвечает за централизованную отправку и управление всеми видами уведомлений внутри платформы. Это включает транзакционные уведомления (например, подтверждение регистрации, уведомления о покупках, изменения статуса заказа), системные оповещения (например, о технических работах), маркетинговые рассылки, а также уведомления, инициируемые другими микросервисами (например, уведомления о новых сообщениях от Social Service, о завершении загрузки от Download Service, о достижениях от Library Service). Сервис обеспечивает доставку уведомлений через различные каналы: email, push-уведомления на мобильные устройства и десктопные клиенты, SMS-сообщения и уведомления внутри самого приложения. Он также управляет пользовательскими настройками подписок на уведомления и предоставляет статистику по доставке и взаимодействию с уведомлениями.
+
+### 1.3 Термины и определения
+
+*   **Уведомление (Notification)**: Сообщение, отправляемое пользователю или системе через определенный канал.
+*   **Канал доставки (Delivery Channel)**: Способ доставки уведомления (Email, Push, SMS, In-App).
+*   **Шаблон (Template)**: Предопределенная структура сообщения с переменными для персонализации.
+*   **Транзакционное уведомление (Transactional Notification)**: Уведомление, отправляемое в ответ на действие пользователя или событие в системе.
+*   **Маркетинговая рассылка (Marketing Campaign)**: Массовая отправка уведомлений группе пользователей в маркетинговых целях.
+*   **Подписка (Subscription/Preference)**: Настройка пользователя, определяющая, какие типы уведомлений и по каким каналам он хочет получать.
+*   **Провайдер (Provider)**: Внешний сервис для отправки уведомлений (Email-провайдер, SMS-шлюз, Push-сервис вроде FCM/APNS).
+*   **FCM (Firebase Cloud Messaging)**: Сервис Google для отправки push-уведомлений на Android и другие платформы.
+*   **APNS (Apple Push Notification Service)**: Сервис Apple для отправки push-уведомлений на iOS и macOS.
+*   **In-App Notification**: Уведомление, отображаемое внутри клиентского приложения платформы.
+
+## 2. Требования и цели
+
+### 2.1 Назначение и роль в системе
+
+Notification Service является центральным узлом для всех коммуникаций с пользователями платформы, инициируемых системой. Его основная задача — обеспечить надежную, своевременную и релевантную доставку уведомлений через предпочтительные для пользователя каналы. Сервис абстрагирует сложность взаимодействия с различными провайдерами и каналами доставки от других микросервисов, предоставляя единый интерфейс для отправки уведомлений. Он также играет ключевую роль в маркетинговых коммуникациях и повышении вовлеченности пользователей.
+
+### 2.2 Основные функциональные требования
+
+1.  **Поддержка различных каналов доставки**:
+    *   Отправка Email-уведомлений.
+    *   Отправка Push-уведомлений (Firebase Cloud Messaging для Android/Web, Apple Push Notification Service для iOS/macOS).
+    *   Отправка SMS-уведомлений.
+    *   Доставка уведомлений внутри приложения (In-App Notifications) через WebSocket или аналогичный механизм.
+2.  **Управление шаблонами уведомлений**:
+    *   Создание, редактирование и хранение шаблонов для разных типов уведомлений и каналов.
+    *   Поддержка переменных и базовой логики (условия, циклы) в шаблонах для персонализации.
+    *   Локализация шаблонов на разные языки.
+3.  **Отправка уведомлений**:
+    *   Прием запросов на отправку уведомлений от других микросервисов через API или брокер сообщений.
+    *   Поддержка отправки как одиночных, так и массовых уведомлений.
+    *   Возможность отложенной отправки уведомлений.
+    *   Приоритизация уведомлений (например, транзакционные важнее маркетинговых).
+4.  **Управление пользовательскими предпочтениями**:
+    *   Возможность для пользователей настраивать типы уведомлений, которые они хотят получать, и каналы доставки для каждого типа.
+    *   API для получения и обновления пользовательских предпочтений.
+    *   Учет глобальных отписок (например, от всех маркетинговых рассылок).
+5.  **Маркетинговые кампании**:
+    *   Создание и управление маркетинговыми рассылками.
+    *   Сегментация аудитории для рассылок (на основе данных из других сервисов, например, Analytics Service).
+    *   Планирование рассылок по времени.
+    *   A/B тестирование тем и содержания рассылок.
+6.  **Отслеживание и статистика**:
+    *   Отслеживание статуса доставки каждого уведомления (отправлено, доставлено, ошибка, открыто, кликнуто).
+    *   Сбор и агрегация статистики по кампаниям и отдельным уведомлениям.
+    *   Предоставление API для доступа к статистике.
+7.  **Интеграция с провайдерами**:
+    *   Гибкая конфигурация и поддержка нескольких провайдеров для каждого канала (для резервирования и оптимизации затрат).
+    *   Обработка обратной связи от провайдеров (статусы доставки, отписки).
+
+### 2.3 Ключевые метрики и KPI
+
+1.  **Производительность**:
+    *   Время обработки запроса на отправку уведомления (API): P95 < 50 мс.
+    *   Пропускная способность (прием запросов): не менее 5000 запросов в секунду.
+    *   Пропускная способность (отправка через провайдеров): зависит от лимитов провайдеров, но система должна быть способна утилизировать их по максимуму.
+    *   Задержка доставки (от момента запроса до отправки провайдеру): P99 < 1 секунда для высокоприоритетных уведомлений.
+2.  **Надежность**:
+    *   Доступность сервиса: 99.95%.
+    *   Процент успешно доставленных уведомлений (Delivery Rate): > 98% для Email, > 95% для SMS, > 90% для Push (зависит от внешних факторов).
+    *   Механизмы повторной отправки при сбоях.
+3.  **Масштабируемость**:
+    *   Способность обрабатывать пиковые нагрузки (например, во время крупных маркетинговых кампаний или распродаж).
+    *   Горизонтальное масштабирование компонентов сервиса.
+4.  **Эффективность (Маркетинг)**:
+    *   Процент открытий (Open Rate) для Email и Push.
+    *   Процент кликов (Click-Through Rate, CTR).
+    *   Процент отписок (Unsubscribe Rate).
+
+### 2.4 Ограничения и допущения
+
+1.  **Зависимость от внешних провайдеров**: Качество и скорость доставки SMS и Push-уведомлений сильно зависят от внешних шлюзов и сервисов (FCM, APNS, SMS-провайдеры).
+2.  **Стоимость**: Отправка SMS и некоторых Push-уведомлений может быть платной. Необходимо предусмотреть механизмы контроля и оптимизации расходов.
+3.  **Законодательство**: Необходимо соблюдать требования законодательства РФ в области рассылок (ФЗ "О рекламе", согласие пользователей) и хранения персональных данных (ФЗ-152).
+4.  **Доставка In-App**: Реализация доставки In-App уведомлений требует тесной интеграции с клиентскими приложениями (Web, Desktop, Mobile) и наличия механизма реального времени (например, WebSocket).
+5.  **Сегментация**: Сложность и точность сегментации для маркетинговых кампаний зависят от данных, предоставляемых другими сервисами (в первую очередь Analytics Service).
+
+## 3. Архитектура
+
+### 3.1 Общая архитектура микросервиса
+
+Notification Service будет построен с использованием событийно-ориентированного подхода и принципов микросервисной архитектуры. Основные компоненты:
+
+1.  **API Gateway / Ingress**: Принимает HTTP-запросы (REST/gRPC) для управления шаблонами, кампаниями, предпочтениями и получения статистики.
+2.  **Message Consumer**: Слушает события из очереди сообщений (например, Kafka), инициирующие отправку уведомлений от других сервисов.
+3.  **Notification Orchestrator**: Ядро сервиса. Получает запросы на отправку (из API или очереди), определяет тип уведомления, проверяет пользовательские предпочтения, выбирает подходящий шаблон и канал доставки, обогащает данными и ставит задачу на отправку в соответствующую очередь канала.
+4.  **Channel Dispatchers**: Отдельные компоненты (или группы процессов/потоков) для каждого канала доставки (Email, Push, SMS, In-App). Забирают задачи из своих очередей, взаимодействуют с соответствующими провайдерами, обрабатывают ответы и обновляют статусы доставки.
+5.  **Template Engine**: Компонент для рендеринга шаблонов с подстановкой данных.
+6.  **Preference Manager**: Сервис для управления пользовательскими настройками уведомлений.
+7.  **Campaign Manager**: Сервис для управления маркетинговыми кампаниями и планирования рассылок.
+8.  **Stats Collector**: Собирает данные о статусах доставки и взаимодействии с уведомлениями, агрегирует их и сохраняет для последующего анализа.
+9.  **Repository Layer**: Отвечает за взаимодействие с хранилищами данных (БД, кэш).
+
+#### Диаграмма компонентов
+
+```mermaid
+graph TD
+    subgraph Notification Service
+        API[API Gateway / Ingress] -->|REST/gRPC| PM(Preference Manager)
+        API -->|REST/gRPC| CM(Campaign Manager)
+        API -->|REST/gRPC| TM_API(Template Manager API)
+        API -->|REST/gRPC| Stats_API(Stats API)
+
+        Consumer[Message Consumer] -->|Events| Orch(Notification Orchestrator)
+        Orch -->|Check Prefs| PM
+        Orch -->|Get Template| TE(Template Engine)
+        Orch -->|Place Task| EmailQueue(Email Queue)
+        Orch -->|Place Task| PushQueue(Push Queue)
+        Orch -->|Place Task| SMSQueue(SMS Queue)
+        Orch -->|Place Task| InAppQueue(In-App Queue)
+
+        EmailQueue --> EmailDispatcher(Email Dispatcher)
+        PushQueue --> PushDispatcher(Push Dispatcher)
+        SMSQueue --> SMSDispatcher(SMS Dispatcher)
+        InAppQueue --> InAppDispatcher(In-App Dispatcher)
+
+        EmailDispatcher -->|Send| EmailProvider(Email Provider)
+        PushDispatcher -->|Send| PushProvider(Push Provider: FCM/APNS)
+        SMSDispatcher -->|Send| SMSProvider(SMS Provider)
+        InAppDispatcher -->|Send| WebSocketGateway(WebSocket Gateway)
+
+        EmailDispatcher -->|Update Status| SC(Stats Collector)
+        PushDispatcher -->|Update Status| SC
+        SMSDispatcher -->|Update Status| SC
+        InAppDispatcher -->|Update Status| SC
+
+        PM -->|CRUD| DB[(Database: Preferences)]
+        CM -->|CRUD| DB_Camp[(Database: Campaigns)]
+        TE -->|Read| DB_Tmpl[(Database: Templates)]
+        SC -->|Write| DB_Stats[(Database: Stats)]
+        SC -->|Write| Cache[(Cache: Delivery Status)]
+
+        TM_API -->|CRUD| DB_Tmpl
+        Stats_API -->|Read| DB_Stats
+    end
+
+    OtherServices(Other Microservices) -->|Events| Kafka(Message Broker: Kafka)
+    Kafka --> Consumer
+
+    Users(Users) -->|Manage Prefs| API
+    Admin(Admin/Marketer) -->|Manage Campaigns/Templates| API
+    Admin -->|View Stats| API
+
+    EmailProvider --|> ExternalSystems(External Systems)
+    PushProvider --|> ExternalSystems
+    SMSProvider --|> ExternalSystems
+    WebSocketGateway --|> ClientApps(Client Applications)
+
+```
+
+### 3.2 Технологический стек
+
+1.  **Язык программирования**: Go (предпочтительно) или Java/Kotlin.
+    *   Go: Высокая производительность, эффективная конкурентность, подходит для I/O-bound задач, таких как взаимодействие с внешними API.
+    *   Java/Kotlin: Зрелая экосистема, множество библиотек для интеграций, хорошие фреймворки (Spring Boot).
+2.  **Фреймворки и библиотеки**:
+    *   **Web Framework**: Gin/Echo (Go), Spring Boot (Java/Kotlin).
+    *   **Очереди сообщений**: Kafka Client, RabbitMQ Client.
+    *   **Шаблонизатор**: text/template, html/template (Go), Thymeleaf, Freemarker (Java).
+    *   **HTTP Client**: Стандартный net/http (Go), OkHttp/Retrofit (Java).
+    *   **Библиотеки для провайдеров**: SDK или библиотеки для FCM, APNS, популярных Email-сервисов (SendGrid, Mailgun) и SMS-шлюзов.
+    *   **Логирование**: zap/zerolog (Go), Logback/Log4j2 (Java).
+    *   **Метрики**: Prometheus client.
+    *   **Трассировка**: OpenTelemetry.
+3.  **Хранение данных**:
+    *   **Основная БД (Шаблоны, Кампании, Статистика)**: PostgreSQL или ClickHouse (для статистики).
+    *   **Кэш (Статусы доставки, Пользовательские предпочтения)**: Redis или Memcached.
+    *   **Очереди сообщений**: Kafka (предпочтительно) или RabbitMQ.
+4.  **Инфраструктура**:
+    *   **Контейнеризация**: Docker.
+    *   **Оркестрация**: Kubernetes.
+    *   **CI/CD**: GitLab CI, Jenkins.
+    *   **Мониторинг**: Prometheus + Grafana.
+    *   **Логирование**: ELK Stack или Loki.
+
+### 3.3 Модель данных
+
+#### 3.3.1 Основные сущности
+
+1.  **NotificationTemplate**: Шаблон уведомления (ID, название, тип канала, язык, тема/заголовок, тело, переменные).
+2.  **NotificationMessage**: Экземпляр отправленного уведомления (ID, user_id, template_id, канал, статус доставки, время отправки, время доставки, данные для шаблона, ID кампании).
+3.  **UserPreferences**: Настройки уведомлений пользователя (user_id, тип уведомления, разрешенный канал, глобальные флаги отписки).
+4.  **NotificationCampaign**: Маркетинговая кампания (ID, название, сегмент аудитории, шаблон(ы), расписание, статус).
+5.  **DeliveryStatusLog**: Лог статусов доставки (message_id, статус, время, детали ошибки).
+6.  **DeviceToken**: Токены устройств для Push-уведомлений (user_id, тип платформы (iOS, Android, Web), токен, статус активности).
+7.  **ProviderConfig**: Конфигурация провайдеров доставки (ID, тип канала, название провайдера, учетные данные, лимиты).
+
+#### 3.3.2 Примерная схема БД (PostgreSQL)
+
+```sql
+-- Шаблоны уведомлений
+CREATE TABLE notification_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    channel_type VARCHAR(20) NOT NULL, -- 'email', 'push', 'sms', 'in_app'
+    language_code VARCHAR(10) NOT NULL DEFAULT 'ru',
+    subject VARCHAR(500), -- Для Email
+    title VARCHAR(255), -- Для Push, In-App
+    body TEXT NOT NULL,
+    variables JSONB, -- Описание ожидаемых переменных
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
+    UNIQUE (name, channel_type, language_code)
+);
+
+-- Пользовательские предпочтения
+CREATE TABLE user_notification_preferences (
+    user_id UUID NOT NULL,
+    notification_type VARCHAR(100) NOT NULL, -- e.g., 'order_confirmation', 'new_message', 'marketing_promo'
+    allowed_channels VARCHAR(20)[] NOT NULL, -- Массив разрешенных каналов ('email', 'push', 'sms', 'in_app')
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+    PRIMARY KEY (user_id, notification_type)
+);
+CREATE INDEX idx_user_prefs_user_id ON user_notification_preferences(user_id);
+
+-- Глобальные отписки
+CREATE TABLE user_global_unsubscribes (
+    user_id UUID NOT NULL,
+    channel_type VARCHAR(20) NOT NULL, -- 'email', 'push', 'sms', 'in_app', 'all_marketing'
+    reason TEXT,
+    unsubscribed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, channel_type)
+);
+
+-- Токены устройств для Push
+CREATE TABLE device_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    platform VARCHAR(20) NOT NULL, -- 'ios', 'android', 'web'
+    token TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+    UNIQUE (user_id, platform, token)
+);
+CREATE INDEX idx_device_tokens_user_id ON device_tokens(user_id);
+CREATE INDEX idx_device_tokens_token ON device_tokens(token);
+
+-- Маркетинговые кампании
+CREATE TABLE notification_campaigns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    target_segment JSONB, -- Описание сегмента (может быть ссылкой на сегмент в Analytics Service)
+    template_ids UUID[], -- Шаблоны для разных каналов
+    schedule JSONB, -- Расписание отправки (cron, конкретное время)
+    status VARCHAR(50) NOT NULL DEFAULT 'draft', -- 'draft', 'scheduled', 'running', 'completed', 'failed', 'cancelled'
+    created_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+-- Отправленные сообщения (может быть в отдельной БД или партиционировано)
+CREATE TABLE notification_messages (
+    id BIGSERIAL PRIMARY KEY, -- Или UUID, если требуется глобальная уникальность
+    message_uuid UUID NOT NULL DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    channel_type VARCHAR(20) NOT NULL,
+    template_id UUID REFERENCES notification_templates(id),
+    campaign_id UUID REFERENCES notification_campaigns(id),
+    recipient VARCHAR(255) NOT NULL, -- Email, Phone, Device Token, User ID (for In-App)
+    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'sent', 'delivered', 'failed', 'opened', 'clicked'
+    status_details TEXT,
+    payload JSONB, -- Данные, использованные для рендеринга
+    scheduled_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    sent_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    last_status_update_at TIMESTAMPTZ
+);
+CREATE INDEX idx_messages_user_id ON notification_messages(user_id);
+CREATE INDEX idx_messages_campaign_id ON notification_messages(campaign_id);
+CREATE INDEX idx_messages_status ON notification_messages(status);
+CREATE INDEX idx_messages_created_at ON notification_messages(created_at);
+CREATE INDEX idx_messages_message_uuid ON notification_messages(message_uuid);
+
+-- Логи статусов (для детальной истории, если нужно)
+CREATE TABLE delivery_status_logs (
+    id BIGSERIAL PRIMARY KEY,
+    message_id BIGINT NOT NULL REFERENCES notification_messages(id),
+    status VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    details JSONB
+);
+CREATE INDEX idx_delivery_logs_message_id ON delivery_status_logs(message_id);
+
+-- Конфигурация провайдеров
+CREATE TABLE provider_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    channel_type VARCHAR(20) NOT NULL,
+    provider_name VARCHAR(100) NOT NULL,
+    config JSONB NOT NULL, -- Учетные данные, API ключи и т.д. (зашифровано)
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    priority INT NOT NULL DEFAULT 0,
+    rate_limit INT, -- Лимит запросов в секунду/минуту
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ
+);
+```
+
+### 3.4 Взаимодействие с другими микросервисами
+
+Notification Service активно взаимодействует с большинством других сервисов платформы:
+
+1.  **Прием событий/запросов на отправку**: Через Kafka или прямой API вызов от:
+    *   **Account Service**: Подтверждение регистрации, смена пароля, верификация email/телефона.
+    *   **Auth Service**: Уведомления о подозрительных входах, запросы 2FA.
+    *   **Library Service**: Уведомления о получении достижений, появлении игры из вишлиста в продаже, обновлениях игр.
+    *   **Payment Service**: Подтверждения покупок, уведомления о возвратах, проблемы с оплатой.
+    *   **Social Service**: Новые сообщения, запросы в друзья, упоминания, активность в группах.
+    *   **Download Service**: Завершение загрузки, ошибки загрузки.
+    *   **Developer Service**: Уведомления для разработчиков о статусе модерации игр, выплатах.
+    *   **Admin Service**: Системные оповещения, уведомления о запросах в поддержку.
+2.  **Получение данных для обогащения/сегментации**: Через API запросы к:
+    *   **Account Service**: Получение email, телефона, языка пользователя, device токенов.
+    *   **Analytics Service**: Получение сегментов пользователей для маркетинговых кампаний.
+3.  **Отправка данных**: Публикация событий в Kafka для:
+    *   **Analytics Service**: Отправка данных о статусах доставки, открытиях, кликах для последующего анализа.
+
+#### Диаграмма взаимодействия (упрощенная)
+
+```mermaid
+graph LR
+    AS(Account Service) -->|Event/API| NS(Notification Service)
+    AuthS(Auth Service) -->|Event/API| NS
+    LS(Library Service) -->|Event/API| NS
+    PS(Payment Service) -->|Event/API| NS
+    SS(Social Service) -->|Event/API| NS
+    DS(Download Service) -->|Event/API| NS
+    DevS(Developer Service) -->|Event/API| NS
+    AdminS(Admin Service) -->|Event/API| NS
+
+    NS -->|Get User Data| AS
+    NS -->|Get Segments| AnalyticsS(Analytics Service)
+
+    NS -->|Send Stats| Kafka(Message Broker)
+    Kafka --> AnalyticsS
+
+    NS -->|Email| EmailP(Email Provider)
+    NS -->|Push| PushP(Push Provider)
+    NS -->|SMS| SMSP(SMS Provider)
+    NS -->|In-App| WSS(WebSocket Service / Client)
+```
+
+
+
+## 4. Бизнес-логика и сценарии использования
+
+### 4.1 Отправка транзакционного уведомления
+
+**Триггер**: Другой микросервис (например, Payment Service после успешной покупки) публикует событие в Kafka (например, `payment.successful`) или вызывает API Notification Service.
+
+**Сценарий**:
+1.  **Получение запроса**: Message Consumer или API Gateway получает запрос на отправку уведомления, содержащий тип события (например, `order_confirmation`), ID пользователя, и необходимые данные (номер заказа, сумма, купленные товары).
+2.  **Определение типа уведомления**: Notification Orchestrator идентифицирует тип уведомления (`order_confirmation`).
+3.  **Проверка предпочтений**: Orchestrator запрашивает у Preference Manager настройки пользователя для типа `order_confirmation`. Пользователь может предпочитать Email и Push, но отключить SMS для этого типа.
+4.  **Выбор каналов**: Orchestrator выбирает каналы Email и Push на основе предпочтений.
+5.  **Выбор шаблонов**: Orchestrator запрашивает у Template Engine соответствующие шаблоны для Email и Push на языке пользователя (полученном из Account Service или переданном в запросе).
+6.  **Рендеринг**: Template Engine рендерит шаблоны, подставляя данные из запроса (номер заказа, сумма и т.д.).
+7.  **Постановка в очередь**: Orchestrator создает две задачи (одну для Email, одну для Push) и помещает их в соответствующие очереди (EmailQueue, PushQueue), указывая получателя (email пользователя, device token пользователя) и отрендеренное сообщение.
+8.  **Отправка**: Channel Dispatchers (EmailDispatcher, PushDispatcher) забирают задачи из очередей.
+9.  **Взаимодействие с провайдером**: Dispatcher выбирает активного провайдера для канала (согласно ProviderConfig) и отправляет запрос на доставку.
+10. **Обработка ответа**: Dispatcher получает ответ от провайдера (успешно отправлено, ошибка, ID сообщения у провайдера).
+11. **Обновление статуса**: Dispatcher обновляет статус сообщения в `notification_messages` (например, на 'sent' или 'failed') и передает информацию в Stats Collector.
+12. **Обратная связь (Асинхронно)**: При получении от провайдера статуса доставки (delivered, bounced, opened, clicked) через webhook или API, соответствующий обработчик обновляет статус в `notification_messages` и передает данные в Stats Collector.
+
+**Бизнес-правила**:
+*   Транзакционные уведомления имеют высокий приоритет.
+*   Если пользователь не задал предпочтения для типа уведомления, используются настройки по умолчанию (например, отправка на Email).
+*   Если предпочтительный канал недоступен (например, нет email или device token у пользователя), сервис может попытаться использовать резервный канал (если настроено) или залогировать ошибку.
+*   Необходимо предусмотреть механизм дедупликации, чтобы избежать повторной отправки одного и того же уведомления при сбоях или повторных событиях.
+*   При ошибке отправки через основного провайдера, система может автоматически попытаться отправить через резервного провайдера (если настроено).
+*   Должны быть реализованы повторные попытки отправки (retry) с экспоненциальной задержкой для временных ошибок.
+
+**Обработка ошибок**:
+*   Отсутствие шаблона для нужного канала/языка.
+*   Отсутствие контактных данных пользователя (email, телефон, токен).
+*   Ошибки при рендеринге шаблона.
+*   Ошибки при взаимодействии с провайдерами (недоступность, неверные учетные данные, ошибки API).
+*   Превышение лимитов отправки у провайдера.
+
+### 4.2 Управление пользовательскими предпочтениями
+
+**Сценарий**:
+1.  Пользователь заходит в раздел настроек уведомлений в своем профиле (через клиентское приложение или веб-интерфейс).
+2.  Интерфейс запрашивает у Notification Service (через API) текущие настройки пользователя для всех доступных типов уведомлений.
+3.  API Preference Manager извлекает настройки из `user_notification_preferences` и `user_global_unsubscribes`.
+4.  Интерфейс отображает список типов уведомлений (например, "Новости и акции", "Социальные взаимодействия", "Обновления игр", "Системные оповещения") и доступные каналы (Email, Push, SMS, In-App) для каждого типа.
+5.  Пользователь изменяет настройки (включает/отключает типы уведомлений, выбирает/снимает галочки с каналов, использует глобальную отписку от маркетинга).
+6.  Интерфейс отправляет обновленные настройки в Notification Service.
+7.  API Preference Manager валидирует данные и сохраняет изменения в `user_notification_preferences` и/или `user_global_unsubscribes`.
+8.  Система подтверждает сохранение настроек.
+
+**Бизнес-правила**:
+*   Пользователь должен иметь возможность управлять подписками на каждый тип уведомлений и каждый канал.
+*   Должна быть возможность глобально отписаться от всех маркетинговых рассылок.
+*   Отписка от критически важных системных и транзакционных уведомлений (например, восстановление пароля, подтверждение покупки) может быть запрещена или ограничена.
+*   Изменения настроек должны вступать в силу немедленно или с минимальной задержкой.
+
+### 4.3 Создание и запуск маркетинговой кампании
+
+**Сценарий**:
+1.  Маркетолог заходит в административный интерфейс Notification Service.
+2.  Маркетолог создает новую кампанию (`notification_campaigns`), задает название, описание.
+3.  Маркетолог определяет целевой сегмент: выбирает из готовых сегментов (предоставленных Analytics Service) или задает критерии вручную (например, "пользователи, купившие игру X, но не купившие игру Y").
+4.  Маркетолог выбирает или создает шаблоны (`notification_templates`) для нужных каналов (Email, Push).
+5.  Маркетолог настраивает расписание: немедленный запуск, отложенный запуск на конкретную дату/время, или периодический запуск.
+6.  Маркетолог сохраняет кампанию в статусе 'draft'.
+7.  Маркетолог тестирует кампанию (отправка на тестовую группу).
+8.  Маркетолог активирует кампанию (переводит в статус 'scheduled' или 'running').
+9.  **Запуск**: Campaign Manager в соответствии с расписанием инициирует рассылку:
+    *   Запрашивает список user_id целевого сегмента у Analytics Service или формирует его по заданным критериям.
+    *   Для каждого user_id ставит задачу в Notification Orchestrator на отправку уведомления по кампании.
+    *   Orchestrator обрабатывает каждую задачу аналогично транзакционному уведомлению (проверка предпочтений, рендеринг, постановка в очередь), но с учетом флага кампании и, возможно, с более низким приоритетом.
+10. **Мониторинг**: Маркетолог отслеживает прогресс кампании и статистику (отправлено, доставлено, открыто, кликнуто) через API статистики.
+11. **Завершение**: Кампания автоматически переходит в статус 'completed' после отправки всем пользователям сегмента или по достижении даты окончания.
+
+**Бизнес-правила**:
+*   Перед отправкой всегда проверяются пользовательские предпочтения и глобальные отписки. Пользователи, отписавшиеся от маркетинга, исключаются из рассылки.
+*   Необходимо контролировать частоту отправки маркетинговых сообщений одному пользователю (frequency capping).
+*   Должна быть возможность остановить/отменить запущенную кампанию.
+*   Статистика по кампаниям должна быть доступна в реальном времени или с минимальной задержкой.
+
+### 4.4 Управление шаблонами
+
+**Сценарий**:
+1.  Администратор или разработчик заходит в интерфейс управления шаблонами.
+2.  Создает новый шаблон: указывает название (например, `welcome_email_ru`), канал (`email`), язык (`ru`), тему, тело шаблона с использованием переменных (например, `{{.UserName}}`).
+3.  Сохраняет шаблон. Система (`TM_API`) сохраняет его в `notification_templates`.
+4.  Редактирует существующий шаблон.
+5.  Удаляет (помечает как удаленный) шаблон.
+
+**Бизнес-правила**:
+*   Шаблоны должны поддерживать переменные для персонализации.
+*   Рекомендуется использовать безопасный шаблонизатор, предотвращающий XSS и другие атаки.
+*   Должна быть поддержка локализации (разные шаблоны для разных языков).
+*   Желательно версионирование шаблонов.
+
+### 4.5 Обработка Push Notification Token
+
+**Сценарий**:
+1.  Клиентское приложение (Mobile/Desktop/Web) при первом запуске или после обновления получает от ОС/браузера device token для push-уведомлений.
+2.  Клиентское приложение отправляет этот токен вместе с user_id и типом платформы на бэкенд (например, в Account Service или напрямую в Notification Service через специальный API).
+3.  Сервис сохраняет токен в таблице `device_tokens`, связывая его с пользователем и помечая как активный.
+4.  При отправке push-уведомления Notification Orchestrator запрашивает активные токены для данного пользователя из `device_tokens`.
+5.  Push Dispatcher отправляет уведомление на эти токены через соответствующего провайдера (FCM/APNS).
+6.  **Обработка обратной связи**: Провайдер (FCM/APNS) может вернуть ответ, что токен недействителен (например, пользователь удалил приложение).
+7.  Система получает эту информацию (через API провайдера или webhook) и помечает соответствующий токен в `device_tokens` как неактивный (`is_active = false`), чтобы не пытаться отправлять на него уведомления в будущем.
+
+**Бизнес-правила**:
+*   Один пользователь может иметь несколько активных токенов (например, с телефона и планшета).
+*   Неактивные токены должны периодически удаляться или архивироваться.
+*   Необходимо безопасно хранить токены.
+
+## 5. Структура данных и API
+
+Сервис предоставляет RESTful API (и/или gRPC) для управления сущностями и получения данных. Также он потребляет события из Kafka.
+
+### 5.1 API Endpoints (REST пример)
+
+**Префикс**: `/api/v1/notifications`
+
+**Аутентификация**: Требуется JWT-токен для большинства эндпоинтов, кроме внутренних (например, для приема событий).
+**Авторизация**: Используются роли (user, admin, marketer, service).
+
+#### 5.1.1 Управление шаблонами (Роли: admin, service)
+
+*   `POST /templates`: Создать новый шаблон.
+    *   Request Body: `{ 
+
+name": "welcome_email", "channel_type": "email", "language_code": "ru", "subject": "Добро пожаловать на платформу", "body": "Здравствуйте, {{.UserName}}! Благодарим за регистрацию...", "variables": {"UserName": "string"} }`
+    *   Response: `201 Created` с созданным объектом и его ID.
+*   `GET /templates`: Получить список шаблонов с пагинацией и фильтрацией.
+    *   Query Parameters: `channel_type`, `language_code`, `page`, `limit`
+    *   Response: `200 OK` с массивом шаблонов и метаданными пагинации.
+*   `GET /templates/{id}`: Получить шаблон по ID.
+    *   Response: `200 OK` с объектом шаблона или `404 Not Found`.
+*   `PUT /templates/{id}`: Обновить шаблон.
+    *   Request Body: Аналогично созданию.
+    *   Response: `200 OK` с обновленным объектом или `404 Not Found`.
+*   `DELETE /templates/{id}`: Удалить (пометить как удаленный) шаблон.
+    *   Response: `204 No Content` или `404 Not Found`.
+
+#### 5.1.2 Управление пользовательскими предпочтениями (Роли: user, admin, service)
+
+*   `GET /preferences/{user_id}`: Получить предпочтения пользователя.
+    *   Response: `200 OK` с объектом предпочтений или `404 Not Found`.
+*   `PUT /preferences/{user_id}`: Обновить предпочтения пользователя.
+    *   Request Body: `{ "notification_type": "marketing_promo", "allowed_channels": ["email", "push"], "is_enabled": true }`
+    *   Response: `200 OK` с обновленным объектом или `404 Not Found`.
+*   `GET /preferences/{user_id}/types`: Получить все типы уведомлений с настройками пользователя.
+    *   Response: `200 OK` с массивом типов и настроек.
+*   `POST /preferences/{user_id}/unsubscribe`: Глобальная отписка от определенного типа уведомлений.
+    *   Request Body: `{ "channel_type": "all_marketing", "reason": "Not interested" }`
+    *   Response: `200 OK` с подтверждением.
+
+#### 5.1.3 Управление маркетинговыми кампаниями (Роли: admin, marketer)
+
+*   `POST /campaigns`: Создать новую кампанию.
+    *   Request Body: `{ "name": "Summer Sale 2025", "description": "Летняя распродажа", "target_segment": {...}, "template_ids": ["uuid1", "uuid2"], "schedule": {"type": "one_time", "scheduled_at": "2025-06-01T10:00:00Z"} }`
+    *   Response: `201 Created` с созданным объектом и его ID.
+*   `GET /campaigns`: Получить список кампаний с пагинацией и фильтрацией.
+    *   Query Parameters: `status`, `page`, `limit`
+    *   Response: `200 OK` с массивом кампаний и метаданными пагинации.
+*   `GET /campaigns/{id}`: Получить кампанию по ID.
+    *   Response: `200 OK` с объектом кампании или `404 Not Found`.
+*   `PUT /campaigns/{id}`: Обновить кампанию.
+    *   Request Body: Аналогично созданию.
+    *   Response: `200 OK` с обновленным объектом или `404 Not Found`.
+*   `POST /campaigns/{id}/start`: Запустить кампанию.
+    *   Response: `200 OK` с обновленным статусом или `400 Bad Request` при невозможности запуска.
+*   `POST /campaigns/{id}/stop`: Остановить кампанию.
+    *   Response: `200 OK` с обновленным статусом или `400 Bad Request` при невозможности остановки.
+*   `GET /campaigns/{id}/stats`: Получить статистику по кампании.
+    *   Response: `200 OK` с объектом статистики.
+
+#### 5.1.4 Управление устройствами (Роли: user, service)
+
+*   `POST /devices`: Зарегистрировать новый device token.
+    *   Request Body: `{ "user_id": "uuid", "platform": "android", "token": "fcm_token_string" }`
+    *   Response: `201 Created` с созданным объектом и его ID.
+*   `PUT /devices/{id}`: Обновить статус device token.
+    *   Request Body: `{ "is_active": false }`
+    *   Response: `200 OK` с обновленным объектом или `404 Not Found`.
+*   `GET /devices/user/{user_id}`: Получить все устройства пользователя.
+    *   Response: `200 OK` с массивом устройств.
+
+#### 5.1.5 Отправка уведомлений (Роли: service, admin)
+
+*   `POST /send`: Отправить одиночное уведомление.
+    *   Request Body: `{ "user_id": "uuid", "notification_type": "order_confirmation", "data": {"order_id": "123", "amount": 1500}, "priority": "high" }`
+    *   Response: `202 Accepted` с ID созданного сообщения или задачи.
+*   `POST /send/batch`: Отправить пакет уведомлений.
+    *   Request Body: `{ "notifications": [{"user_id": "uuid1", ...}, {"user_id": "uuid2", ...}] }`
+    *   Response: `202 Accepted` с массивом ID созданных сообщений или задач.
+
+#### 5.1.6 Статистика и мониторинг (Роли: admin, marketer, service)
+
+*   `GET /stats/delivery`: Получить статистику доставки за период.
+    *   Query Parameters: `start_date`, `end_date`, `channel_type`, `notification_type`
+    *   Response: `200 OK` с объектом статистики.
+*   `GET /stats/messages/{message_id}`: Получить статус конкретного сообщения.
+    *   Response: `200 OK` с объектом статуса или `404 Not Found`.
+*   `GET /health`: Проверить состояние сервиса (публичный эндпоинт).
+    *   Response: `200 OK` с информацией о состоянии или соответствующий код ошибки.
+
+### 5.2 Kafka Topics и События
+
+#### 5.2.1 Потребляемые топики
+
+*   `notification.send.request`: Запросы на отправку уведомлений от других сервисов.
+    *   Формат сообщения: `{ "user_id": "uuid", "notification_type": "order_confirmation", "data": {...}, "priority": "high", "idempotency_key": "unique_string" }`
+*   `user.events`: События, связанные с пользователями (регистрация, изменение профиля и т.д.).
+    *   Формат сообщения: `{ "event_type": "user.registered", "user_id": "uuid", "data": {...} }`
+*   `payment.events`: События, связанные с платежами.
+    *   Формат сообщения: `{ "event_type": "payment.successful", "user_id": "uuid", "data": {...} }`
+*   Другие топики с событиями от различных сервисов.
+
+#### 5.2.2 Публикуемые топики
+
+*   `notification.events`: События, связанные с уведомлениями (отправлено, доставлено, открыто, ошибка).
+    *   Формат сообщения: `{ "event_type": "notification.delivered", "message_id": "uuid", "user_id": "uuid", "channel_type": "email", "timestamp": "2025-05-21T12:34:56Z", "data": {...} }`
+*   `notification.stats`: Агрегированная статистика по уведомлениям для Analytics Service.
+    *   Формат сообщения: `{ "period": "hour", "timestamp": "2025-05-21T12:00:00Z", "metrics": {"sent": 1000, "delivered": 950, "opened": 300, ...}, "dimensions": {"channel_type": "email", "notification_type": "marketing"} }`
+
+### 5.3 gRPC API (опционально)
+
+Для высокопроизводительного взаимодействия между сервисами может быть реализован gRPC API с аналогичной функциональностью. Примеры сервисов:
+
+```protobuf
+syntax = "proto3";
+
+package notification;
+
+service NotificationService {
+  // Отправка уведомлений
+  rpc SendNotification(SendNotificationRequest) returns (SendNotificationResponse);
+  rpc SendBatchNotifications(SendBatchNotificationsRequest) returns (SendBatchNotificationsResponse);
+  
+  // Проверка статуса
+  rpc GetNotificationStatus(GetNotificationStatusRequest) returns (GetNotificationStatusResponse);
+}
+
+message SendNotificationRequest {
+  string user_id = 1;
+  string notification_type = 2;
+  map<string, string> data = 3;
+  string priority = 4;
+  string idempotency_key = 5;
+}
+
+message SendNotificationResponse {
+  string message_id = 1;
+  string status = 2;
+}
+
+// Другие сообщения...
+```
+
+## 6. Интеграции с другими микросервисами и внешними системами
+
+### 6.1 Интеграции с другими микросервисами
+
+#### 6.1.1 Account Service
+
+*   **Получение данных**: Notification Service запрашивает у Account Service контактные данные пользователей (email, телефон), информацию о языке и настройках локализации.
+*   **API**: `GET /api/v1/users/{user_id}/contacts`
+*   **Формат данных**: `{ "email": "user@example.com", "phone": "+79001234567", "language": "ru" }`
+
+#### 6.1.2 Auth Service
+
+*   **События**: Auth Service генерирует события, требующие отправки уведомлений (подозрительный вход, сброс пароля).
+*   **Kafka Topic**: `auth.events`
+*   **Формат события**: `{ "event_type": "auth.suspicious_login", "user_id": "uuid", "data": {"ip": "192.168.1.1", "location": "Moscow", "device": "Unknown"} }`
+
+#### 6.1.3 Analytics Service
+
+*   **Получение сегментов**: Notification Service запрашивает у Analytics Service сегменты пользователей для маркетинговых кампаний.
+*   **API**: `GET /api/v1/segments/{segment_id}/users`
+*   **Формат данных**: `{ "users": ["uuid1", "uuid2", ...], "total_count": 1000, "page": 1, "limit": 100 }`
+*   **Отправка статистики**: Notification Service отправляет в Analytics Service данные о доставке и взаимодействии с уведомлениями.
+*   **Kafka Topic**: `notification.stats`
+
+#### 6.1.4 Social Service
+
+*   **События**: Social Service генерирует события, требующие отправки уведомлений (новое сообщение, запрос в друзья).
+*   **Kafka Topic**: `social.events`
+*   **Формат события**: `{ "event_type": "social.new_message", "user_id": "uuid", "data": {"from_user_id": "uuid", "message_preview": "Привет!"} }`
+
+#### 6.1.5 Library Service
+
+*   **События**: Library Service генерирует события, требующие отправки уведомлений (новое достижение, обновление игры).
+*   **Kafka Topic**: `library.events`
+*   **Формат события**: `{ "event_type": "library.achievement_unlocked", "user_id": "uuid", "data": {"game_id": "uuid", "achievement_id": "uuid", "achievement_name": "Первая победа"} }`
+
+#### 6.1.6 Payment Service
+
+*   **События**: Payment Service генерирует события, требующие отправки уведомлений (успешная покупка, возврат).
+*   **Kafka Topic**: `payment.events`
+*   **Формат события**: `{ "event_type": "payment.successful", "user_id": "uuid", "data": {"order_id": "123", "amount": 1500, "items": [{"game_id": "uuid", "name": "Game Name"}]} }`
+
+### 6.2 Интеграции с внешними системами
+
+#### 6.2.1 Email-провайдеры
+
+*   **Поддерживаемые провайдеры**: SendGrid, Mailgun, Amazon SES, Yandex.Mail, Mail.ru.
+*   **Метод интеграции**: REST API.
+*   **Функциональность**:
+    *   Отправка транзакционных и маркетинговых email.
+    *   Получение статусов доставки через webhook.
+    *   Обработка отписок и жалоб на спам.
+*   **Требования к конфигурации**:
+    *   API-ключи и учетные данные.
+    *   Настройка DKIM, SPF, DMARC для улучшения доставляемости.
+    *   Настройка webhook для получения обратной связи.
+
+#### 6.2.2 Push-провайдеры
+
+*   **Поддерживаемые провайдеры**:
+    *   Firebase Cloud Messaging (FCM) для Android и Web.
+    *   Apple Push Notification Service (APNS) для iOS и macOS.
+*   **Метод интеграции**: SDK/REST API.
+*   **Функциональность**:
+    *   Отправка push-уведомлений на устройства.
+    *   Получение статусов доставки.
+    *   Поддержка rich-уведомлений (с изображениями, действиями).
+*   **Требования к конфигурации**:
+    *   Для FCM: Firebase project ID, server key.
+    *   Для APNS: Сертификаты или токены аутентификации.
+
+#### 6.2.3 SMS-шлюзы
+
+*   **Поддерживаемые провайдеры**: SMSC.ru, SMS.ru, Twilio, МТС Коммуникатор, МегаФон.
+*   **Метод интеграции**: REST API.
+*   **Функциональность**:
+    *   Отправка SMS-сообщений.
+    *   Получение статусов доставки.
+*   **Требования к конфигурации**:
+    *   API-ключи и учетные данные.
+    *   Настройка отправителя (Sender ID).
+
+#### 6.2.4 WebSocket-сервер для In-App уведомлений
+
+*   **Метод интеграции**: WebSocket API.
+*   **Функциональность**:
+    *   Установление WebSocket-соединения с клиентскими приложениями.
+    *   Отправка уведомлений в реальном времени.
+    *   Подтверждение доставки и прочтения.
+*   **Требования к конфигурации**:
+    *   Настройка аутентификации WebSocket-соединений.
+    *   Масштабируемая архитектура для поддержки большого количества одновременных соединений.
+
+## 7. Требования к безопасности, масштабируемости и отказоустойчивости
+
+### 7.1 Требования к безопасности
+
+#### 7.1.1 Защита данных
+
+*   **Персональные данные**: Все персональные данные (email, телефон, предпочтения) должны храниться в соответствии с требованиями ФЗ-152 "О персональных данных".
+*   **Шифрование**: Чувствительные данные (API-ключи провайдеров, токены устройств) должны храниться в зашифрованном виде.
+*   **Доступ к данным**: Должно быть реализовано разграничение доступа к данным на основе ролей (RBAC).
+*   **Аудит**: Все действия администраторов и маркетологов должны логироваться для последующего аудита.
+
+#### 7.1.2 Защита API
+
+*   **Аутентификация**: Все API-эндпоинты должны требовать аутентификации (JWT-токены, API-ключи для сервисов).
+*   **Авторизация**: Должна быть реализована проверка прав доступа к ресурсам на основе ролей.
+*   **Rate Limiting**: Необходимо ограничивать количество запросов с одного IP/пользователя для предотвращения DoS-атак.
+*   **Валидация входных данных**: Все входные данные должны проходить строгую валидацию для предотвращения инъекций и других атак.
+
+#### 7.1.3 Защита от спама и злоупотреблений
+
+*   **Контроль частоты**: Ограничение количества уведомлений, отправляемых одному пользователю в единицу времени.
+*   **Верификация отправителей**: Для внутренних сервисов должна быть реализована строгая аутентификация при отправке запросов на уведомления.
+*   **Мониторинг аномалий**: Система должна отслеживать аномальные паттерны отправки уведомлений и блокировать подозрительную активность.
+
+#### 7.1.4 Соответствие законодательству
+
+*   **ФЗ "О рекламе"**: Все маркетинговые рассылки должны содержать возможность отписки и отправляться только с согласия пользователя.
+*   **ФЗ-152 "О персональных данных"**: Хранение и обработка персональных данных должны соответствовать требованиям закона.
+*   **Локализация данных**: Персональные данные граждан РФ должны храниться на серверах, расположенных на территории РФ.
+
+### 7.2 Требования к масштабируемости
+
+#### 7.2.1 Горизонтальное масштабирование
+
+*   **Stateless-компоненты**: API Gateway, Orchestrator, Dispatchers должны быть stateless для возможности горизонтального масштабирования.
+*   **Шардирование данных**: База данных должна поддерживать шардирование по user_id или другим ключам для распределения нагрузки.
+*   **Кэширование**: Активное использование кэширования для часто запрашиваемых данных (шаблоны, предпочтения).
+
+#### 7.2.2 Обработка пиковых нагрузок
+
+*   **Очереди сообщений**: Использование очередей для буферизации запросов при пиковых нагрузках.
+*   **Приоритизация**: Механизм приоритизации уведомлений для обеспечения своевременной доставки критически важных сообщений даже при высокой нагрузке.
+*   **Автомасштабирование**: Компоненты сервиса должны поддерживать автоматическое масштабирование в зависимости от нагрузки.
+
+#### 7.2.3 Производительность
+
+*   **Целевые показатели**:
+    *   Пропускная способность: не менее 5000 запросов в секунду.
+    *   Время отклика API: P95 < 50 мс.
+    *   Задержка доставки: P99 < 1 секунда для высокоприоритетных уведомлений.
+*   **Оптимизация**:
+    *   Эффективное использование пулов соединений к БД и внешним сервисам.
+    *   Асинхронная обработка неприоритетных операций.
+    *   Оптимизация запросов к БД (индексы, денормализация при необходимости).
+
+### 7.3 Требования к отказоустойчивости
+
+#### 7.3.1 Высокая доступность
+
+*   **Целевой показатель**: Доступность сервиса 99.95% (не более 4.38 часов простоя в год).
+*   **Архитектура**: Отсутствие единых точек отказа (SPOF).
+*   **Репликация данных**: Синхронная или асинхронная репликация данных для обеспечения их сохранности.
+*   **Балансировка нагрузки**: Использование балансировщиков нагрузки для распределения запросов между экземплярами сервиса.
+
+#### 7.3.2 Обработка сбоев
+
+*   **Graceful Degradation**: При недоступности некритичных компонентов система должна продолжать работу с ограниченной функциональностью.
+*   **Circuit Breaker**: Использование паттерна "предохранитель" для предотвращения каскадных сбоев при проблемах с внешними системами.
+*   **Retry с Exponential Backoff**: Механизм повторных попыток с увеличивающимися интервалами для временных сбоев.
+*   **Fallback-провайдеры**: Возможность переключения на резервных провайдеров при недоступности основных.
+
+#### 7.3.3 Мониторинг и оповещение
+
+*   **Метрики**: Сбор и анализ ключевых метрик производительности и доступности.
+*   **Логирование**: Централизованное логирование с возможностью поиска и анализа.
+*   **Алерты**: Настройка оповещений о критических проблемах и аномалиях.
+*   **Трассировка**: Распределенная трассировка запросов для отладки проблем в микросервисной архитектуре.
+
+#### 7.3.4 Резервное копирование и восстановление
+
+*   **Регулярное резервное копирование**: Ежедневное полное и инкрементальное резервное копирование данных.
+*   **Проверка резервных копий**: Регулярная проверка целостности и возможности восстановления из резервных копий.
+*   **Процедуры восстановления**: Документированные и протестированные процедуры восстановления после сбоев.
+
+## 8. Рекомендации по реализации и развертыванию
+
+### 8.1 Стратегия разработки
+
+#### 8.1.1 Приоритизация функциональности
+
+Рекомендуется поэтапная разработка с фокусом на MVP (Minimum Viable Product):
+
+1.  **Этап 1 (MVP)**:
+    *   Базовая отправка транзакционных уведомлений через Email.
+    *   Простые шаблоны без сложной логики.
+    *   Базовое API для интеграции с другими сервисами.
+    *   Минимальная обработка статусов доставки.
+2.  **Этап 2**:
+    *   Добавление Push-уведомлений.
+    *   Управление пользовательскими предпочтениями.
+    *   Расширенные шаблоны с переменными.
+    *   Улучшенная обработка статусов и сбор статистики.
+3.  **Этап 3**:
+    *   Добавление SMS и In-App уведомлений.
+    *   Маркетинговые кампании и сегментация.
+    *   Расширенная аналитика и отчетность.
+4.  **Этап 4**:
+    *   A/B тестирование.
+    *   Интеграция с дополнительными провайдерами.
+    *   Оптимизация производительности и масштабируемости.
+
+#### 8.1.2 Тестирование
+
+*   **Unit-тесты**: Покрытие критических компонентов (Template Engine, Orchestrator, Dispatchers).
+*   **Интеграционные тесты**: Проверка взаимодействия между компонентами и с внешними системами.
+*   **Нагрузочное тестирование**: Проверка производительности и масштабируемости при высоких нагрузках.
+*   **Тестирование отказоустойчивости**: Симуляция сбоев компонентов и внешних систем для проверки механизмов восстановления.
+
+### 8.2 Инфраструктура и развертывание
+
+#### 8.2.1 Контейнеризация и оркестрация
+
+*   **Docker**: Упаковка компонентов сервиса в Docker-контейнеры.
+*   **Kubernetes**: Оркестрация контейнеров для управления развертыванием, масштабированием и отказоустойчивостью.
+*   **Helm Charts**: Использование Helm для управления конфигурацией и развертыванием в Kubernetes.
+
+#### 8.2.2 CI/CD
+
+*   **Continuous Integration**: Автоматическая сборка и тестирование при каждом коммите.
+*   **Continuous Deployment**: Автоматическое развертывание в тестовую среду после успешных тестов.
+*   **Continuous Delivery**: Полуавтоматическое или автоматическое развертывание в продакшн после одобрения.
+
+#### 8.2.3 Мониторинг и логирование
+
+*   **Prometheus + Grafana**: Сбор и визуализация метрик.
+*   **ELK Stack или Loki**: Централизованное логирование.
+*   **Jaeger или Zipkin**: Распределенная трассировка.
+*   **Alertmanager**: Настройка оповещений о критических проблемах.
+
+#### 8.2.4 Конфигурация
+
+*   **Внешняя конфигурация**: Хранение конфигурации вне кода (ConfigMaps в Kubernetes, Consul, Vault).
+*   **Секреты**: Безопасное хранение чувствительных данных (API-ключей, паролей) в Kubernetes Secrets или HashiCorp Vault.
+*   **Переменные окружения**: Использование переменных окружения для конфигурации в разных средах (dev, test, prod).
+
+### 8.3 Рекомендации по оптимизации
+
+#### 8.3.1 Производительность
+
+*   **Асинхронная обработка**: Использование асинхронных операций для неблокирующей обработки запросов.
+*   **Пулы соединений**: Оптимизация пулов соединений к БД и внешним сервисам.
+*   **Кэширование**: Активное использование кэширования для часто запрашиваемых данных.
+*   **Батчинг**: Группировка запросов к внешним системам для уменьшения накладных расходов.
+
+#### 8.3.2 Стоимость
+
+*   **Оптимизация использования провайдеров**: Выбор наиболее экономичных провайдеров для разных типов уведомлений.
+*   **Контроль объема**: Мониторинг и ограничение объема отправляемых уведомлений, особенно платных (SMS).
+*   **Автомасштабирование**: Настройка автомасштабирования для оптимального использования ресурсов.
+
+#### 8.3.3 Пользовательский опыт
+
+*   **Релевантность**: Отправка только релевантных уведомлений для предотвращения "усталости от уведомлений".
+*   **Персонализация**: Использование данных о пользователе для персонализации уведомлений.
+*   **Время отправки**: Учет часового пояса пользователя и оптимального времени для отправки маркетинговых уведомлений.
+
+### 8.4 Дальнейшее развитие
+
+#### 8.4.1 Потенциальные улучшения
+
+*   **Машинное обучение**: Использование ML для оптимизации времени отправки, персонализации контента и предсказания отклика.
+*   **Омниканальность**: Интеграция с дополнительными каналами (мессенджеры, социальные сети).
+*   **Интерактивные уведомления**: Расширение функциональности Push и In-App уведомлений для поддержки интерактивных действий.
+*   **Расширенная аналитика**: Более глубокий анализ эффективности уведомлений и их влияния на пользовательское поведение.
+
+#### 8.4.2 Интеграция с новыми сервисами
+
+*   **Рекомендательная система**: Интеграция с рекомендательной системой для персонализации контента уведомлений.
+*   **Система лояльности**: Интеграция с системой лояльности для отправки уведомлений о бонусах, наградах и специальных предложениях.
+*   **Система обратной связи**: Интеграция с системой обратной связи для автоматизации сбора отзывов после покупок или использования функций.
+
+### 8.5 Риски и их митигация
+
+#### 8.5.1 Технические риски
+
+*   **Риск**: Недоступность внешних провайдеров.
+    *   **Митигация**: Использование нескольких провайдеров для каждого канала, механизмы fallback и retry.
+*   **Риск**: Проблемы с масштабированием при резком росте нагрузки.
+    *   **Митигация**: Нагрузочное тестирование, проактивное масштабирование перед ожидаемыми пиками, механизмы ограничения и приоритизации.
+*   **Риск**: Потеря данных при сбоях.
+    *   **Митигация**: Регулярное резервное копирование, репликация данных, журналирование операций.
+
+#### 8.5.2 Бизнес-риски
+
+*   **Риск**: Низкая эффективность уведомлений (низкий CTR, высокий процент отписок).
+    *   **Митигация**: A/B тестирование, анализ пользовательского поведения, персонализация контента.
+*   **Риск**: Репутационные риски при ошибках в массовых рассылках.
+    *   **Митигация**: Тщательное тестирование шаблонов, предварительный просмотр, отправка тестовых уведомлений перед массовыми рассылками.
+*   **Риск**: Нарушение законодательства о персональных данных и рекламе.
+    *   **Митигация**: Регулярный аудит соответствия, консультации с юристами, строгий контроль за получением согласий на рассылки.
+
+#### 8.5.3 Операционные риски
+
+*   **Риск**: Человеческие ошибки при настройке кампаний или шаблонов.
+    *   **Митигация**: Интерфейс с предварительным просмотром, процесс одобрения для критичных рассылок, ограничения на объем рассылок для новых пользователей системы.
+*   **Риск**: Сложность отладки проблем в распределенной системе.
+    *   **Митигация**: Распределенная трассировка, детальное логирование, уникальные идентификаторы для отслеживания запросов через всю систему.

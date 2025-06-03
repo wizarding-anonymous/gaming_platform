@@ -1,0 +1,1243 @@
+# Стандарты API, форматов данных, событий и конфигурационных файлов
+
+## Содержание
+1. [Введение](#введение)
+2. [Стандарты REST API](#стандарты-rest-api)
+3. [Стандарты gRPC API](#стандарты-grpc-api)
+4. [Стандарты WebSocket API](#стандарты-websocket-api)
+5. [Форматы данных](#форматы-данных)
+6. [Стандарты событий](#стандарты-событий)
+7. [Стандарты конфигурационных файлов](#стандарты-конфигурационных-файлов)
+8. [Стандарты инфраструктурных файлов](#стандарты-инфраструктурных-файлов)
+
+## Введение
+
+Данный документ определяет единые стандарты для API, форматов данных, событий и конфигурационных файлов, используемых во всех микросервисах российского аналога платформы Steam. Цель документа — обеспечить согласованность и совместимость между всеми компонентами системы, упростить интеграцию и поддержку.
+
+## Стандарты REST API
+
+### Общие принципы
+
+1. **Версионирование**
+   - Версия API должна быть указана в URL: `/api/v1/resource`
+   - Мажорная версия (v1, v2) меняется при несовместимых изменениях
+   - Минорные изменения (добавление новых полей) не требуют изменения версии
+
+2. **Формат URL**
+   - Использовать существительные во множественном числе для ресурсов: `/api/v1/games`, `/api/v1/users`
+   - Использовать вложенные ресурсы для выражения отношений: `/api/v1/games/{game_id}/reviews`
+   - Использовать kebab-case для составных слов: `/api/v1/payment-methods`
+   - Не использовать глаголы в URL (кроме специальных действий)
+   - Специальные действия оформлять через `/action`: `/api/v1/games/{game_id}/publish`
+
+3. **HTTP-методы**
+   - GET: получение ресурса или коллекции ресурсов
+   - POST: создание нового ресурса
+   - PUT: полное обновление ресурса
+   - PATCH: частичное обновление ресурса
+   - DELETE: удаление ресурса
+
+4. **Коды ответов**
+   - 200 OK: успешный запрос
+   - 201 Created: успешное создание ресурса
+   - 204 No Content: успешный запрос без тела ответа
+   - 400 Bad Request: ошибка в запросе клиента
+   - 401 Unauthorized: отсутствие аутентификации
+   - 403 Forbidden: недостаточно прав
+   - 404 Not Found: ресурс не найден
+   - 409 Conflict: конфликт при создании/обновлении ресурса
+   - 422 Unprocessable Entity: ошибка валидации
+   - 429 Too Many Requests: превышение лимита запросов
+   - 500 Internal Server Error: внутренняя ошибка сервера
+
+5. **Пагинация**
+   - Параметры запроса: `page` (номер страницы, начиная с 1) и `per_page` (количество элементов на странице)
+   - Максимальное значение `per_page`: 100
+   - Ответ должен содержать метаданные пагинации:
+     ```json
+     {
+       "data": [...],
+       "meta": {
+         "page": 1,
+         "per_page": 20,
+         "total_pages": 5,
+         "total_items": 97
+       },
+       "links": {
+         "self": "/api/v1/games?page=1&per_page=20",
+         "first": "/api/v1/games?page=1&per_page=20",
+         "prev": null,
+         "next": "/api/v1/games?page=2&per_page=20",
+         "last": "/api/v1/games?page=5&per_page=20"
+       }
+     }
+     ```
+
+6. **Фильтрация**
+   - Использовать параметры запроса для фильтрации: `/api/v1/games?genre=strategy&price_min=100&price_max=500`
+   - Сложные фильтры оформлять через специальный параметр `filter`: `/api/v1/games?filter={"genre":["strategy","rpg"],"release_date":{"$gte":"2023-01-01"}}`
+
+7. **Сортировка**
+   - Параметр `sort`: `/api/v1/games?sort=price` (по возрастанию)
+   - Сортировка по убыванию: `/api/v1/games?sort=-price`
+   - Множественная сортировка: `/api/v1/games?sort=genre,-price`
+
+8. **Выборка полей**
+   - Параметр `fields`: `/api/v1/games?fields=id,title,price`
+   - Вложенные поля: `/api/v1/games?fields=id,title,developer{id,name}`
+
+9. **Формат ответа**
+   - Для одиночного ресурса:
+     ```json
+     {
+       "data": {
+         "id": "123e4567-e89b-12d3-a456-426614174000",
+         "type": "game",
+         "attributes": {
+           "title": "Название игры",
+           "price": 1999,
+           "description": "Описание игры"
+         },
+         "relationships": {
+           "developer": {
+             "data": { "id": "123", "type": "developer" }
+           }
+         }
+       }
+     }
+     ```
+   - Для коллекции ресурсов:
+     ```json
+     {
+       "data": [
+         {
+           "id": "123e4567-e89b-12d3-a456-426614174000",
+           "type": "game",
+           "attributes": { ... }
+         },
+         ...
+       ],
+       "meta": { ... },
+       "links": { ... }
+     }
+     ```
+
+10. **Формат ошибок**
+    ```json
+    {
+      "errors": [
+        {
+          "code": "validation_error",
+          "title": "Ошибка валидации",
+          "detail": "Поле 'price' должно быть положительным числом",
+          "source": {
+            "pointer": "/data/attributes/price"
+          }
+        }
+      ]
+    }
+    ```
+
+11. **Заголовки**
+    - `Content-Type: application/json`
+    - `Accept: application/json`
+    - `Authorization: Bearer <token>` для аутентификации
+    - `X-Request-ID: <uuid>` для трассировки запросов
+    - `X-API-Key: <key>` для API-ключей (альтернатива JWT)
+
+12. **Документация**
+    - Каждый REST API должен быть документирован с использованием OpenAPI (Swagger) 3.0
+    - Документация должна включать описание всех эндпоинтов, параметров, форматов запросов и ответов, кодов ответов
+    - Документация должна быть доступна по URL `/api/v1/docs`
+
+### Специфические требования для микросервисов
+
+1. **Auth Service**
+   - Эндпоинты аутентификации не требуют авторизации: `/api/v1/auth/login`, `/api/v1/auth/register`
+   - Эндпоинт проверки токена: `/api/v1/auth/validate-token`
+   - Эндпоинт обновления токена: `/api/v1/auth/refresh-token`
+
+2. **API Gateway**
+   - Все внешние запросы проходят через API Gateway
+   - API Gateway добавляет заголовки с информацией о пользователе для внутренних сервисов:
+     - `X-User-Id`: идентификатор пользователя
+     - `X-User-Roles`: роли пользователя (разделенные запятыми)
+     - `X-Original-IP`: IP-адрес клиента
+
+3. **Catalog Service**
+   - Публичные эндпоинты для получения информации об играх: `/api/v1/games`, `/api/v1/games/{id}`
+   - Защищенные эндпоинты для управления играми: `/api/v1/admin/games`
+
+4. **Payment Service**
+   - Все эндпоинты должны использовать HTTPS
+   - Webhook для обработки уведомлений от платежных систем: `/api/v1/payments/webhook/{provider}`
+
+## Стандарты gRPC API
+
+### Общие принципы
+
+1. **Версионирование**
+   - Версия API должна быть указана в имени пакета: `package platform.v1.service`
+   - Мажорная версия меняется при несовместимых изменениях
+
+2. **Именование**
+   - Имена сервисов: PascalCase, суффикс "Service": `UserService`, `GameService`
+   - Имена методов: PascalCase, глаголы: `GetUser`, `CreateGame`, `UpdateProfile`
+   - Имена сообщений: PascalCase, существительные: `User`, `Game`, `CreateUserRequest`
+   - Имена полей: snake_case: `user_id`, `game_title`, `release_date`
+   - Имена перечислений: PascalCase, суффикс "Enum" или "Status": `UserStatusEnum`, `PaymentStatus`
+   - Значения перечислений: UPPER_SNAKE_CASE, префикс с именем перечисления: `PAYMENT_STATUS_PENDING`
+
+3. **Структура proto-файлов**
+   - Каждый сервис в отдельном файле: `user_service.proto`, `game_service.proto`
+   - Общие сообщения и перечисления в отдельных файлах: `common.proto`, `enums.proto`
+   - Заголовок файла:
+     ```protobuf
+     syntax = "proto3";
+     
+     package platform.v1.service;
+     
+     option go_package = "github.com/company/platform/api/grpc/v1/service";
+     option java_package = "com.company.platform.api.grpc.v1.service";
+     ```
+
+4. **Формат сообщений**
+   - Запросы: `{Method}Request`
+   - Ответы: `{Method}Response`
+   - Использовать вложенные сообщения для группировки связанных полей
+   - Использовать `google.protobuf.Timestamp` для дат и времени
+   - Использовать `google.protobuf.Empty` для пустых запросов/ответов
+
+5. **Типы методов**
+   - Унарные (Unary): один запрос, один ответ
+   - Серверные потоки (Server streaming): один запрос, поток ответов
+   - Клиентские потоки (Client streaming): поток запросов, один ответ
+   - Двунаправленные потоки (Bidirectional streaming): поток запросов, поток ответов
+
+6. **Обработка ошибок**
+   - Использовать стандартные коды ошибок gRPC
+   - Добавлять метаданные для детализации ошибок
+   - Не использовать исключения в бизнес-логике
+
+7. **Документация**
+   - Каждый сервис, метод и сообщение должны иметь комментарии
+   - Комментарии должны быть в формате Protodoc: `// Description of the field.`
+
+8. **Безопасность**
+   - Использовать TLS для шифрования соединений
+   - Передавать токены через метаданные: `authorization: Bearer <token>`
+
+### Пример определения сервиса
+
+```protobuf
+syntax = "proto3";
+
+package platform.v1.user;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+option go_package = "github.com/company/platform/api/grpc/v1/user";
+
+// UserService предоставляет методы для управления пользователями.
+service UserService {
+  // GetUser возвращает информацию о пользователе по ID.
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  
+  // CreateUser создает нового пользователя.
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  
+  // UpdateUser обновляет информацию о пользователе.
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  
+  // DeleteUser удаляет пользователя.
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  
+  // ListUsers возвращает список пользователей с пагинацией.
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  
+  // WatchUserStatus отслеживает изменения статуса пользователя.
+  rpc WatchUserStatus(WatchUserStatusRequest) returns (stream UserStatusUpdate);
+}
+
+// GetUserRequest запрос на получение информации о пользователе.
+message GetUserRequest {
+  // ID пользователя.
+  string user_id = 1;
+}
+
+// GetUserResponse ответ с информацией о пользователе.
+message GetUserResponse {
+  // Информация о пользователе.
+  User user = 1;
+}
+
+// User представляет информацию о пользователе.
+message User {
+  // Уникальный идентификатор пользователя.
+  string id = 1;
+  
+  // Имя пользователя для входа.
+  string username = 2;
+  
+  // Email пользователя.
+  string email = 3;
+  
+  // Статус пользователя.
+  UserStatusEnum status = 4;
+  
+  // Дата создания аккаунта.
+  google.protobuf.Timestamp created_at = 5;
+  
+  // Дата последнего обновления аккаунта.
+  google.protobuf.Timestamp updated_at = 6;
+  
+  // Роли пользователя.
+  repeated string roles = 7;
+}
+
+// UserStatusEnum перечисление возможных статусов пользователя.
+enum UserStatusEnum {
+  // Статус не определен (значение по умолчанию).
+  USER_STATUS_UNSPECIFIED = 0;
+  
+  // Пользователь активен.
+  USER_STATUS_ACTIVE = 1;
+  
+  // Пользователь заблокирован.
+  USER_STATUS_BLOCKED = 2;
+  
+  // Email пользователя не подтвержден.
+  USER_STATUS_EMAIL_UNVERIFIED = 3;
+}
+```
+
+## Стандарты WebSocket API
+
+### Общие принципы
+
+1. **Подключение**
+   - URL для подключения: `/api/v1/ws/{service}`
+   - Аутентификация через параметр запроса `token` или заголовок `Authorization`
+   - Поддержка Ping/Pong для проверки соединения
+
+2. **Формат сообщений**
+   - Все сообщения в формате JSON
+   - Структура сообщения:
+     ```json
+     {
+       "type": "message_type",
+       "id": "unique_message_id",
+       "payload": { ... }
+     }
+     ```
+   - Типы сообщений:
+     - `connect`: установка соединения
+     - `disconnect`: закрытие соединения
+     - `error`: ошибка
+     - `ping`/`pong`: проверка соединения
+     - Специфичные для сервиса типы: `chat_message`, `status_update` и т.д.
+
+3. **Обработка ошибок**
+   - Структура сообщения об ошибке:
+     ```json
+     {
+       "type": "error",
+       "id": "correlation_id",
+       "payload": {
+         "code": "error_code",
+         "message": "Описание ошибки"
+       }
+     }
+     ```
+
+4. **Подтверждение доставки**
+   - Для важных сообщений использовать подтверждения:
+     ```json
+     {
+       "type": "ack",
+       "id": "original_message_id",
+       "payload": {
+         "status": "delivered"
+       }
+     }
+     ```
+
+5. **Документация**
+   - WebSocket API должно быть документировано с указанием всех типов сообщений, их структуры и примеров
+
+### Специфические требования для микросервисов
+
+1. **Social Service (Chat)**
+   - URL: `/api/v1/ws/chat`
+   - Типы сообщений:
+     - `chat_message`: отправка/получение сообщения
+     - `typing_status`: статус набора текста
+     - `read_receipt`: подтверждение прочтения
+     - `presence_update`: обновление статуса присутствия
+
+2. **Notification Service**
+   - URL: `/api/v1/ws/notifications`
+   - Типы сообщений:
+     - `notification`: новое уведомление
+     - `notification_read`: отметка о прочтении
+     - `notification_clear`: очистка уведомлений
+
+## Форматы данных
+
+### Общие принципы
+
+1. **JSON**
+   - Основной формат для REST API и WebSocket API
+   - Использовать camelCase для имен полей в REST API
+   - Использовать UTF-8 кодировку
+   - Не использовать комментарии в JSON
+   - Даты и время в формате ISO 8601: `YYYY-MM-DDTHH:mm:ss.sssZ`
+
+2. **Protocol Buffers**
+   - Основной формат для gRPC API
+   - Использовать snake_case для имен полей
+   - Следовать стандартам, описанным в разделе gRPC API
+
+3. **Общие типы данных**
+   - Идентификаторы: UUID v4 в формате строки
+   - Даты и время: ISO 8601 для JSON, google.protobuf.Timestamp для Protocol Buffers
+   - Денежные значения: целое число (копейки/центы) для внутренних операций, строка с десятичной точкой для отображения
+   - Перечисления: строковые константы для REST API, числовые для gRPC
+   - Геоданные: GeoJSON для REST API, специальные сообщения для gRPC
+
+4. **Локализация**
+   - Тексты хранить в формате:
+     ```json
+     {
+       "title": {
+         "ru": "Название на русском",
+         "en": "English title"
+       }
+     }
+     ```
+   - Использовать коды языков ISO 639-1
+   - Поддерживаемые языки: ru (по умолчанию), en, uk, be, kk
+
+5. **Валидация**
+   - Определить ограничения для каждого типа данных:
+     - Строки: минимальная/максимальная длина, регулярные выражения
+     - Числа: минимальное/максимальное значение, шаг
+     - Массивы: минимальное/максимальное количество элементов
+   - Документировать ограничения в OpenAPI/Protobuf
+
+### Стандартные объекты
+
+1. **User (Пользователь)**
+   ```json
+   {
+     "id": "123e4567-e89b-12d3-a456-426614174000",
+     "username": "user123",
+     "email": "user@example.com",
+     "status": "active",
+     "createdAt": "2023-01-01T12:00:00Z",
+     "updatedAt": "2023-01-02T14:30:00Z",
+     "roles": ["user"]
+   }
+   ```
+
+2. **Game (Игра)**
+   ```json
+   {
+     "id": "123e4567-e89b-12d3-a456-426614174000",
+     "title": {
+       "ru": "Название игры",
+       "en": "Game Title"
+     },
+     "description": {
+       "ru": "Описание игры",
+       "en": "Game Description"
+     },
+     "price": 1999,
+     "discountPrice": 1499,
+     "discountPercent": 25,
+     "releaseDate": "2023-01-01",
+     "developer": {
+       "id": "123e4567-e89b-12d3-a456-426614174001",
+       "name": "Developer Name"
+     },
+     "publisher": {
+       "id": "123e4567-e89b-12d3-a456-426614174002",
+       "name": "Publisher Name"
+     },
+     "genres": ["strategy", "rpg"],
+     "tags": ["multiplayer", "open-world"],
+     "rating": "16+",
+     "platforms": ["windows", "macos", "linux"],
+     "systemRequirements": {
+       "minimum": { ... },
+       "recommended": { ... }
+     }
+   }
+   ```
+
+3. **Transaction (Транзакция)**
+   ```json
+   {
+     "id": "123e4567-e89b-12d3-a456-426614174000",
+     "userId": "123e4567-e89b-12d3-a456-426614174001",
+     "type": "purchase",
+     "status": "completed",
+     "amount": 1999,
+     "currency": "RUB",
+     "items": [
+       {
+         "type": "game",
+         "id": "123e4567-e89b-12d3-a456-426614174002",
+         "title": "Название игры",
+         "price": 1999
+       }
+     ],
+     "paymentMethod": "card",
+     "createdAt": "2023-01-01T12:00:00Z",
+     "updatedAt": "2023-01-01T12:01:30Z"
+   }
+   ```
+
+4. **Review (Отзыв)**
+   ```json
+   {
+     "id": "123e4567-e89b-12d3-a456-426614174000",
+     "gameId": "123e4567-e89b-12d3-a456-426614174001",
+     "userId": "123e4567-e89b-12d3-a456-426614174002",
+     "rating": 4,
+     "text": "Текст отзыва",
+     "createdAt": "2023-01-01T12:00:00Z",
+     "updatedAt": "2023-01-01T14:30:00Z",
+     "helpfulCount": 10,
+     "notHelpfulCount": 2
+   }
+   ```
+
+5. **Error (Ошибка)**
+   ```json
+   {
+     "errors": [
+       {
+         "code": "validation_error",
+         "title": "Ошибка валидации",
+         "detail": "Поле 'email' должно быть валидным email-адресом",
+         "source": {
+           "pointer": "/data/attributes/email"
+         }
+       }
+     ]
+   }
+   ```
+
+## Стандарты событий
+
+### Общие принципы
+
+1. **Формат события**
+   ```json
+   {
+     "id": "123e4567-e89b-12d3-a456-426614174000",
+     "type": "event.type",
+     "source": "service_name",
+     "time": "2023-01-01T12:00:00Z",
+     "dataContentType": "application/json",
+     "data": { ... },
+     "subject": "resource_id",
+     "correlationId": "123e4567-e89b-12d3-a456-426614174001"
+   }
+   ```
+
+2. **Именование типов событий**
+   - Формат: `{domain}.{resource}.{action}`
+   - Примеры: `user.registered`, `game.published`, `payment.completed`
+   - Использовать прошедшее время для действий: `created`, `updated`, `deleted`
+
+3. **Версионирование событий**
+   - Версия указывается в типе события: `user.registered.v1`
+   - При несовместимых изменениях создается новый тип события с увеличенной версией
+
+4. **Обработка событий**
+   - Идемпотентность: повторная обработка одного и того же события не должна приводить к дублированию эффектов
+   - Порядок: события должны обрабатываться в порядке их возникновения (по полю `time`)
+   - Отказоустойчивость: обработчики должны корректно обрабатывать ошибки и поддерживать повторные попытки
+
+5. **Топики Kafka**
+   - Именование: `{service}.{resource}.{action}`
+   - Примеры: `auth.user.registered`, `catalog.game.published`
+   - Партиционирование: по `subject` или другому ключу, обеспечивающему сохранение порядка связанных событий
+   - Репликация: фактор репликации не менее 3
+   - Retention: не менее 7 дней
+
+### Стандартные события
+
+1. **User Events**
+   - `user.registered`: регистрация нового пользователя
+   - `user.verified`: подтверждение email пользователя
+   - `user.updated`: обновление данных пользователя
+   - `user.deleted`: удаление пользователя
+   - `user.blocked`: блокировка пользователя
+   - `user.unblocked`: разблокировка пользователя
+   - `user.logged_in`: вход пользователя
+   - `user.logged_out`: выход пользователя
+
+2. **Game Events**
+   - `game.created`: создание новой игры
+   - `game.updated`: обновление данных игры
+   - `game.published`: публикация игры
+   - `game.unpublished`: снятие игры с публикации
+   - `game.deleted`: удаление игры
+   - `game.price_changed`: изменение цены игры
+   - `game.discount_added`: добавление скидки на игру
+   - `game.discount_removed`: удаление скидки на игру
+
+3. **Library Events**
+   - `library.game_added`: добавление игры в библиотеку пользователя
+   - `library.game_removed`: удаление игры из библиотеки пользователя
+   - `library.game_installed`: установка игры
+   - `library.game_uninstalled`: удаление игры
+   - `library.game_updated`: обновление игры
+
+4. **Payment Events**
+   - `payment.initiated`: инициирование платежа
+   - `payment.completed`: успешное завершение платежа
+   - `payment.failed`: неудачный платеж
+   - `payment.refunded`: возврат средств
+   - `wallet.credited`: пополнение кошелька
+   - `wallet.debited`: списание с кошелька
+
+5. **Social Events**
+   - `friend.request_sent`: отправка запроса в друзья
+   - `friend.request_accepted`: принятие запроса в друзья
+   - `friend.request_rejected`: отклонение запроса в друзья
+   - `friend.removed`: удаление из друзей
+   - `review.published`: публикация отзыва
+   - `review.updated`: обновление отзыва
+   - `review.deleted`: удаление отзыва
+   - `comment.published`: публикация комментария
+   - `comment.updated`: обновление комментария
+   - `comment.deleted`: удаление комментария
+
+6. **Notification Events**
+   - `notification.created`: создание уведомления
+   - `notification.delivered`: доставка уведомления
+   - `notification.read`: прочтение уведомления
+   - `notification.deleted`: удаление уведомления
+
+## Стандарты конфигурационных файлов
+
+### Общие принципы
+
+1. **Формат файлов**
+   - YAML для конфигурационных файлов
+   - JSON для файлов, генерируемых автоматически
+   - Использовать snake_case для имен параметров
+   - Комментарии в YAML начинаются с `#`
+
+2. **Структура конфигурации**
+   - Группировать связанные параметры в секции
+   - Использовать вложенные структуры для сложных конфигураций
+   - Избегать дублирования параметров
+
+3. **Переменные окружения**
+   - Все чувствительные данные (пароли, ключи) должны загружаться из переменных окружения
+   - Формат переменных: `SERVICE_SECTION_PARAMETER` (например, `AUTH_DB_PASSWORD`)
+   - В конфигурационных файлах использовать плейсхолдеры: `${ENV_VAR_NAME}`
+
+4. **Профили окружений**
+   - Поддерживать разные профили для разных окружений: development, testing, staging, production
+   - Базовая конфигурация в файле `config.yaml`
+   - Специфичные для окружения параметры в файлах `config.{env}.yaml`
+
+5. **Валидация конфигурации**
+   - Проверять конфигурацию при запуске сервиса
+   - Выводить понятные сообщения об ошибках в конфигурации
+
+### Пример конфигурационного файла
+
+```yaml
+# Базовая конфигурация сервиса
+
+# Общие параметры сервиса
+service:
+  name: auth-service
+  version: 1.0.0
+  description: "Authentication and Authorization Service"
+
+# Параметры HTTP-сервера
+http:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 5s
+  write_timeout: 10s
+  idle_timeout: 120s
+  shutdown_timeout: 30s
+
+# Параметры gRPC-сервера
+grpc:
+  host: "0.0.0.0"
+  port: 9090
+  max_connection_idle: 60s
+  max_connection_age: 300s
+  max_connection_age_grace: 30s
+
+# Параметры базы данных
+database:
+  driver: "postgres"
+  host: "postgres"
+  port: 5432
+  name: "auth_db"
+  user: "auth_user"
+  password: "${AUTH_DB_PASSWORD}"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 25
+  conn_max_lifetime: 5m
+
+# Параметры Redis
+redis:
+  host: "redis"
+  port: 6379
+  password: "${AUTH_REDIS_PASSWORD}"
+  db: 0
+  pool_size: 10
+  min_idle_conns: 5
+
+# Параметры Kafka
+kafka:
+  brokers:
+    - "kafka-1:9092"
+    - "kafka-2:9092"
+    - "kafka-3:9092"
+  producer:
+    acks: "all"
+    delivery_timeout: 30s
+    batch_size: 16384
+    linger_ms: 10
+  consumer:
+    group_id: "auth-service"
+    auto_offset_reset: "earliest"
+    enable_auto_commit: true
+    auto_commit_interval: 5s
+
+# Параметры JWT
+jwt:
+  access_token:
+    secret: "${AUTH_JWT_ACCESS_SECRET}"
+    expires_in: 15m
+  refresh_token:
+    secret: "${AUTH_JWT_REFRESH_SECRET}"
+    expires_in: 720h  # 30 days
+
+# Параметры логирования
+logger:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  caller: true
+  stacktrace_level: "error"
+
+# Параметры трассировки
+tracing:
+  enabled: true
+  provider: "jaeger"
+  jaeger:
+    service_name: "auth-service"
+    agent_host: "jaeger"
+    agent_port: 6831
+    sampler_type: "const"
+    sampler_param: 1
+
+# Параметры метрик
+metrics:
+  enabled: true
+  provider: "prometheus"
+  prometheus:
+    path: "/metrics"
+    namespace: "platform"
+    subsystem: "auth"
+
+# Параметры безопасности
+security:
+  cors:
+    allowed_origins:
+      - "https://platform.example.com"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "PATCH"
+      - "DELETE"
+    allowed_headers:
+      - "Content-Type"
+      - "Authorization"
+    allow_credentials: true
+    max_age: 86400  # 24 hours
+  rate_limit:
+    enabled: true
+    requests_per_second: 100
+    burst: 50
+  password:
+    min_length: 8
+    require_uppercase: true
+    require_lowercase: true
+    require_digit: true
+    require_special: true
+```
+
+## Стандарты инфраструктурных файлов
+
+### Dockerfile
+
+1. **Общие принципы**
+   - Использовать многоэтапные сборки (multi-stage builds)
+   - Использовать официальные базовые образы
+   - Минимизировать размер образа
+   - Не запускать процессы от root
+   - Использовать тегированные версии образов (не `latest`)
+
+2. **Пример Dockerfile для Go-сервиса**
+   ```dockerfile
+   # Этап сборки
+   FROM golang:1.20-alpine AS builder
+   
+   WORKDIR /app
+   
+   # Установка зависимостей
+   COPY go.mod go.sum ./
+   RUN go mod download
+   
+   # Копирование исходного кода
+   COPY . .
+   
+   # Сборка приложения
+   RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
+   
+   # Финальный этап
+   FROM alpine:3.17
+   
+   WORKDIR /app
+   
+   # Установка необходимых пакетов
+   RUN apk --no-cache add ca-certificates tzdata && \
+       update-ca-certificates
+   
+   # Создание непривилегированного пользователя
+   RUN adduser -D -g '' appuser
+   USER appuser
+   
+   # Копирование бинарного файла из этапа сборки
+   COPY --from=builder /app/main .
+   
+   # Копирование конфигурационных файлов
+   COPY --from=builder /app/configs/config.yaml ./configs/
+   
+   # Определение переменных окружения
+   ENV SERVICE_ENV=production
+   
+   # Определение порта
+   EXPOSE 8080 9090
+   
+   # Запуск приложения
+   CMD ["./main"]
+   ```
+
+### Docker Compose
+
+1. **Общие принципы**
+   - Использовать версию 3.x
+   - Группировать сервисы по функциональности
+   - Определять сети и тома
+   - Использовать переменные окружения из файла `.env`
+
+2. **Пример docker-compose.yml**
+   ```yaml
+   version: '3.8'
+   
+   services:
+     # API Gateway
+     api-gateway:
+       build:
+         context: ./api-gateway
+         dockerfile: Dockerfile
+       ports:
+         - "8080:8080"
+       environment:
+         - SERVICE_ENV=development
+       depends_on:
+         - auth-service
+         - catalog-service
+       networks:
+         - frontend
+         - backend
+       restart: unless-stopped
+       healthcheck:
+         test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+         interval: 30s
+         timeout: 10s
+         retries: 3
+         start_period: 10s
+   
+     # Auth Service
+     auth-service:
+       build:
+         context: ./auth-service
+         dockerfile: Dockerfile
+       environment:
+         - SERVICE_ENV=development
+         - AUTH_DB_PASSWORD=password
+       depends_on:
+         - postgres
+         - redis
+         - kafka
+       networks:
+         - backend
+       restart: unless-stopped
+       healthcheck:
+         test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+         interval: 30s
+         timeout: 10s
+         retries: 3
+         start_period: 10s
+   
+     # Postgres
+     postgres:
+       image: postgres:15-alpine
+       environment:
+         - POSTGRES_PASSWORD=password
+         - POSTGRES_USER=postgres
+       volumes:
+         - postgres-data:/var/lib/postgresql/data
+       networks:
+         - backend
+       restart: unless-stopped
+       healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U postgres"]
+         interval: 10s
+         timeout: 5s
+         retries: 5
+   
+     # Redis
+     redis:
+       image: redis:7-alpine
+       command: redis-server --requirepass password
+       volumes:
+         - redis-data:/data
+       networks:
+         - backend
+       restart: unless-stopped
+       healthcheck:
+         test: ["CMD", "redis-cli", "ping"]
+         interval: 10s
+         timeout: 5s
+         retries: 5
+   
+     # Kafka
+     kafka:
+       image: confluentinc/cp-kafka:7.3.0
+       environment:
+         - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+         - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+       volumes:
+         - kafka-data:/var/lib/kafka/data
+       networks:
+         - backend
+       restart: unless-stopped
+       healthcheck:
+         test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+         interval: 30s
+         timeout: 10s
+         retries: 3
+         start_period: 30s
+   
+   networks:
+     frontend:
+     backend:
+   
+   volumes:
+     postgres-data:
+     redis-data:
+     kafka-data:
+   ```
+
+### Kubernetes
+
+1. **Общие принципы**
+   - Использовать Helm для управления манифестами
+   - Группировать ресурсы по микросервисам
+   - Использовать ConfigMaps и Secrets для конфигурации
+   - Определять лимиты ресурсов и запросы
+   - Настраивать проверки готовности и живости
+
+2. **Пример Deployment**
+   ```yaml
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: auth-service
+     namespace: platform
+     labels:
+       app: auth-service
+   spec:
+     replicas: 3
+     selector:
+       matchLabels:
+         app: auth-service
+     strategy:
+       type: RollingUpdate
+       rollingUpdate:
+         maxUnavailable: 1
+         maxSurge: 1
+     template:
+       metadata:
+         labels:
+           app: auth-service
+       spec:
+         containers:
+         - name: auth-service
+           image: registry.example.com/platform/auth-service:1.0.0
+           ports:
+           - containerPort: 8080
+             name: http
+           - containerPort: 9090
+             name: grpc
+           env:
+           - name: SERVICE_ENV
+             value: "production"
+           - name: AUTH_DB_PASSWORD
+             valueFrom:
+               secretKeyRef:
+                 name: auth-db-credentials
+                 key: password
+           resources:
+             requests:
+               cpu: "100m"
+               memory: "128Mi"
+             limits:
+               cpu: "500m"
+               memory: "512Mi"
+           livenessProbe:
+             httpGet:
+               path: /health
+               port: http
+             initialDelaySeconds: 30
+             periodSeconds: 10
+             timeoutSeconds: 5
+             failureThreshold: 3
+           readinessProbe:
+             httpGet:
+               path: /ready
+               port: http
+             initialDelaySeconds: 5
+             periodSeconds: 10
+             timeoutSeconds: 5
+             failureThreshold: 3
+           volumeMounts:
+           - name: config
+             mountPath: /app/configs
+         volumes:
+         - name: config
+           configMap:
+             name: auth-service-config
+   ```
+
+3. **Пример Service**
+   ```yaml
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: auth-service
+     namespace: platform
+     labels:
+       app: auth-service
+   spec:
+     selector:
+       app: auth-service
+     ports:
+     - port: 8080
+       targetPort: 8080
+       name: http
+     - port: 9090
+       targetPort: 9090
+       name: grpc
+     type: ClusterIP
+   ```
+
+4. **Пример ConfigMap**
+   ```yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: auth-service-config
+     namespace: platform
+   data:
+     config.yaml: |
+       service:
+         name: auth-service
+         version: 1.0.0
+       http:
+         host: "0.0.0.0"
+         port: 8080
+       grpc:
+         host: "0.0.0.0"
+         port: 9090
+       database:
+         driver: "postgres"
+         host: "postgres.platform.svc.cluster.local"
+         port: 5432
+         name: "auth_db"
+         user: "auth_user"
+       # ... остальная конфигурация
+   ```
+
+5. **Пример Secret**
+   ```yaml
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: auth-db-credentials
+     namespace: platform
+   type: Opaque
+   data:
+     password: cGFzc3dvcmQ=  # base64-encoded "password"
+   ```
+
+### CI/CD
+
+1. **GitHub Actions**
+   ```yaml
+   name: Build and Deploy
+
+   on:
+     push:
+       branches: [ main ]
+     pull_request:
+       branches: [ main ]
+
+   jobs:
+     test:
+       runs-on: ubuntu-latest
+       steps:
+       - uses: actions/checkout@v3
+       
+       - name: Set up Go
+         uses: actions/setup-go@v4
+         with:
+           go-version: '1.20'
+       
+       - name: Install dependencies
+         run: go mod download
+       
+       - name: Run tests
+         run: go test -v ./...
+       
+       - name: Run linter
+         uses: golangci/golangci-lint-action@v3
+         with:
+           version: v1.52
+     
+     build:
+       needs: test
+       runs-on: ubuntu-latest
+       if: github.event_name == 'push'
+       steps:
+       - uses: actions/checkout@v3
+       
+       - name: Set up Docker Buildx
+         uses: docker/setup-buildx-action@v2
+       
+       - name: Login to Container Registry
+         uses: docker/login-action@v2
+         with:
+           registry: registry.example.com
+           username: ${{ secrets.REGISTRY_USERNAME }}
+           password: ${{ secrets.REGISTRY_PASSWORD }}
+       
+       - name: Build and push
+         uses: docker/build-push-action@v4
+         with:
+           context: .
+           push: true
+           tags: registry.example.com/platform/auth-service:${{ github.sha }}
+     
+     deploy:
+       needs: build
+       runs-on: ubuntu-latest
+       if: github.event_name == 'push'
+       steps:
+       - uses: actions/checkout@v3
+       
+       - name: Set up Kubectl
+         uses: azure/setup-kubectl@v3
+         with:
+           version: 'v1.26.0'
+       
+       - name: Set up Kubeconfig
+         run: echo "${{ secrets.KUBECONFIG }}" > kubeconfig.yaml
+       
+       - name: Update Deployment
+         run: |
+           kubectl --kubeconfig=kubeconfig.yaml set image deployment/auth-service auth-service=registry.example.com/platform/auth-service:${{ github.sha }} -n platform
+       
+       - name: Verify Deployment
+         run: |
+           kubectl --kubeconfig=kubeconfig.yaml rollout status deployment/auth-service -n platform
+   ```
+
+2. **GitLab CI/CD**
+   ```yaml
+   stages:
+     - test
+     - build
+     - deploy
+
+   variables:
+     DOCKER_REGISTRY: registry.example.com
+     IMAGE_NAME: platform/auth-service
+
+   test:
+     stage: test
+     image: golang:1.20
+     script:
+       - go mod download
+       - go test -v ./...
+       - go vet ./...
+     rules:
+       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+       - if: $CI_COMMIT_BRANCH == "main"
+
+   lint:
+     stage: test
+     image: golangci/golangci-lint:v1.52
+     script:
+       - golangci-lint run ./...
+     rules:
+       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+       - if: $CI_COMMIT_BRANCH == "main"
+
+   build:
+     stage: build
+     image: docker:20.10
+     services:
+       - docker:20.10-dind
+     script:
+       - docker login -u $REGISTRY_USER -p $REGISTRY_PASSWORD $DOCKER_REGISTRY
+       - docker build -t $DOCKER_REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA .
+       - docker push $DOCKER_REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA
+       - if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+           docker tag $DOCKER_REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA $DOCKER_REGISTRY/$IMAGE_NAME:latest;
+           docker push $DOCKER_REGISTRY/$IMAGE_NAME:latest;
+         fi
+     rules:
+       - if: $CI_COMMIT_BRANCH == "main"
+
+   deploy:
+     stage: deploy
+     image: bitnami/kubectl:1.26
+     script:
+       - echo "$KUBECONFIG" > kubeconfig.yaml
+       - kubectl --kubeconfig=kubeconfig.yaml set image deployment/auth-service auth-service=$DOCKER_REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHA -n platform
+       - kubectl --kubeconfig=kubeconfig.yaml rollout status deployment/auth-service -n platform
+     rules:
+       - if: $CI_COMMIT_BRANCH == "main"
+   ```
