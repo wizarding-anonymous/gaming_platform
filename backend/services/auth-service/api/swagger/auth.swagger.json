@@ -1,0 +1,1852 @@
+// File: api/swagger/auth.swagger.json
+
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Auth Service API",
+    "description": "API для сервиса аутентификации и авторизации",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Команда разработки",
+      "email": "dev@russiansteam.ru"
+    }
+  },
+  "host": "api.russiansteam.ru",
+  "basePath": "/auth/v1",
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header",
+      "description": "JWT токен авторизации. Пример: \"Bearer {token}\""
+    }
+  },
+  "paths": {
+    "/register": {
+      "post": {
+        "summary": "Регистрация нового пользователя",
+        "description": "Регистрирует нового пользователя в системе",
+        "operationId": "register",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/RegisterRequest"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Пользователь успешно зарегистрирован",
+            "schema": {
+              "$ref": "#/definitions/RegisterResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "409": {
+            "description": "Пользователь с таким email или username уже существует",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/login": {
+      "post": {
+        "summary": "Вход в систему",
+        "description": "Аутентифицирует пользователя и возвращает токены доступа",
+        "operationId": "login",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/LoginRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешная аутентификация",
+            "schema": {
+              "$ref": "#/definitions/LoginResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неверные учетные данные",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "403": {
+            "description": "Аккаунт заблокирован",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/logout": {
+      "post": {
+        "summary": "Выход из системы",
+        "description": "Завершает сессию пользователя и отзывает токены",
+        "operationId": "logout",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/LogoutRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешный выход из системы",
+            "schema": {
+              "$ref": "#/definitions/LogoutResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/refresh": {
+      "post": {
+        "summary": "Обновление токена доступа",
+        "description": "Обновляет токен доступа с использованием refresh токена",
+        "operationId": "refresh",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/RefreshTokenRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Токен успешно обновлен",
+            "schema": {
+              "$ref": "#/definitions/RefreshTokenResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Недействительный refresh токен",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/verify-email": {
+      "post": {
+        "summary": "Подтверждение email",
+        "description": "Подтверждает email пользователя с использованием токена верификации",
+        "operationId": "verifyEmail",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/VerifyEmailRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Email успешно подтвержден",
+            "schema": {
+              "$ref": "#/definitions/VerifyEmailResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Недействительный токен верификации",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/resend-verification": {
+      "post": {
+        "summary": "Повторная отправка письма для подтверждения email",
+        "description": "Отправляет новое письмо для подтверждения email",
+        "operationId": "resendVerification",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ResendVerificationRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Письмо успешно отправлено",
+            "schema": {
+              "$ref": "#/definitions/ResendVerificationResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Пользователь не найден",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/forgot-password": {
+      "post": {
+        "summary": "Запрос на сброс пароля",
+        "description": "Инициирует процесс сброса пароля",
+        "operationId": "forgotPassword",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ForgotPasswordRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Запрос на сброс пароля успешно создан",
+            "schema": {
+              "$ref": "#/definitions/ForgotPasswordResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Пользователь не найден",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/reset-password": {
+      "post": {
+        "summary": "Сброс пароля",
+        "description": "Сбрасывает пароль пользователя с использованием токена сброса",
+        "operationId": "resetPassword",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ResetPasswordRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Пароль успешно сброшен",
+            "schema": {
+              "$ref": "#/definitions/ResetPasswordResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Недействительный токен сброса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/change-password": {
+      "post": {
+        "summary": "Изменение пароля",
+        "description": "Изменяет пароль авторизованного пользователя",
+        "operationId": "changePassword",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ChangePasswordRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Пароль успешно изменен",
+            "schema": {
+              "$ref": "#/definitions/ChangePasswordResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/2fa/setup": {
+      "post": {
+        "summary": "Настройка двухфакторной аутентификации",
+        "description": "Инициирует настройку двухфакторной аутентификации",
+        "operationId": "setup2FA",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/Setup2FARequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Настройка двухфакторной аутентификации инициирована",
+            "schema": {
+              "$ref": "#/definitions/Setup2FAResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "2fa"
+        ]
+      }
+    },
+    "/2fa/verify": {
+      "post": {
+        "summary": "Подтверждение настройки двухфакторной аутентификации",
+        "description": "Подтверждает настройку двухфакторной аутентификации",
+        "operationId": "verify2FA",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/Verify2FARequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Двухфакторная аутентификация успешно настроена",
+            "schema": {
+              "$ref": "#/definitions/Verify2FAResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос или неверный код",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "2fa"
+        ]
+      }
+    },
+    "/2fa/disable": {
+      "post": {
+        "summary": "Отключение двухфакторной аутентификации",
+        "description": "Отключает двухфакторную аутентификацию",
+        "operationId": "disable2FA",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/Disable2FARequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Двухфакторная аутентификация успешно отключена",
+            "schema": {
+              "$ref": "#/definitions/Disable2FAResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос или неверный код",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "2fa"
+        ]
+      }
+    },
+    "/2fa/validate": {
+      "post": {
+        "summary": "Валидация кода двухфакторной аутентификации",
+        "description": "Валидирует код двухфакторной аутентификации при входе",
+        "operationId": "validate2FA",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/Validate2FARequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Код успешно валидирован",
+            "schema": {
+              "$ref": "#/definitions/Validate2FAResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неверный код",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "2fa"
+        ]
+      }
+    },
+    "/telegram/link": {
+      "post": {
+        "summary": "Привязка аккаунта Telegram",
+        "description": "Привязывает аккаунт Telegram к учетной записи пользователя",
+        "operationId": "linkTelegram",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/LinkTelegramRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Аккаунт Telegram успешно привязан",
+            "schema": {
+              "$ref": "#/definitions/LinkTelegramResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      }
+    },
+    "/telegram/unlink": {
+      "post": {
+        "summary": "Отвязка аккаунта Telegram",
+        "description": "Отвязывает аккаунт Telegram от учетной записи пользователя",
+        "operationId": "unlinkTelegram",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/UnlinkTelegramRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Аккаунт Telegram успешно отвязан",
+            "schema": {
+              "$ref": "#/definitions/UnlinkTelegramResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      }
+    },
+    "/telegram/login": {
+      "post": {
+        "summary": "Вход через Telegram",
+        "description": "Аутентифицирует пользователя через Telegram",
+        "operationId": "telegramLogin",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/TelegramLoginRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешная аутентификация через Telegram",
+            "schema": {
+              "$ref": "#/definitions/TelegramLoginResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Неверные данные аутентификации",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Аккаунт Telegram не привязан",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "telegram"
+        ]
+      }
+    },
+    "/sessions": {
+      "get": {
+        "summary": "Получение списка активных сессий",
+        "description": "Возвращает список активных сессий пользователя",
+        "operationId": "getSessions",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список активных сессий",
+            "schema": {
+              "$ref": "#/definitions/GetSessionsResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/sessions/{sessionId}": {
+      "delete": {
+        "summary": "Завершение сессии",
+        "description": "Завершает указанную сессию пользователя",
+        "operationId": "terminateSession",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "description": "Идентификатор сессии"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Сессия успешно завершена",
+            "schema": {
+              "$ref": "#/definitions/TerminateSessionResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "403": {
+            "description": "Доступ запрещен",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Сессия не найдена",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/sessions/all": {
+      "delete": {
+        "summary": "Завершение всех сессий",
+        "description": "Завершает все сессии пользователя, кроме текущей",
+        "operationId": "terminateAllSessions",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Все сессии успешно завершены",
+            "schema": {
+              "$ref": "#/definitions/TerminateAllSessionsResponse"
+            }
+          },
+          "401": {
+            "description": "Неавторизованный запрос",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/validate": {
+      "post": {
+        "summary": "Валидация токена",
+        "description": "Проверяет валидность токена доступа",
+        "operationId": "validateToken",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ValidateTokenRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Токен валиден",
+            "schema": {
+              "$ref": "#/definitions/ValidateTokenResponse"
+            }
+          },
+          "400": {
+            "description": "Некорректные данные запроса",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Недействительный токен",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Проверка работоспособности",
+        "description": "Проверяет работоспособность сервиса",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Сервис работает нормально",
+            "schema": {
+              "$ref": "#/definitions/HealthResponse"
+            }
+          },
+          "500": {
+            "description": "Сервис недоступен",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "RegisterRequest": {
+      "type": "object",
+      "required": [
+        "username",
+        "email",
+        "password"
+      ],
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "Имя пользователя",
+          "minLength": 3,
+          "maxLength": 50
+        },
+        "email": {
+          "type": "string",
+          "description": "Email пользователя",
+          "format": "email"
+        },
+        "password": {
+          "type": "string",
+          "description": "Пароль пользователя",
+          "minLength": 8,
+          "maxLength": 100
+        },
+        "firstName": {
+          "type": "string",
+          "description": "Имя пользователя"
+        },
+        "lastName": {
+          "type": "string",
+          "description": "Фамилия пользователя"
+        }
+      }
+    },
+    "RegisterResponse": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Идентификатор пользователя"
+        },
+        "username": {
+          "type": "string",
+          "description": "Имя пользователя"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email пользователя"
+        },
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешной регистрации"
+        }
+      }
+    },
+    "LoginRequest": {
+      "type": "object",
+      "required": [
+        "login",
+        "password"
+      ],
+      "properties": {
+        "login": {
+          "type": "string",
+          "description": "Логин пользователя (email или username)"
+        },
+        "password": {
+          "type": "string",
+          "description": "Пароль пользователя"
+        },
+        "rememberMe": {
+          "type": "boolean",
+          "description": "Флаг 'запомнить меня'"
+        }
+      }
+    },
+    "LoginResponse": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Идентификатор пользователя"
+        },
+        "username": {
+          "type": "string",
+          "description": "Имя пользователя"
+        },
+        "accessToken": {
+          "type": "string",
+          "description": "Токен доступа"
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "Токен обновления"
+        },
+        "expiresIn": {
+          "type": "integer",
+          "description": "Время жизни токена доступа в секундах"
+        },
+        "tokenType": {
+          "type": "string",
+          "description": "Тип токена"
+        },
+        "requiresTwoFactor": {
+          "type": "boolean",
+          "description": "Требуется ли двухфакторная аутентификация"
+        },
+        "twoFactorToken": {
+          "type": "string",
+          "description": "Временный токен для двухфакторной аутентификации"
+        }
+      }
+    },
+    "LogoutRequest": {
+      "type": "object",
+      "properties": {
+        "refreshToken": {
+          "type": "string",
+          "description": "Токен обновления"
+        },
+        "allDevices": {
+          "type": "boolean",
+          "description": "Флаг выхода со всех устройств"
+        }
+      }
+    },
+    "LogoutResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешном выходе"
+        }
+      }
+    },
+    "RefreshTokenRequest": {
+      "type": "object",
+      "required": [
+        "refreshToken"
+      ],
+      "properties": {
+        "refreshToken": {
+          "type": "string",
+          "description": "Токен обновления"
+        }
+      }
+    },
+    "RefreshTokenResponse": {
+      "type": "object",
+      "properties": {
+        "accessToken": {
+          "type": "string",
+          "description": "Новый токен доступа"
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "Новый токен обновления"
+        },
+        "expiresIn": {
+          "type": "integer",
+          "description": "Время жизни токена доступа в секундах"
+        },
+        "tokenType": {
+          "type": "string",
+          "description": "Тип токена"
+        }
+      }
+    },
+    "VerifyEmailRequest": {
+      "type": "object",
+      "required": [
+        "token"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Токен верификации email"
+        }
+      }
+    },
+    "VerifyEmailResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешной верификации"
+        },
+        "email": {
+          "type": "string",
+          "description": "Подтвержденный email"
+        }
+      }
+    },
+    "ResendVerificationRequest": {
+      "type": "object",
+      "required": [
+        "email"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Email пользователя",
+          "format": "email"
+        }
+      }
+    },
+    "ResendVerificationResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешной отправке"
+        }
+      }
+    },
+    "ForgotPasswordRequest": {
+      "type": "object",
+      "required": [
+        "email"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Email пользователя",
+          "format": "email"
+        }
+      }
+    },
+    "ForgotPasswordResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешной отправке"
+        }
+      }
+    },
+    "ResetPasswordRequest": {
+      "type": "object",
+      "required": [
+        "token",
+        "password"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Токен сброса пароля"
+        },
+        "password": {
+          "type": "string",
+          "description": "Новый пароль",
+          "minLength": 8,
+          "maxLength": 100
+        },
+        "confirmPassword": {
+          "type": "string",
+          "description": "Подтверждение нового пароля"
+        }
+      }
+    },
+    "ResetPasswordResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешном сбросе пароля"
+        }
+      }
+    },
+    "ChangePasswordRequest": {
+      "type": "object",
+      "required": [
+        "currentPassword",
+        "newPassword"
+      ],
+      "properties": {
+        "currentPassword": {
+          "type": "string",
+          "description": "Текущий пароль"
+        },
+        "newPassword": {
+          "type": "string",
+          "description": "Новый пароль",
+          "minLength": 8,
+          "maxLength": 100
+        },
+        "confirmPassword": {
+          "type": "string",
+          "description": "Подтверждение нового пароля"
+        }
+      }
+    },
+    "ChangePasswordResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешном изменении пароля"
+        }
+      }
+    },
+    "Setup2FARequest": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "Метод двухфакторной аутентификации",
+          "enum": [
+            "totp",
+            "sms",
+            "email"
+          ],
+          "default": "totp"
+        }
+      }
+    },
+    "Setup2FAResponse": {
+      "type": "object",
+      "properties": {
+        "secret": {
+          "type": "string",
+          "description": "Секретный ключ для TOTP"
+        },
+        "qrCodeUrl": {
+          "type": "string",
+          "description": "URL для QR-кода"
+        },
+        "method": {
+          "type": "string",
+          "description": "Метод двухфакторной аутентификации"
+        }
+      }
+    },
+    "Verify2FARequest": {
+      "type": "object",
+      "required": [
+        "code"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Код подтверждения"
+        },
+        "method": {
+          "type": "string",
+          "description": "Метод двухфакторной аутентификации",
+          "enum": [
+            "totp",
+            "sms",
+            "email"
+          ],
+          "default": "totp"
+        }
+      }
+    },
+    "Verify2FAResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешной настройке"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Статус двухфакторной аутентификации"
+        },
+        "method": {
+          "type": "string",
+          "description": "Метод двухфакторной аутентификации"
+        },
+        "recoveryCodes": {
+          "type": "array",
+          "description": "Коды восстановления",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Disable2FARequest": {
+      "type": "object",
+      "required": [
+        "code"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Код подтверждения"
+        },
+        "method": {
+          "type": "string",
+          "description": "Метод двухфакторной аутентификации",
+          "enum": [
+            "totp",
+            "sms",
+            "email"
+          ],
+          "default": "totp"
+        }
+      }
+    },
+    "Disable2FAResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешном отключении"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Статус двухфакторной аутентификации"
+        }
+      }
+    },
+    "Validate2FARequest": {
+      "type": "object",
+      "required": [
+        "code",
+        "twoFactorToken"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Код подтверждения"
+        },
+        "twoFactorToken": {
+          "type": "string",
+          "description": "Временный токен для двухфакторной аутентификации"
+        },
+        "method": {
+          "type": "string",
+          "description": "Метод двухфакторной аутентификации",
+          "enum": [
+            "totp",
+            "sms",
+            "email",
+            "recovery"
+          ],
+          "default": "totp"
+        }
+      }
+    },
+    "Validate2FAResponse": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Идентификатор пользователя"
+        },
+        "username": {
+          "type": "string",
+          "description": "Имя пользователя"
+        },
+        "accessToken": {
+          "type": "string",
+          "description": "Токен доступа"
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "Токен обновления"
+        },
+        "expiresIn": {
+          "type": "integer",
+          "description": "Время жизни токена доступа в секундах"
+        },
+        "tokenType": {
+          "type": "string",
+          "description": "Тип токена"
+        }
+      }
+    },
+    "LinkTelegramRequest": {
+      "type": "object",
+      "required": [
+        "telegramData"
+      ],
+      "properties": {
+        "telegramData": {
+          "type": "object",
+          "description": "Данные аутентификации Telegram",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Идентификатор пользователя Telegram"
+            },
+            "first_name": {
+              "type": "string",
+              "description": "Имя пользователя Telegram"
+            },
+            "last_name": {
+              "type": "string",
+              "description": "Фамилия пользователя Telegram"
+            },
+            "username": {
+              "type": "string",
+              "description": "Имя пользователя Telegram"
+            },
+            "photo_url": {
+              "type": "string",
+              "description": "URL фотографии пользователя Telegram"
+            },
+            "auth_date": {
+              "type": "string",
+              "description": "Дата аутентификации"
+            },
+            "hash": {
+              "type": "string",
+              "description": "Хеш данных аутентификации"
+            }
+          }
+        }
+      }
+    },
+    "LinkTelegramResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешной привязке"
+        },
+        "telegramId": {
+          "type": "string",
+          "description": "Идентификатор пользователя Telegram"
+        },
+        "telegramUsername": {
+          "type": "string",
+          "description": "Имя пользователя Telegram"
+        }
+      }
+    },
+    "UnlinkTelegramRequest": {
+      "type": "object",
+      "properties": {
+        "confirm": {
+          "type": "boolean",
+          "description": "Подтверждение отвязки"
+        }
+      }
+    },
+    "UnlinkTelegramResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешной отвязке"
+        }
+      }
+    },
+    "TelegramLoginRequest": {
+      "type": "object",
+      "required": [
+        "telegramData"
+      ],
+      "properties": {
+        "telegramData": {
+          "type": "object",
+          "description": "Данные аутентификации Telegram",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Идентификатор пользователя Telegram"
+            },
+            "first_name": {
+              "type": "string",
+              "description": "Имя пользователя Telegram"
+            },
+            "last_name": {
+              "type": "string",
+              "description": "Фамилия пользователя Telegram"
+            },
+            "username": {
+              "type": "string",
+              "description": "Имя пользователя Telegram"
+            },
+            "photo_url": {
+              "type": "string",
+              "description": "URL фотографии пользователя Telegram"
+            },
+            "auth_date": {
+              "type": "string",
+              "description": "Дата аутентификации"
+            },
+            "hash": {
+              "type": "string",
+              "description": "Хеш данных аутентификации"
+            }
+          }
+        }
+      }
+    },
+    "TelegramLoginResponse": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Идентификатор пользователя"
+        },
+        "username": {
+          "type": "string",
+          "description": "Имя пользователя"
+        },
+        "accessToken": {
+          "type": "string",
+          "description": "Токен доступа"
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "Токен обновления"
+        },
+        "expiresIn": {
+          "type": "integer",
+          "description": "Время жизни токена доступа в секундах"
+        },
+        "tokenType": {
+          "type": "string",
+          "description": "Тип токена"
+        },
+        "requiresTwoFactor": {
+          "type": "boolean",
+          "description": "Требуется ли двухфакторная аутентификация"
+        },
+        "twoFactorToken": {
+          "type": "string",
+          "description": "Временный токен для двухфакторной аутентификации"
+        }
+      }
+    },
+    "Session": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Идентификатор сессии"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Идентификатор пользователя"
+        },
+        "ip": {
+          "type": "string",
+          "description": "IP-адрес"
+        },
+        "userAgent": {
+          "type": "string",
+          "description": "User-Agent"
+        },
+        "device": {
+          "type": "string",
+          "description": "Устройство"
+        },
+        "location": {
+          "type": "string",
+          "description": "Местоположение"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Дата создания сессии",
+          "format": "date-time"
+        },
+        "lastActivityAt": {
+          "type": "string",
+          "description": "Дата последней активности",
+          "format": "date-time"
+        },
+        "isCurrent": {
+          "type": "boolean",
+          "description": "Текущая сессия"
+        }
+      }
+    },
+    "GetSessionsResponse": {
+      "type": "object",
+      "properties": {
+        "sessions": {
+          "type": "array",
+          "description": "Список активных сессий",
+          "items": {
+            "$ref": "#/definitions/Session"
+          }
+        }
+      }
+    },
+    "TerminateSessionResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешном завершении сессии"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Идентификатор завершенной сессии"
+        }
+      }
+    },
+    "TerminateAllSessionsResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Сообщение об успешном завершении всех сессий"
+        },
+        "count": {
+          "type": "integer",
+          "description": "Количество завершенных сессий"
+        }
+      }
+    },
+    "ValidateTokenRequest": {
+      "type": "object",
+      "required": [
+        "token"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Токен доступа"
+        }
+      }
+    },
+    "ValidateTokenResponse": {
+      "type": "object",
+      "properties": {
+        "valid": {
+          "type": "boolean",
+          "description": "Валидность токена"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Идентификатор пользователя"
+        },
+        "username": {
+          "type": "string",
+          "description": "Имя пользователя"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email пользователя"
+        },
+        "roles": {
+          "type": "array",
+          "description": "Роли пользователя",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expiresAt": {
+          "type": "string",
+          "description": "Дата истечения токена",
+          "format": "date-time"
+        }
+      }
+    },
+    "HealthResponse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Статус сервиса"
+        },
+        "version": {
+          "type": "string",
+          "description": "Версия сервиса"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Временная метка",
+          "format": "date-time"
+        },
+        "dependencies": {
+          "type": "object",
+          "description": "Статус зависимостей",
+          "properties": {
+            "database": {
+              "type": "string",
+              "description": "Статус базы данных"
+            },
+            "redis": {
+              "type": "string",
+              "description": "Статус Redis"
+            },
+            "kafka": {
+              "type": "string",
+              "description": "Статус Kafka"
+            }
+          }
+        }
+      }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "string",
+          "description": "Код ошибки"
+        },
+        "message": {
+          "type": "string",
+          "description": "Сообщение об ошибке"
+        },
+        "details": {
+          "type": "object",
+          "description": "Дополнительные детали ошибки"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Временная метка",
+          "format": "date-time"
+        },
+        "path": {
+          "type": "string",
+          "description": "Путь запроса"
+        },
+        "requestId": {
+          "type": "string",
+          "description": "Идентификатор запроса"
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "auth",
+      "description": "Операции аутентификации и авторизации"
+    },
+    {
+      "name": "2fa",
+      "description": "Операции двухфакторной аутентификации"
+    },
+    {
+      "name": "telegram",
+      "description": "Операции интеграции с Telegram"
+    },
+    {
+      "name": "sessions",
+      "description": "Операции управления сессиями"
+    },
+    {
+      "name": "health",
+      "description": "Операции проверки работоспособности"
+    }
+  ]
+}

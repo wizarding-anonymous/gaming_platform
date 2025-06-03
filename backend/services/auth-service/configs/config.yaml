@@ -1,0 +1,156 @@
+// File: configs/config.yaml
+
+# Конфигурация микросервиса Auth Service
+
+# Общие настройки приложения
+app:
+  name: "auth-service"
+  version: "1.0.0"
+  environment: "production" # production, development, testing
+  debug: false
+  log_level: "info" # debug, info, warn, error
+  log_format: "json" # json, text
+  shutdown_timeout: 30s
+
+# Настройки HTTP сервера
+http:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+  max_header_bytes: 1048576 # 1MB
+  cors:
+    allowed_origins: ["*"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_headers: ["Content-Type", "Authorization", "X-Requested-With"]
+    allow_credentials: true
+    max_age: 86400 # 24 часа
+
+# Настройки gRPC сервера
+grpc:
+  host: "0.0.0.0"
+  port: 9090
+  max_connection_idle: 60s
+  max_connection_age: 300s
+  max_connection_age_grace: 30s
+  time: 10s
+  timeout: 30s
+
+# Настройки базы данных PostgreSQL
+database:
+  driver: "postgres"
+  host: "postgres"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  database: "auth_service"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 25
+  conn_max_lifetime: 300s
+  migrations_dir: "migrations"
+  auto_migrate: true
+
+# Настройки Redis
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  min_idle_conns: 5
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+  pool_timeout: 5s
+  idle_timeout: 60s
+  max_retries: 3
+  min_retry_backoff: 8ms
+  max_retry_backoff: 512ms
+
+# Настройки Kafka
+kafka:
+  brokers: ["kafka:9092"]
+  group_id: "auth-service"
+  auto_offset_reset: "earliest"
+  enable_auto_commit: true
+  auto_commit_interval: 5s
+  session_timeout: 30s
+  heartbeat_interval: 3s
+  max_poll_interval: 300s
+  topics:
+    user_events: "user-events"
+    token_events: "token-events"
+    session_events: "session-events"
+
+# Настройки JWT
+jwt:
+  access_token:
+    secret: "your-access-token-secret-key-here"
+    expires_in: 15m
+  refresh_token:
+    secret: "your-refresh-token-secret-key-here"
+    expires_in: 720h # 30 дней
+  email_verification_token:
+    secret: "your-email-verification-token-secret-key-here"
+    expires_in: 48h # 2 дня
+  password_reset_token:
+    secret: "your-password-reset-token-secret-key-here"
+    expires_in: 24h # 1 день
+  issuer: "auth-service"
+  audience: "russian-steam-platform"
+
+# Настройки Telegram
+telegram:
+  bot_token: "your-telegram-bot-token-here"
+  webhook_url: "https://your-domain.com/api/v1/auth/telegram/webhook"
+
+# Настройки двухфакторной аутентификации
+two_factor:
+  issuer: "Russian Steam Platform"
+  recovery_codes_count: 10
+
+# Настройки Prometheus
+prometheus:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9180
+  path: "/metrics"
+
+# Настройки Jaeger
+jaeger:
+  enabled: true
+  service_name: "auth-service"
+  agent_host: "jaeger"
+  agent_port: 6831
+  sampler_type: "const"
+  sampler_param: 1
+  log_spans: true
+
+# Настройки Health Check
+health_check:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8081
+  path: "/health"
+  check_interval: 10s
+  timeout: 5s
+
+# Настройки безопасности
+security:
+  password_hash:
+    algorithm: "argon2id"
+    memory: 65536
+    iterations: 3
+    parallelism: 2
+    salt_length: 16
+    key_length: 32
+  rate_limit:
+    enabled: true
+    requests: 100
+    duration: 1m
+  ip_whitelist:
+    enabled: false
+    ips: []
+  cors_enabled: true

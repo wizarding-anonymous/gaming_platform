@@ -1,0 +1,195 @@
+name: auth-service
+namespace: gaiming
+
+replicaCount: 2
+
+image:
+  repository: registry.gaiming.ru/gaiming/auth-service
+  tag: latest
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: registry-credentials
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9100"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+  grpcPort: 9090
+  metricsPort: 9100
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: auth.gaiming.ru
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: auth-tls
+      hosts:
+        - auth.gaiming.ru
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - auth-service
+        topologyKey: kubernetes.io/hostname
+
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+env:
+  - name: APP_ENV
+    value: "production"
+  - name: APP_PORT
+    value: "8080"
+  - name: APP_GRPC_PORT
+    value: "9090"
+  - name: METRICS_PORT
+    value: "9100"
+  - name: APP_HOST
+    value: "0.0.0.0"
+  - name: LOG_LEVEL
+    value: "info"
+  - name: LOG_FORMAT
+    value: "json"
+  - name: OTEL_ENABLED
+    value: "true"
+  - name: OTEL_SERVICE_NAME
+    value: "auth-service"
+  - name: METRICS_ENABLED
+    value: "true"
+  - name: CORS_ALLOWED_ORIGINS
+    value: "https://gaiming.ru,https://www.gaiming.ru,https://api.gaiming.ru"
+
+secrets:
+  enabled: true
+  # Эти значения должны быть переопределены в секретном values-файле
+  dbPassword: ""
+  redisPassword: ""
+  jwtSecret: ""
+  kafkaUsername: ""
+  kafkaPassword: ""
+  telegramBotToken: ""
+  vaultToken: ""
+  serviceApiKey: ""
+
+configMap:
+  enabled: true
+  data:
+    APP_BASE_URL: "https://auth.gaiming.ru"
+    APP_SHUTDOWN_TIMEOUT: "30s"
+    DB_MAX_OPEN_CONNS: "25"
+    DB_MAX_IDLE_CONNS: "25"
+    DB_CONN_MAX_LIFETIME: "15m"
+    REDIS_PREFIX: "auth:"
+    REDIS_POOL_SIZE: "10"
+    RATE_LIMIT_ENABLED: "true"
+    RATE_LIMIT_REQUESTS: "100"
+    RATE_LIMIT_DURATION: "1m"
+    RATE_LIMIT_TYPE: "ip"
+    2FA_ENABLED: "true"
+    2FA_ISSUER: "Gaiming"
+    2FA_BACKUP_CODES_COUNT: "10"
+    TELEGRAM_LOGIN_ENABLED: "true"
+
+postgresql:
+  enabled: false # Используем внешнюю базу данных
+
+redis:
+  enabled: false # Используем внешний Redis
+
+kafka:
+  enabled: false # Используем внешний Kafka
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  scrapeTimeout: 10s
+  namespace: monitoring
+
+prometheusRules:
+  enabled: true
+  namespace: monitoring
+  additionalLabels:
+    release: prometheus
+  rules:
+    - alert: AuthServiceDown
+      expr: up{job="auth-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Auth Service is down"
+        description: "Auth Service has been down for more than 1 minute."
+        runbook_url: "https://wiki.gaiming.ru/runbooks/auth-service-down"

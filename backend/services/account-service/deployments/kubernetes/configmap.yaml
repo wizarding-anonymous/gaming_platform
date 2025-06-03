@@ -1,0 +1,26 @@
+# account-service\kubernetes\configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: account-service-config
+data:
+  PORT: "8080"
+  GRPC_PORT: "9090"
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "account_service"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  KAFKA_BROKERS: "kafka-service:9092"
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"
+  JAEGER_ENDPOINT: "http://jaeger-collector:14268/api/traces"
+  METRICS_ENABLED: "true"
+  TRACING_ENABLED: "true"
+  CORS_ALLOWED_ORIGINS: "https://gaiming.ru,https://api.gaiming.ru"
+  CORS_ALLOWED_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
+  CORS_ALLOWED_HEADERS: "Authorization,Content-Type,X-Request-ID"
+  CORS_MAX_AGE: "86400"
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_DURATION: "60"

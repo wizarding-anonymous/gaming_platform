@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: gaiming
+  labels:
+    app: auth-service
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/instance: auth-service
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: gaiming-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+    - port: 9100
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app: auth-service

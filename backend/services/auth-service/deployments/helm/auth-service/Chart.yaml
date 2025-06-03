@@ -1,0 +1,29 @@
+apiVersion: v2
+name: auth-service
+description: Helm chart for Auth Service of Gaiming Platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - auth
+  - authentication
+  - authorization
+  - gaiming
+home: https://github.com/gaiming/auth-service
+maintainers:
+  - name: Gaiming Team
+    email: team@gaiming.ru
+    url: https://gaiming.ru
+dependencies:
+  - name: postgresql
+    version: "12.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "17.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: kafka
+    version: "22.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: kafka.enabled

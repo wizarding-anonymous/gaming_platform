@@ -1,0 +1,63 @@
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# Folders
+_obj
+_test
+vendor/
+.idea/
+.vscode/
+.DS_Store
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+# Go specific
+*.exe
+*.test
+*.prof
+*.out
+*.log
+*.env
+.env
+
+# Dependency directories
+node_modules/
+
+# Binary files
+bin/
+dist/
+
+# Database files
+*.db
+*.sqlite
+
+# Temporary files
+tmp/
+temp/
+
+# Log files
+logs/
+
+# Coverage files
+coverage/
+*.cover
+coverage.txt
+
+# Docker volumes
+data/
+
+# Local configuration
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build files
+build/
+
+# Cache
+.cache/

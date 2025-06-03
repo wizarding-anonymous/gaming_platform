@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package account;
+
+option go_package = "github.com/gaiming/account-service/api/proto/account";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+service AccountService {
+  // Получение аккаунта по ID
+  rpc GetAccount(GetAccountRequest) returns (Account) {}
+  
+  // Получение списка аккаунтов
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse) {}
+  
+  // Создание нового аккаунта
+  rpc CreateAccount(CreateAccountRequest) returns (Account) {}
+  
+  // Обновление аккаунта
+  rpc UpdateAccount(UpdateAccountRequest) returns (Account) {}
+  
+  // Удаление аккаунта
+  rpc DeleteAccount(DeleteAccountRequest) returns (google.protobuf.Empty) {}
+  
+  // Изменение статуса аккаунта
+  rpc ChangeAccountStatus(ChangeAccountStatusRequest) returns (Account) {}
+  
+  // Проверка существования аккаунта по username
+  rpc CheckUsernameExists(CheckUsernameExistsRequest) returns (CheckUsernameExistsResponse) {}
+}
+
+// Запрос на получение аккаунта по ID
+message GetAccountRequest {
+  string id = 1;
+}
+
+// Запрос на получение списка аккаунтов
+message ListAccountsRequest {
+  int32 page = 1;
+  int32 limit = 2;
+  string status = 3;
+}
+
+// Ответ со списком аккаунтов
+message ListAccountsResponse {
+  repeated Account items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+// Запрос на создание аккаунта
+message CreateAccountRequest {
+  string username = 1;
+  string email = 2;
+}
+
+// Запрос на обновление аккаунта
+message UpdateAccountRequest {
+  string id = 1;
+  string username = 2;
+  string email = 3;
+}
+
+// Запрос на удаление аккаунта
+message DeleteAccountRequest {
+  string id = 1;
+}
+
+// Запрос на изменение статуса аккаунта
+message ChangeAccountStatusRequest {
+  string id = 1;
+  AccountStatus status = 2;
+  string reason = 3;
+}
+
+// Запрос на проверку существования username
+message CheckUsernameExistsRequest {
+  string username = 1;
+}
+
+// Ответ на проверку существования username
+message CheckUsernameExistsResponse {
+  bool exists = 1;
+}
+
+// Модель аккаунта
+message Account {
+  string id = 1;
+  string username = 2;
+  string email = 3;
+  AccountStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// Статус аккаунта
+enum AccountStatus {
+  ACCOUNT_STATUS_UNSPECIFIED = 0;
+  ACCOUNT_STATUS_ACTIVE = 1;
+  ACCOUNT_STATUS_INACTIVE = 2;
+  ACCOUNT_STATUS_BLOCKED = 3;
+  ACCOUNT_STATUS_DELETED = 4;
+}

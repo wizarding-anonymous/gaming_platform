@@ -1,0 +1,108 @@
+// api/proto/contact_info.proto
+
+syntax = "proto3";
+
+package account;
+
+option go_package = "github.com/gaiming/account-service/api/proto/contact_info";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+service ContactInfoService {
+  // Получение списка контактной информации
+  rpc GetContactInfo(GetContactInfoRequest) returns (GetContactInfoResponse);
+  
+  // Добавление новой контактной информации
+  rpc AddContactInfo(AddContactInfoRequest) returns (ContactInfoResponse);
+  
+  // Обновление контактной информации
+  rpc UpdateContactInfo(UpdateContactInfoRequest) returns (ContactInfoResponse);
+  
+  // Удаление контактной информации
+  rpc DeleteContactInfo(DeleteContactInfoRequest) returns (google.protobuf.Empty);
+  
+  // Запрос кода верификации
+  rpc RequestVerification(RequestVerificationRequest) returns (RequestVerificationResponse);
+  
+  // Подтверждение кода верификации
+  rpc VerifyContactInfo(VerifyContactInfoRequest) returns (VerifyContactInfoResponse);
+  
+  // Проверка существования контактной информации
+  rpc CheckContactInfoExists(CheckContactInfoExistsRequest) returns (CheckContactInfoExistsResponse);
+}
+
+message GetContactInfoRequest {
+  string account_id = 1;
+  string type = 2; // Если указан, возвращает только контакты указанного типа
+}
+
+message GetContactInfoResponse {
+  repeated ContactInfoResponse contact_info = 1;
+}
+
+message AddContactInfoRequest {
+  string account_id = 1;
+  string type = 2; // "email", "phone", etc.
+  string value = 3;
+  bool is_primary = 4;
+  string visibility = 5; // "public", "friends", "private"
+}
+
+message UpdateContactInfoRequest {
+  string id = 1;
+  string account_id = 2;
+  string value = 3;
+  bool is_primary = 4;
+  string visibility = 5;
+}
+
+message DeleteContactInfoRequest {
+  string id = 1;
+  string account_id = 2;
+}
+
+message RequestVerificationRequest {
+  string account_id = 1;
+  string contact_info_id = 2;
+}
+
+message RequestVerificationResponse {
+  bool success = 1;
+  string message = 2;
+  int32 expires_in_seconds = 3;
+}
+
+message VerifyContactInfoRequest {
+  string account_id = 1;
+  string contact_info_id = 2;
+  string verification_code = 3;
+}
+
+message VerifyContactInfoResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message CheckContactInfoExistsRequest {
+  string type = 1;
+  string value = 2;
+}
+
+message CheckContactInfoExistsResponse {
+  bool exists = 1;
+  string account_id = 2; // Заполняется только если exists = true
+}
+
+message ContactInfoResponse {
+  string id = 1;
+  string account_id = 2;
+  string type = 3;
+  string value = 4;
+  bool is_primary = 5;
+  bool is_verified = 6;
+  string visibility = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  google.protobuf.Timestamp verified_at = 10;
+}

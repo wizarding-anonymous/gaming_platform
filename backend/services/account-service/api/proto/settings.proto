@@ -1,0 +1,49 @@
+// api/proto/settings.proto
+
+syntax = "proto3";
+
+package account;
+
+option go_package = "github.com/gaiming/account-service/api/proto/settings";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+service SettingsService {
+  // Получение всех настроек пользователя
+  rpc GetAllSettings(GetAllSettingsRequest) returns (GetAllSettingsResponse);
+  
+  // Получение настроек определенной категории
+  rpc GetCategorySettings(GetCategorySettingsRequest) returns (SettingsResponse);
+  
+  // Обновление настроек категории
+  rpc UpdateCategorySettings(UpdateCategorySettingsRequest) returns (SettingsResponse);
+}
+
+message GetAllSettingsRequest {
+  string account_id = 1;
+}
+
+message GetAllSettingsResponse {
+  repeated SettingsResponse settings = 1;
+}
+
+message GetCategorySettingsRequest {
+  string account_id = 1;
+  string category = 2;
+}
+
+message UpdateCategorySettingsRequest {
+  string account_id = 1;
+  string category = 2;
+  google.protobuf.Struct settings_json = 3;
+}
+
+message SettingsResponse {
+  string id = 1;
+  string account_id = 2;
+  string category = 3;
+  google.protobuf.Struct settings_json = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}

@@ -1,0 +1,1364 @@
+# account-service\api\docs\swagger.yaml
+openapi: 3.0.0
+info:
+  title: Account Service API
+  description: API для управления аккаунтами, профилями и настройками пользователей
+  version: 1.0.0
+  contact:
+    name: Gaiming Team
+    url: https://gaiming.ru
+    email: support@gaiming.ru
+
+servers:
+  - url: https://api.gaiming.ru/v1
+    description: Production server
+  - url: https://staging-api.gaiming.ru/v1
+    description: Staging server
+  - url: http://localhost:8080/v1
+    description: Local development server
+
+tags:
+  - name: accounts
+    description: Операции с аккаунтами пользователей
+  - name: profiles
+    description: Операции с профилями пользователей
+  - name: contact-info
+    description: Операции с контактной информацией
+  - name: settings
+    description: Операции с настройками пользователей
+  - name: avatars
+    description: Операции с аватарами пользователей
+
+paths:
+  /accounts:
+    get:
+      summary: Получение списка аккаунтов
+      description: Возвращает список аккаунтов с пагинацией и фильтрацией
+      tags:
+        - accounts
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          description: Фильтр по статусу аккаунта
+          schema:
+            type: string
+            enum: [active, inactive, blocked, deleted]
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+    
+    post:
+      summary: Создание нового аккаунта
+      description: Создает новый аккаунт пользователя
+      tags:
+        - accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountCreate'
+      responses:
+        '201':
+          description: Аккаунт успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Конфликт (например, username уже занят)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /accounts/{id}:
+    get:
+      summary: Получение аккаунта по ID
+      description: Возвращает информацию об аккаунте по его ID
+      tags:
+        - accounts
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+    
+    put:
+      summary: Обновление аккаунта
+      description: Обновляет информацию об аккаунте
+      tags:
+        - accounts
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountUpdate'
+      responses:
+        '200':
+          description: Аккаунт успешно обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Конфликт (например, username уже занят)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+    
+    delete:
+      summary: Удаление аккаунта
+      description: Удаляет аккаунт (мягкое удаление)
+      tags:
+        - accounts
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+      responses:
+        '204':
+          description: Аккаунт успешно удален
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /accounts/{id}/status:
+    put:
+      summary: Изменение статуса аккаунта
+      description: Изменяет статус аккаунта (активный, неактивный, заблокированный)
+      tags:
+        - accounts
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [active, inactive, blocked]
+                  description: Новый статус аккаунта
+                reason:
+                  type: string
+                  description: Причина изменения статуса
+      responses:
+        '200':
+          description: Статус аккаунта успешно изменен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /profiles:
+    get:
+      summary: Получение списка профилей
+      description: Возвращает список профилей с пагинацией и фильтрацией
+      tags:
+        - profiles
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: visibility
+          in: query
+          description: Фильтр по видимости профиля
+          schema:
+            type: string
+            enum: [public, friends, private]
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /profiles/{id}:
+    get:
+      summary: Получение профиля по ID
+      description: Возвращает информацию о профиле по его ID
+      tags:
+        - profiles
+      parameters:
+        - $ref: '#/components/parameters/ProfileIdParam'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+    
+    put:
+      summary: Обновление профиля
+      description: Обновляет информацию о профиле
+      tags:
+        - profiles
+      parameters:
+        - $ref: '#/components/parameters/ProfileIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: Профиль успешно обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /profiles/{id}/history:
+    get:
+      summary: Получение истории изменений профиля
+      description: Возвращает историю изменений профиля
+      tags:
+        - profiles
+      parameters:
+        - $ref: '#/components/parameters/ProfileIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: field_name
+          in: query
+          description: Фильтр по имени поля
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileHistoryList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /contact-info:
+    get:
+      summary: Получение списка контактной информации
+      description: Возвращает список контактной информации пользователя
+      tags:
+        - contact-info
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          description: ID аккаунта
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          description: Тип контактной информации
+          schema:
+            type: string
+            enum: [email, phone]
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactInfoList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+    
+    post:
+      summary: Добавление контактной информации
+      description: Добавляет новую контактную информацию
+      tags:
+        - contact-info
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactInfoCreate'
+      responses:
+        '201':
+          description: Контактная информация успешно добавлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactInfo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Конфликт (например, email уже существует)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /contact-info/{id}:
+    get:
+      summary: Получение контактной информации по ID
+      description: Возвращает контактную информацию по ID
+      tags:
+        - contact-info
+      parameters:
+        - $ref: '#/components/parameters/ContactInfoIdParam'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactInfo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+    
+    delete:
+      summary: Удаление контактной информации
+      description: Удаляет контактную информацию
+      tags:
+        - contact-info
+      parameters:
+        - $ref: '#/components/parameters/ContactInfoIdParam'
+      responses:
+        '204':
+          description: Контактная информация успешно удалена
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /contact-info/{id}/verify:
+    post:
+      summary: Верификация контактной информации
+      description: Верифицирует контактную информацию с помощью кода
+      tags:
+        - contact-info
+      parameters:
+        - $ref: '#/components/parameters/ContactInfoIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: Код верификации
+      responses:
+        '200':
+          description: Контактная информация успешно верифицирована
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactInfo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /contact-info/{id}/send-verification:
+    post:
+      summary: Отправка кода верификации
+      description: Отправляет код верификации на указанный контакт
+      tags:
+        - contact-info
+      parameters:
+        - $ref: '#/components/parameters/ContactInfoIdParam'
+      responses:
+        '200':
+          description: Код верификации успешно отправлен
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /settings:
+    get:
+      summary: Получение настроек пользователя
+      description: Возвращает настройки пользователя
+      tags:
+        - settings
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          description: ID аккаунта
+          schema:
+            type: string
+            format: uuid
+        - name: category
+          in: query
+          description: Категория настроек
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /settings/{id}:
+    put:
+      summary: Обновление настройки
+      description: Обновляет значение настройки
+      tags:
+        - settings
+      parameters:
+        - $ref: '#/components/parameters/SettingIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingUpdate'
+      responses:
+        '200':
+          description: Настройка успешно обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Setting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /settings/reset:
+    post:
+      summary: Сброс настроек
+      description: Сбрасывает настройки пользователя до значений по умолчанию
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - account_id
+              properties:
+                account_id:
+                  type: string
+                  format: uuid
+                  description: ID аккаунта
+                category:
+                  type: string
+                  description: Категория настроек для сброса (если не указана, сбрасываются все настройки)
+      responses:
+        '200':
+          description: Настройки успешно сброшены
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /avatars:
+    post:
+      summary: Загрузка аватара
+      description: Загружает новый аватар для пользователя
+      tags:
+        - avatars
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - account_id
+                - file
+              properties:
+                account_id:
+                  type: string
+                  format: uuid
+                  description: ID аккаунта
+                file:
+                  type: string
+                  format: binary
+                  description: Файл аватара
+      responses:
+        '201':
+          description: Аватар успешно загружен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Avatar'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /avatars/{id}:
+    get:
+      summary: Получение аватара по ID
+      description: Возвращает информацию об аватаре по его ID
+      tags:
+        - avatars
+      parameters:
+        - $ref: '#/components/parameters/AvatarIdParam'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Avatar'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+    
+    delete:
+      summary: Удаление аватара
+      description: Удаляет аватар
+      tags:
+        - avatars
+      parameters:
+        - $ref: '#/components/parameters/AvatarIdParam'
+      responses:
+        '204':
+          description: Аватар успешно удален
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+  /avatars/{id}/set-current:
+    post:
+      summary: Установка аватара как текущего
+      description: Устанавливает аватар как текущий для пользователя
+      tags:
+        - avatars
+      parameters:
+        - $ref: '#/components/parameters/AvatarIdParam'
+      responses:
+        '200':
+          description: Аватар успешно установлен как текущий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Avatar'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+
+components:
+  schemas:
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор аккаунта
+        username:
+          type: string
+          description: Уникальное имя пользователя
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+        status:
+          type: string
+          enum: [active, inactive, blocked, deleted]
+          description: Статус аккаунта
+        created_at:
+          type: string
+          format: date-time
+          description: Дата и время создания аккаунта
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата и время последнего обновления аккаунта
+      required:
+        - id
+        - username
+        - status
+        - created_at
+        - updated_at
+
+    AccountCreate:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Уникальное имя пользователя
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+      required:
+        - username
+
+    AccountUpdate:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Уникальное имя пользователя
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+
+    AccountList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+        total:
+          type: integer
+          description: Общее количество аккаунтов
+        page:
+          type: integer
+          description: Текущая страница
+        limit:
+          type: integer
+          description: Количество элементов на странице
+      required:
+        - items
+        - total
+        - page
+        - limit
+
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор профиля
+        account_id:
+          type: string
+          format: uuid
+          description: Идентификатор аккаунта
+        nickname:
+          type: string
+          description: Отображаемое имя пользователя
+        bio:
+          type: string
+          description: Биография пользователя
+        country:
+          type: string
+          description: Страна пользователя
+        city:
+          type: string
+          description: Город пользователя
+        birth_date:
+          type: string
+          format: date
+          description: Дата рождения пользователя
+        gender:
+          type: string
+          description: Пол пользователя
+        visibility:
+          type: string
+          enum: [public, friends, private]
+          description: Видимость профиля
+        created_at:
+          type: string
+          format: date-time
+          description: Дата и время создания профиля
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата и время последнего обновления профиля
+      required:
+        - id
+        - account_id
+        - nickname
+        - visibility
+        - created_at
+        - updated_at
+
+    ProfileUpdate:
+      type: object
+      properties:
+        nickname:
+          type: string
+          description: Отображаемое имя пользователя
+        bio:
+          type: string
+          description: Биография пользователя
+        country:
+          type: string
+          description: Страна пользователя
+        city:
+          type: string
+          description: Город пользователя
+        birth_date:
+          type: string
+          format: date
+          description: Дата рождения пользователя
+        gender:
+          type: string
+          description: Пол пользователя
+        visibility:
+          type: string
+          enum: [public, friends, private]
+          description: Видимость профиля
+
+    ProfileList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Profile'
+        total:
+          type: integer
+          description: Общее количество профилей
+        page:
+          type: integer
+          description: Текущая страница
+        limit:
+          type: integer
+          description: Количество элементов на странице
+      required:
+        - items
+        - total
+        - page
+        - limit
+
+    ProfileHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор записи истории
+        profile_id:
+          type: string
+          format: uuid
+          description: Идентификатор профиля
+        account_id:
+          type: string
+          format: uuid
+          description: Идентификатор аккаунта
+        change_type:
+          type: string
+          enum: [create, update, delete]
+          description: Тип изменения
+        field_name:
+          type: string
+          description: Имя измененного поля
+        old_value:
+          type: string
+          description: Предыдущее значение
+        new_value:
+          type: string
+          description: Новое значение
+        changed_by:
+          type: string
+          format: uuid
+          description: Идентификатор аккаунта, внесшего изменение
+        changed_at:
+          type: string
+          format: date-time
+          description: Дата и время изменения
+      required:
+        - id
+        - profile_id
+        - account_id
+        - change_type
+        - field_name
+        - changed_by
+        - changed_at
+
+    ProfileHistoryList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileHistory'
+        total:
+          type: integer
+          description: Общее количество записей истории
+        page:
+          type: integer
+          description: Текущая страница
+        limit:
+          type: integer
+          description: Количество элементов на странице
+      required:
+        - items
+        - total
+        - page
+        - limit
+
+    ContactInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор контактной информации
+        account_id:
+          type: string
+          format: uuid
+          description: Идентификатор аккаунта
+        type:
+          type: string
+          enum: [email, phone]
+          description: Тип контактной информации
+        value:
+          type: string
+          description: Значение контактной информации
+        is_verified:
+          type: boolean
+          description: Флаг верификации контактной информации
+        is_primary:
+          type: boolean
+          description: Флаг основной контактной информации данного типа
+        created_at:
+          type: string
+          format: date-time
+          description: Дата и время создания контактной информации
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата и время последнего обновления контактной информации
+      required:
+        - id
+        - account_id
+        - type
+        - value
+        - is_verified
+        - is_primary
+        - created_at
+        - updated_at
+
+    ContactInfoCreate:
+      type: object
+      properties:
+        account_id:
+          type: string
+          format: uuid
+          description: Идентификатор аккаунта
+        type:
+          type: string
+          enum: [email, phone]
+          description: Тип контактной информации
+        value:
+          type: string
+          description: Значение контактной информации
+        is_primary:
+          type: boolean
+          description: Флаг основной контактной информации данного типа
+      required:
+        - account_id
+        - type
+        - value
+
+    ContactInfoList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactInfo'
+        total:
+          type: integer
+          description: Общее количество записей контактной информации
+      required:
+        - items
+        - total
+
+    Setting:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор настройки
+        account_id:
+          type: string
+          format: uuid
+          description: Идентификатор аккаунта
+        category:
+          type: string
+          description: Категория настройки
+        key:
+          type: string
+          description: Ключ настройки
+        value:
+          type: object
+          description: Значение настройки
+        created_at:
+          type: string
+          format: date-time
+          description: Дата и время создания настройки
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата и время последнего обновления настройки
+      required:
+        - id
+        - account_id
+        - category
+        - key
+        - value
+        - created_at
+        - updated_at
+
+    SettingUpdate:
+      type: object
+      properties:
+        value:
+          type: object
+          description: Новое значение настройки
+      required:
+        - value
+
+    SettingsList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Setting'
+        total:
+          type: integer
+          description: Общее количество настроек
+      required:
+        - items
+        - total
+
+    Avatar:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор аватара
+        account_id:
+          type: string
+          format: uuid
+          description: Идентификатор аккаунта
+        file_path:
+          type: string
+          description: Путь к файлу аватара
+        file_name:
+          type: string
+          description: Имя файла аватара
+        file_size:
+          type: integer
+          description: Размер файла аватара в байтах
+        mime_type:
+          type: string
+          description: MIME-тип файла аватара
+        width:
+          type: integer
+          description: Ширина изображения аватара в пикселях
+        height:
+          type: integer
+          description: Высота изображения аватара в пикселях
+        is_current:
+          type: boolean
+          description: Флаг текущего аватара
+        created_at:
+          type: string
+          format: date-time
+          description: Дата и время загрузки аватара
+      required:
+        - id
+        - account_id
+        - file_path
+        - file_name
+        - file_size
+        - mime_type
+        - width
+        - height
+        - is_current
+        - created_at
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Код ошибки
+        message:
+          type: string
+          description: Сообщение об ошибке
+        details:
+          type: object
+          description: Дополнительные детали ошибки
+      required:
+        - code
+        - message
+
+  parameters:
+    AccountIdParam:
+      name: id
+      in: path
+      required: true
+      description: ID аккаунта
+      schema:
+        type: string
+        format: uuid
+    
+    ProfileIdParam:
+      name: id
+      in: path
+      required: true
+      description: ID профиля
+      schema:
+        type: string
+        format: uuid
+    
+    ContactInfoIdParam:
+      name: id
+      in: path
+      required: true
+      description: ID контактной информации
+      schema:
+        type: string
+        format: uuid
+    
+    SettingIdParam:
+      name: id
+      in: path
+      required: true
+      description: ID настройки
+      schema:
+        type: string
+        format: uuid
+    
+    AvatarIdParam:
+      name: id
+      in: path
+      required: true
+      description: ID аватара
+      schema:
+        type: string
+        format: uuid
+    
+    PageParam:
+      name: page
+      in: query
+      description: Номер страницы (начиная с 0)
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    
+    LimitParam:
+      name: limit
+      in: query
+      description: Количество элементов на странице
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Forbidden:
+      description: Доступ запрещен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package profile;
+
+option go_package = "github.com/gaiming/account-service/api/proto/profile";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+service ProfileService {
+  // Получение профиля по ID
+  rpc GetProfile(GetProfileRequest) returns (Profile) {}
+  
+  // Получение профиля по ID аккаунта
+  rpc GetProfileByAccountId(GetProfileByAccountIdRequest) returns (Profile) {}
+  
+  // Получение списка профилей
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse) {}
+  
+  // Создание нового профиля
+  rpc CreateProfile(CreateProfileRequest) returns (Profile) {}
+  
+  // Обновление профиля
+  rpc UpdateProfile(UpdateProfileRequest) returns (Profile) {}
+  
+  // Получение истории изменений профиля
+  rpc GetProfileHistory(GetProfileHistoryRequest) returns (ListProfileHistoryResponse) {}
+}
+
+// Запрос на получение профиля по ID
+message GetProfileRequest {
+  string id = 1;
+}
+
+// Запрос на получение профиля по ID аккаунта
+message GetProfileByAccountIdRequest {
+  string account_id = 1;
+}
+
+// Запрос на получение списка профилей
+message ListProfilesRequest {
+  int32 page = 1;
+  int32 limit = 2;
+  string visibility = 3;
+}
+
+// Ответ со списком профилей
+message ListProfilesResponse {
+  repeated Profile items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+// Запрос на создание профиля
+message CreateProfileRequest {
+  string account_id = 1;
+  string nickname = 2;
+  string bio = 3;
+  string country = 4;
+  string city = 5;
+  string birth_date = 6;
+  string gender = 7;
+  ProfileVisibility visibility = 8;
+}
+
+// Запрос на обновление профиля
+message UpdateProfileRequest {
+  string id = 1;
+  string nickname = 2;
+  string bio = 3;
+  string country = 4;
+  string city = 5;
+  string birth_date = 6;
+  string gender = 7;
+  ProfileVisibility visibility = 8;
+}
+
+// Запрос на получение истории изменений профиля
+message GetProfileHistoryRequest {
+  string profile_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+  string field_name = 4;
+}
+
+// Ответ со списком истории изменений профиля
+message ListProfileHistoryResponse {
+  repeated ProfileHistory items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+// Модель профиля
+message Profile {
+  string id = 1;
+  string account_id = 2;
+  string nickname = 3;
+  string bio = 4;
+  string country = 5;
+  string city = 6;
+  string birth_date = 7;
+  string gender = 8;
+  ProfileVisibility visibility = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+// Модель истории изменений профиля
+message ProfileHistory {
+  string id = 1;
+  string profile_id = 2;
+  string account_id = 3;
+  ChangeType change_type = 4;
+  string field_name = 5;
+  string old_value = 6;
+  string new_value = 7;
+  string changed_by = 8;
+  google.protobuf.Timestamp changed_at = 9;
+}
+
+// Тип изменения
+enum ChangeType {
+  CHANGE_TYPE_UNSPECIFIED = 0;
+  CHANGE_TYPE_CREATE = 1;
+  CHANGE_TYPE_UPDATE = 2;
+  CHANGE_TYPE_DELETE = 3;
+}
+
+// Видимость профиля
+enum ProfileVisibility {
+  PROFILE_VISIBILITY_UNSPECIFIED = 0;
+  PROFILE_VISIBILITY_PUBLIC = 1;
+  PROFILE_VISIBILITY_FRIENDS = 2;
+  PROFILE_VISIBILITY_PRIVATE = 3;
+}
