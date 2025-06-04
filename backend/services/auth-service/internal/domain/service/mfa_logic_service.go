@@ -16,51 +16,100 @@ import (
 	// Kafka client if events are published directly from here
 )
 
-// MFALogicService defines the interface for Multi-Factor Authentication business logic.
+// MFALogicService defines the interface for Multi-Factor Authentication (MFA) business logic.
+// It handles operations such as initiating 2FA setup (e.g., TOTP), verifying codes,
+// activating and disabling 2FA, and managing backup codes.
 type MFALogicService interface {
-	// Enable2FAInitiate starts the process of enabling 2FA for a user.
-	// It generates a new TOTP secret and a URL for QR code generation.
-	// The secret returned is the raw base32 secret.
+	// Enable2FAInitiate starts the process of enabling 2FA (specifically TOTP) for a user.
+	// It checks if 2FA is already enabled and verified. If not, or if a previous unverified setup exists,
+	// it cleans up the old setup, generates a new TOTP secret (encrypted for storage) and an OTP Auth URL
+	// (e.g., "otpauth://totp/...") suitable for QR code generation by the client.
+	// The raw base32 encoded secret is returned for display to the user during setup.
+	// Parameters:
+	//  - ctx: The context for the request.
+	//  - userID: The ID of the user for whom to initiate 2FA.
+	//  - accountName: The account name to be displayed in the authenticator app (usually user's email or username).
+	// Returns the ID of the newly created MFA secret record, the raw base32 secret string, the OTP Auth URL string,
+	// and an error if any step fails (e.g., domainErrors.Err2FAAlreadyEnabled, errors during secret generation or storage).
 	Enable2FAInitiate(ctx context.Context, userID uuid.UUID, accountName string) (mfaSecretID uuid.UUID, secretBase32 string, otpAuthURL string, err error)
 
-	// VerifyAndActivate2FA verifies the initial TOTP code provided by the user and activates 2FA.
-	// It also generates and returns plain text backup codes.
-	// mfaSecretID is the ID of the mfa_secrets record from the initiate step.
+	// VerifyAndActivate2FA verifies the initial TOTP code provided by the user against the generated secret
+	// (identified by mfaSecretID from the Enable2FAInitiate step) and, if valid, marks the MFA setup as verified.
+	// It then generates a new set of backup codes, stores their hashes, and returns the plain backup codes to the user.
+	// Any old backup codes for the user are deleted. Publishes an AuthMFAEnabledV1 event on success.
+	// Parameters:
+	//  - ctx: The context for the request.
+	//  - userID: The ID of the user activating 2FA.
+	//  - plainTOTPCode: The TOTP code entered by the user from their authenticator app.
+	//  - mfaSecretID: The ID of the MFA secret record created during the initiate step.
+	// Returns a slice of plain text backup codes on success, or an error if verification fails
+	// (e.g., domainErrors.ErrNotFound if mfaSecretID is invalid, domainErrors.ErrInvalid2FACode,
+	// domainErrors.Err2FAAlreadyEnabled, or errors during backup code generation/storage).
 	VerifyAndActivate2FA(ctx context.Context, userID uuid.UUID, plainTOTPCode string, mfaSecretID uuid.UUID) (backupCodes []string, err error)
 
 	// Verify2FACode checks a TOTP code or a backup code during login or other sensitive operations.
-	// userID is the ID of the user attempting to verify.
-	// code is the plain code provided by the user.
-	// codeType indicates if it's a "totp" or "backup" code.
+	// It includes rate limiting for verification attempts.
+	// For backup codes, it ensures the code is used only once by marking it as used.
+	// Parameters:
+	//  - ctx: The context for the request, used for rate limiting and metadata.
+	//  - userID: The ID of the user attempting to verify the 2FA code.
+	//  - code: The plain text code (TOTP or backup) provided by the user.
+	//  - codeType: Indicates if it's a models.MFATypeTOTP or models.MFATypeBackup code.
+	// Returns true if the code is valid, false otherwise, and an error if any issues occur
+	// (e.g., domainErrors.ErrRateLimitExceeded, domainErrors.Err2FANotEnabled, domainErrors.ErrMFANotVerified,
+	// domainErrors.ErrInvalid2FACode, or internal errors).
 	Verify2FACode(ctx context.Context, userID uuid.UUID, code string, codeType models.MFAType) (isValid bool, err error)
 
-	// Disable2FA disables 2FA for a user after proper verification (e.g., password or current 2FA code).
-	// verificationToken could be a password or a currently valid 2FA code.
-	// verificationMethod indicates how the user is authorizing this disable action ("password", "totp", "backup").
+	// Disable2FA disables 2FA for a user after proper authorization.
+	// Authorization can be via current password, a valid TOTP code, or a valid backup code.
+	// It deletes all MFA secrets and backup codes for the user. Publishes an AuthMFADisabledV1 event.
+	// Parameters:
+	//  - ctx: The context for the request.
+	//  - userID: The ID of the user for whom to disable 2FA.
+	//  - verificationToken: The token used for authorization (password, TOTP code, or backup code).
+	//  - verificationMethod: A string indicating the type of token provided ("password", "totp", "backup").
+	// Returns nil on success, or an error if authorization fails (e.g., domainErrors.ErrForbidden),
+	// or if repository operations fail. If 2FA was not enabled, it returns nil but logs this information.
 	Disable2FA(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) error
 
-	// RegenerateBackupCodes generates a new set of backup codes for the user after proper verification.
+	// RegenerateBackupCodes generates a new set of MFA backup codes for a user after proper authorization.
+	// Authorization can be via current password, a valid TOTP code, or a valid backup code.
+	// It requires that 2FA (TOTP) is already active and verified for the user.
+	// It deletes all existing backup codes and creates a new set.
+	// Parameters:
+	//  - ctx: The context for the request.
+	//  - userID: The ID of the user for whom to regenerate backup codes.
+	//  - verificationToken: The token used for authorization.
+	//  - verificationMethod: The type of authorization token ("password", "totp", "backup").
+	// Returns a slice of new plain text backup codes on success, or an error if authorization fails,
+	// 2FA is not active (domainErrors.Err2FANotEnabled, domainErrors.ErrMFANotVerified),
+	// or if repository operations fail.
 	RegenerateBackupCodes(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) (backupCodes []string, err error)
 }
 
-// mfaLogicService implements MFALogicService.
+// mfaLogicService implements the MFALogicService interface, providing concrete business logic
+// for multi-factor authentication operations. It coordinates interactions between repositories
+// (for MFA secrets and backup codes, users), specialized services (TOTP generation/validation,
+// password hashing, encryption), and event publishing.
 type mfaLogicService struct {
-	cfg                   *config.Config // Changed to global Config
-	totpService           TOTPService
-	encryptionService     security.EncryptionService
-	mfaSecretRepo         repoInterfaces.MFASecretRepository
-	mfaBackupCodeRepo     repoInterfaces.MFABackupCodeRepository
-	userRepo              repoInterfaces.UserRepository
-	passwordService       PasswordService
-	auditLogRecorder      AuditLogRecorder      // Added for audit logging
-	kafkaProducer         *kafkaPkg.Producer    // Added for event publishing
-	rateLimiter           RateLimiter           // Added for rate limiting
+	cfg                   *config.Config // Global application configuration.
+	totpService           TOTPService         // Service for TOTP generation and validation.
+	encryptionService     security.EncryptionService // Service for encrypting/decrypting sensitive data like TOTP secrets.
+	mfaSecretRepo         repoInterfaces.MFASecretRepository // Repository for storing and managing MFA secrets (e.g., TOTP keys).
+	mfaBackupCodeRepo     repoInterfaces.MFABackupCodeRepository // Repository for storing and managing MFA backup codes.
+	userRepo              repoInterfaces.UserRepository // Repository for user data access, needed for password verification.
+	passwordService       PasswordService // Service for hashing and checking passwords (used for backup code hashing and disabling 2FA via password).
+	auditLogRecorder      AuditLogRecorder      // Service for recording audit log events.
+	kafkaProducer         *kafkaPkg.Producer    // Kafka client for publishing events related to MFA status changes.
+	rateLimiter           RateLimiter           // Service for rate limiting 2FA verification attempts.
 }
 
 
-// NewMFALogicService creates a new instance of MFALogicService.
+// NewMFALogicService creates a new instance of mfaLogicService with all its dependencies.
+// This constructor initializes the service with the necessary configuration, sub-services for
+// TOTP, encryption, password management, rate limiting, and repositories for data access.
 func NewMFALogicService(
-	cfg *config.Config, // Changed to global Config
+	cfg *config.Config, // Global application configuration.
 	totpService TOTPService,
 	encryptionService security.EncryptionService,
 	mfaSecretRepo repoInterfaces.MFASecretRepository,

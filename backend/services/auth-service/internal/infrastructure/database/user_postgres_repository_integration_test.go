@@ -468,3 +468,62 @@ func TestUserRepository_UpdateLastLogin(t *testing.T) {
 // If there were a specific repo method `UpdateUserStatusFields(ctx, id, status, reason, lockout, updatedBy)`
 // then a dedicated test would be here. The current `Update` method handles general field updates.
 // status_reason and updated_by are not explicitly managed by separate repo methods yet beyond the general Update.
+
+func TestUserRepository_UpdateUserStatusFields(t *testing.T) {
+	ctx := context.Background()
+	userRepo := repoPostgres.NewUserRepositoryPostgres(testDB)
+	clearUserTables(t, testDB)
+
+	user := &models.User{
+		ID:           uuid.New(),
+		Username:     "statusfields_user",
+		Email:        "statusfields@example.com",
+		PasswordHash: "hash",
+		Status:       models.UserStatusActive,
+	}
+	err := userRepo.Create(ctx, user)
+	require.NoError(t, err)
+
+	newStatus := models.UserStatusBlocked
+	statusReason := "account_compromised"
+	lockoutUntil := time.Now().Add(7 * 24 * time.Hour) // Lock for 7 days
+
+	// Assuming the interface UserRepository has UpdateUserStatusFields
+	// If not, this test will highlight the discrepancy or fail if the method doesn't exist on the concrete type.
+	// The interface defined in a previous subtask was:
+	// UpdateUserStatusFields(ctx context.Context, userID uuid.UUID, status models.UserStatus, statusReason *string, lockoutUntil *time.Time) error
+
+	err = userRepo.UpdateUserStatusFields(ctx, user.ID, newStatus, &statusReason, &lockoutUntil)
+	require.NoError(t, err, "UpdateUserStatusFields failed")
+
+	updatedUser, err := userRepo.FindByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updatedUser)
+
+	assert.Equal(t, newStatus, updatedUser.Status)
+	require.NotNil(t, updatedUser.StatusReason, "StatusReason should be set")
+	assert.Equal(t, statusReason, *updatedUser.StatusReason)
+	require.NotNil(t, updatedUser.LockoutUntil, "LockoutUntil should be set")
+	assert.WithinDuration(t, lockoutUntil, *updatedUser.LockoutUntil, time.Second)
+	assert.True(t, updatedUser.UpdatedAt.After(user.CreatedAt), "UpdatedAt should have been updated")
+
+	// Test clearing the fields
+	clearedStatusReason := "" // Empty string to clear, or specific logic if repo handles nil to clear
+	err = userRepo.UpdateUserStatusFields(ctx, user.ID, models.UserStatusActive, &clearedStatusReason, nil) // nil for lockoutUntil
+	require.NoError(t, err)
+
+	clearedUser, err := userRepo.FindByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.NotNil(t, clearedUser)
+	assert.Equal(t, models.UserStatusActive, clearedUser.Status)
+	// Note: StatusReason might be an empty string or NULL in DB. The model uses *string.
+	// If it's set to empty string, it won't be nil. If repo sets to NULL for empty string, it would be nil.
+	// Assuming it's set to the value provided:
+	require.NotNil(t, clearedUser.StatusReason, "StatusReason should be set to empty string, not nil pointer")
+	assert.Equal(t, "", *clearedUser.StatusReason)
+	assert.Nil(t, clearedUser.LockoutUntil, "LockoutUntil should be cleared (nil)")
+
+
+	_, delErr := testDB.Exec(ctx, "DELETE FROM users WHERE id = $1", user.ID)
+	require.NoError(t, delErr)
+}

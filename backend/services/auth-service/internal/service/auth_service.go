@@ -436,9 +436,10 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
 // creates a user session, generates access and refresh tokens, and publishes relevant events.
 // An audit log event is recorded for the 2FA completion.
 // Parameters:
-// - ctx: The context for the request.
-// - userID: The ID of the user completing the login.
-// - deviceInfo: A map containing device information like user_agent and ip_address.
+//   - ctx: The context for the request.
+//   - userID: The ID of the user completing the login.
+//   - deviceInfo: A map containing device information like user_agent and ip_address.
+//
 // Returns the token pair, user details, and an error if any.
 // Possible errors: domainErrors.ErrUserNotFound, domainErrors.ErrUserBlocked, domainErrors.ErrEmailNotVerified.
 func (s *AuthService) CompleteLoginAfter2FA(ctx context.Context, userID uuid.UUID, deviceInfo map[string]string) (*models.TokenPair, *models.User, error) {
@@ -518,7 +519,17 @@ func (s *AuthService) CompleteLoginAfter2FA(ctx context.Context, userID uuid.UUI
 }
 
 
-// RefreshToken processes refresh token to issue new token pair.
+// RefreshToken processes a given plain opaque refresh token to issue a new token pair (access and refresh).
+// It relies on the TokenService to validate the refresh token, handle its rotation (if applicable),
+// and generate the new tokens. It also records an audit log event for the refresh attempt.
+// The IP address and User-Agent are extracted from the context for auditing.
+// Parameters:
+//   - ctx: The context for the request, potentially containing metadata like IP address and User-Agent.
+//   - plainOpaqueRefreshToken: The plain (non-hashed) opaque refresh token string provided by the client.
+//
+// Returns a new models.TokenPair on success, or an error if the refresh token is invalid,
+// expired, revoked, or if any other internal error occurs.
+// Possible errors: domainErrors.ErrInvalidToken, domainErrors.ErrSessionNotFound, or other internal errors.
 func (s *AuthService) RefreshToken(ctx context.Context, plainOpaqueRefreshToken string) (*models.TokenPair, error) {
 	ipAddress := "unknown"
 	userAgent := "unknown"
@@ -566,7 +577,21 @@ func (s *AuthService) RefreshToken(ctx context.Context, plainOpaqueRefreshToken 
 	return newTokenPair, nil
 }
 
-// Logout performs user logout.
+// Logout handles user logout. It performs several actions:
+// 1. Validates the provided access token to identify the user and session.
+// 2. Revokes the provided refresh token from the database via TokenService.
+// 3. Deactivates the user's session via SessionService.
+// 4. Blacklists the access token via TokenService to prevent its further use until expiry.
+// 5. Publishes UserLogoutSuccessEvent and SessionRevokedEvent via Kafka.
+// 6. Records an audit log event for the logout action.
+// The IP address and User-Agent are extracted from the context for auditing.
+// Parameters:
+//   - ctx: The context for the request.
+//   - accessToken: The access token of the session to be logged out.
+//   - refreshToken: The refresh token associated with the session, to be revoked.
+//
+// Returns nil on successful logout (even if some non-critical cleanup steps fail, errors are logged),
+// or an error like domainErrors.ErrInvalidToken if the access token is invalid and no refresh token is provided.
 func (s *AuthService) Logout(ctx context.Context, accessToken, refreshToken string) error {
 	ipAddress := "unknown"
 	userAgent := "unknown"
@@ -674,7 +699,18 @@ func (s *AuthService) Logout(ctx context.Context, accessToken, refreshToken stri
 	return nil // Logout generally shouldn't fail from user's perspective if best effort is made
 }
 
-// LogoutAll performs logout from all user sessions.
+// LogoutAll handles logging out a user from all their active sessions.
+// It validates the provided access token to identify the user.
+// Then, it deactivates all sessions for that user via SessionService and
+// revokes all their refresh tokens via TokenService.
+// It publishes a UserAllSessionsRevokedEvent via Kafka and records an audit log event.
+// The IP address and User-Agent are extracted from the context for auditing the initiating action.
+// Parameters:
+//   - ctx: The context for the request.
+//   - accessToken: The access token from an active session of the user requesting to log out all sessions.
+//
+// Returns nil on success, or an error like domainErrors.ErrInvalidToken if the access token is invalid,
+// or domainErrors.ErrInternal if parsing the user ID from token claims fails.
 func (s *AuthService) LogoutAll(ctx context.Context, accessToken string) error {
 	ipAddress := "unknown"
 	userAgent := "unknown"
@@ -739,7 +775,18 @@ func (s *AuthService) LogoutAll(ctx context.Context, accessToken string) error {
 	return nil // LogoutAll generally shouldn't fail from user's perspective
 }
 
-// VerifyEmail confirms user's email.
+// VerifyEmail confirms a user's email address using a provided verification token.
+// It hashes the plain token, finds the corresponding verification code in the database,
+// checks if the user exists and if the email is already verified.
+// If valid, it updates the user's `email_verified_at` timestamp, sets their status to active,
+// marks the verification code as used, publishes a UserEmailVerifiedEvent, and records an audit log.
+// The IP address and User-Agent are extracted from the context for auditing.
+// Parameters:
+//   - ctx: The context for the request.
+//   - plainVerificationTokenValue: The plain (non-hashed) verification token string.
+//
+// Returns nil on success, or an error like domainErrors.ErrInvalidToken, domainErrors.ErrUserNotFound,
+// or domainErrors.ErrEmailAlreadyVerified.
 func (s *AuthService) VerifyEmail(ctx context.Context, plainVerificationTokenValue string) error {
 	var auditErrorDetails map[string]interface{}
 	var userIDForAudit *uuid.UUID // Will be set once verificationCode is fetched
@@ -817,7 +864,18 @@ func (s *AuthService) VerifyEmail(ctx context.Context, plainVerificationTokenVal
 	return nil
 }
 
-// ResendVerificationEmail resends email verification.
+// ResendVerificationEmail handles a request to resend an email verification token.
+// It performs a rate limit check based on the email address.
+// It finds the user by email, checks if their email is already verified,
+// deletes any existing email verification codes for the user, generates a new one,
+// stores it, and publishes an EmailVerificationRequestedEvent.
+// An audit log is recorded for rate-limited attempts.
+// Parameters:
+//   - ctx: The context for the request, used for metadata and rate limiting.
+//   - email: The email address to resend the verification for.
+//
+// Returns nil if the process is initiated successfully (even if the user is not found, to prevent enumeration),
+// or an error like domainErrors.ErrEmailAlreadyVerified or domainErrors.ErrRateLimitExceeded.
 func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string) error {
 	ipAddress := "unknown"
 	userAgent := "unknown" // User agent not strictly needed for audit here, but good practice if available
@@ -876,7 +934,18 @@ func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string)
 	return nil
 }
 
-// ForgotPassword initiates password reset.
+// ForgotPassword initiates the password reset process for a user.
+// It performs rate limit checks by email and IP address.
+// If the user exists, it deletes any existing password reset codes for the user,
+// generates a new password reset token, stores its hash, and publishes a PasswordResetRequestedEvent.
+// An audit log is recorded for the attempt. To prevent email enumeration, it returns nil even if the user is not found,
+// but the audit log will reflect the outcome.
+// Parameters:
+//   - ctx: The context for the request, used for metadata and rate limiting.
+//   - email: The email address of the user requesting a password reset.
+//
+// Returns nil on successful initiation (or if user not found, for security),
+// or an error like domainErrors.ErrRateLimitExceeded.
 func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	ipAddress := "unknown"
 	userAgent := "unknown"
@@ -962,7 +1031,18 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	return nil
 }
 
-// ResetPassword completes password reset.
+// ResetPassword completes the password reset process using a provided reset token and new password.
+// It performs a rate limit check by IP address.
+// It hashes the plain token, finds the corresponding verification code, checks user existence,
+// hashes the new password, updates the user's password in the database, marks the verification code as used,
+// invalidates all user sessions, publishes a UserPasswordResetEvent, and records an audit log.
+// Parameters:
+//   - ctx: The context for the request, used for metadata and rate limiting.
+//   - plainToken: The plain (non-hashed) password reset token.
+//   - newPassword: The new password chosen by the user.
+//
+// Returns nil on success, or an error like domainErrors.ErrRateLimitExceeded, domainErrors.ErrInvalidToken,
+// or domainErrors.ErrUserNotFound.
 func (s *AuthService) ResetPassword(ctx context.Context, plainToken, newPassword string) error {
 	ipAddress := "unknown"
 	userAgent := "unknown"
@@ -1031,7 +1111,17 @@ func (s *AuthService) ResetPassword(ctx context.Context, plainToken, newPassword
 	return nil
 }
 
-// ChangePassword allows authenticated user to change password.
+// ChangePassword allows an authenticated user to change their own password.
+// It verifies the user's old password, hashes the new password, updates it in the database,
+// invalidates all other user sessions, publishes a UserPasswordChangedEvent, and records an audit log.
+// Parameters:
+//   - ctx: The context for the request, containing metadata like IP and User-Agent.
+//   - userID: The ID of the user changing their password (typically from authenticated context).
+//   - oldPlainPassword: The user's current plain text password for verification.
+//   - newPlainPassword: The new plain text password to be set.
+//
+// Returns nil on success, or an error like domainErrors.ErrUserNotFound, domainErrors.ErrInvalidCredentials,
+// or internal errors related to password hashing or database updates.
 func (s *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID, oldPlainPassword, newPlainPassword string) error {
 	ipAddress := "unknown"
 	userAgent := "unknown"
@@ -1090,11 +1180,20 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID, oldP
 	return nil
 }
 
-// CheckUserPermission checks if a user has a specific permission.
-// This is a placeholder implementation. A real one would involve fetching user's roles,
-// then permissions for those roles, and checking against the requested permission and resource.
+// CheckUserPermission verifies if a user possesses a specific permission.
+// It retrieves the user's roles via UserRolesRepository, then fetches permissions for those roles
+// via RoleService (which uses RoleRepository), and checks if the requested permissionKey (ID) is present.
+// This method is crucial for RBAC (Role-Based Access Control) checks.
+// Parameters:
+//   - ctx: The context for the request.
+//   - userID: The ID of the user whose permissions are being checked.
+//   - permissionKey: The unique key or ID of the permission to check for.
+//   - resourceID: Optional. The ID of the specific resource the permission applies to (not fully implemented in current logic).
+//
+// Returns true if the user has the permission, false otherwise, and an error if any issues occur during lookup
+// (e.g., domainErrors.ErrInvalidRequest if userID is nil, or errors from repository/service calls).
 func (s *AuthService) CheckUserPermission(ctx context.Context, userID uuid.UUID, permissionKey string, resourceID *string) (bool, error) {
-	s.logger.Info("CheckUserPermission called (placeholder)",
+	s.logger.Info("CheckUserPermission called (placeholder)", // TODO: Remove placeholder log once fully implemented
 		zap.String("userID", userID.String()),
 		zap.String("permissionKey", permissionKey),
 		zap.Any("resourceID", resourceID),
@@ -1146,7 +1245,20 @@ func (s *AuthService) CheckUserPermission(ctx context.Context, userID uuid.UUID,
 	return false, nil // No matching permission found in any role
 }
 
-// LoginWithTelegram handles user authentication or registration using Telegram data.
+// LoginWithTelegram handles user authentication or registration using data received from Telegram login widget.
+// It verifies the authenticity of the Telegram data using TelegramVerifierService.
+// If valid, it attempts to find an existing external account link for the Telegram user.
+// - If found, it logs in the associated platform user.
+// - If not found, it creates a new platform user and links it to the Telegram account.
+// It then creates a session, generates tokens, updates last login time, and publishes relevant events.
+// Records audit logs for these actions.
+// Parameters:
+//   - ctx: The context for the request.
+//   - tgData: The authentication data received from Telegram (see models.TelegramLoginRequest).
+//   - deviceInfo: A map containing device information like user_agent and ip_address.
+//
+// Returns a token pair, user details, and an error if any.
+// Possible errors: domainErrors.ErrTelegramAuthFailed, domainErrors.ErrUserBlocked, or internal errors.
 func (s *AuthService) LoginWithTelegram(
 	ctx context.Context,
 	tgData models.TelegramLoginRequest,
@@ -1359,8 +1471,23 @@ import (
 )
 // ... (rest of the file before InitiateOAuthLogin)
 
-// InitiateOAuthLogin prepares for an OAuth 2.0 login flow.
-func (s *AuthService) InitiateOAuthLogin(ctx context.Context, providerName string, clientProvidedRedirectURI string, clientProvidedState string) (string, error) {
+// InitiateOAuthLogin prepares for an OAuth 2.0 login flow with a specified provider.
+// It validates the provider, generates a CSRF token, and constructs an authorization URL
+// to which the user should be redirected.
+// It also generates a state JWT which should be set as an HttpOnly cookie by the caller (HTTP handler)
+// to be validated during the OAuth callback.
+// Parameters:
+//   - ctx: The context for the request.
+//   - providerName: The name of the OAuth provider (e.g., "google", "vk").
+//   - clientProvidedRedirectURI: An optional redirect URI provided by the client application,
+//     to which the user might be redirected after successful authentication and callback handling by this service.
+//     This URI is stored within the state JWT.
+//   - clientProvidedState: An optional state value provided by the client application, also stored in the state JWT.
+//
+// Returns the constructed authorization URL for the OAuth provider, the state JWT string (to be set as a cookie),
+// and an error if any.
+// Possible errors: domainErrors.ErrUnsupportedOAuthProvider or internal errors.
+func (s *AuthService) InitiateOAuthLogin(ctx context.Context, providerName string, clientProvidedRedirectURI string, clientProvidedState string) (string, string, error) { // Corrected return type
 	s.logger.Info("Initiating OAuth login",
 		zap.String("provider", providerName),
 		zap.String("clientProvidedRedirectURI", clientProvidedRedirectURI),
@@ -1435,7 +1562,23 @@ func (s *AuthService) InitiateOAuthLogin(ctx context.Context, providerName strin
 	return fullAuthURL, stateCookieJWT, nil
 }
 
-// HandleOAuthCallback handles the callback from an OAuth 2.0 provider.
+// HandleOAuthCallback processes the callback from an OAuth 2.0 provider after user authorization.
+// It validates the received state (CSRF token) against the state JWT stored in a cookie,
+// exchanges the authorization code for provider tokens (access, refresh, ID tokens),
+// fetches user information from the provider, links or creates a platform user account,
+// generates platform session and tokens, and publishes relevant events.
+// Records audit logs for these actions.
+// Parameters:
+//   - ctx: The context for the request.
+//   - providerName: The name of the OAuth provider.
+//   - authorizationCode: The authorization code received from the provider.
+//   - receivedCSRFState: The 'state' parameter received from the provider (should match CSRF token in state JWT).
+//   - stateCookieJWT: The JWT string read from the state cookie set during InitiateOAuthLogin.
+//   - deviceInfo: A map containing device information like user_agent and ip_address.
+//
+// Returns a platform token pair, user details, and an error if any.
+// Possible errors: domainErrors.ErrUnsupportedOAuthProvider, domainErrors.ErrOAuthStateMismatch,
+// errors during token exchange or user info fetching from provider, domainErrors.ErrUserBlocked, or internal errors.
 func (s *AuthService) HandleOAuthCallback(
 	ctx context.Context,
 	providerName string,

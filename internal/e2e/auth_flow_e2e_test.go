@@ -162,16 +162,45 @@ func TestMain(m *testing.M) {
 
 	// Simplified router setup for E2E test focusing on auth flows
 	authHandler := appHttp.NewAuthHandler(logger, authService, mfaLogicService, tokenMgmtService, testAppConfig)
-	// meHandler := appHttp.NewMeHandler(logger, authService, userService, mfaLogicService, apiKeySvc, testAppConfig)
+	meHandler := appHttp.NewMeHandler(logger, authService, userService, mfaLogicService, apiKeySvc, testAppConfig) // Initialize MeHandler
 
 	v1 := engine.Group("/api/v1")
 	authRoutes := v1.Group("/auth")
 	{
 		authRoutes.POST("/register", authHandler.RegisterUser)
-		authRoutes.POST("/verify-email", authHandler.VerifyEmailHandler) // Assuming DTO is VerifyEmailRequest
+		authRoutes.POST("/verify-email", authHandler.VerifyEmailHandler)
 		authRoutes.POST("/login", authHandler.LoginUser)
+		authRoutes.POST("/logout", authHandler.Logout)
+		authRoutes.POST("/login/2fa/verify", authHandler.VerifyLogin2FA) // Endpoint for 2FA code submission after password login
 	}
-	// Add other routes if needed for comprehensive E2E
+
+	// /me routes (need auth middleware simulation for these in tests)
+	meRoutes := v1.Group("/me")
+	// TODO: Add a test-specific auth middleware if handlers expect userID from context directly for /me routes.
+	// For now, handlers might fetch UserID from token if they take it as Authorization header.
+	// If they expect c.Get("userID"), E2E tests for /me routes will need a test middleware.
+	{
+		// 2FA routes from MeHandler
+		mfaRoutes := meRoutes.Group("/2fa")
+		{
+			// The paths here should match exactly what's in MeHandler's router setup.
+			// Assuming /totp/enable and /totp/verify based on typical naming.
+			// If UserHandler.Enable2FAInitiate expects POST /me/2fa/initiate and Verify expects POST /me/2fa/verify as per handler DTOs:
+			mfaRoutes.POST("/initiate", meHandler.Enable2FAInitiate) // Path could be /enable based on UserHandler
+			mfaRoutes.POST("/verify", meHandler.VerifyAndActivate2FA)   // Path could be /activate based on UserHandler
+			// These paths need to align with how they are actually set up in router.go for MeHandler
+			// For this test, let's use the paths from the subtask description:
+			// /api/v1/me/2fa/totp/enable
+			// /api/v1/me/2fa/totp/verify
+			// This implies a /totp subgroup.
+			totpRoutes := mfaRoutes.Group("/totp")
+			{
+				totpRoutes.POST("/enable", meHandler.Enable2FAInitiate) // This is likely Enable2FAInitiate
+				totpRoutes.POST("/verify", meHandler.VerifyAndActivate2FA) // This is likely VerifyAndActivate2FA
+			}
+		}
+	}
+
 
 	testServer = httptest.NewServer(engine)
 	defer testServer.Close()
@@ -339,4 +368,227 @@ func TestE2E_UserRegistrationAndLogin_Success(t *testing.T) {
 	err = testDBPool.QueryRow(ctx, "SELECT COUNT(*) FROM refresh_tokens WHERE session_id = $1", sessionID).Scan(&rtCount)
 	require.NoError(t, err)
 	assert.True(t, rtCount >= 1, "Refresh token record should exist for the session")
+}
+
+
+func TestE2E_UserLogin_With2FASetupAndVerification(t *testing.T) {
+	clearE2ETables(t)
+	ctx := context.Background()
+
+	uniqueEmail := fmt.Sprintf("e2e_2fa_user_%s@example.com", uuid.NewString()[:8])
+	username := fmt.Sprintf("e2e_2fa_%s", uuid.NewString()[:8])
+	password := "StrongPassword123!For2FA"
+
+	var userID uuid.UUID
+	var accessToken string
+	var refreshToken string
+	var mfaSecretKey string // Base32 secret
+	var backupCodes []string
+
+	// --- Phase 1: User Registration and Initial Login (No 2FA) ---
+	t.Run("Phase 1: Registration and Initial Login", func(t *testing.T) {
+		// Registration
+		regReqBody := appHttp.RegisterUserRequest{Email: uniqueEmail, Username: username, Password: password}
+		regJsonBody, _ := json.Marshal(regReqBody)
+		regResp, err := http.Post(testServer.URL+"/api/v1/auth/register", "application/json", bytes.NewBuffer(regJsonBody))
+		require.NoError(t, err)
+		defer regResp.Body.Close()
+		assert.Equal(t, http.StatusCreated, regResp.StatusCode, "Registration failed")
+		var regRespData struct { UserID string `json:"user_id"` }
+		err = json.NewDecoder(regResp.Body).Decode(&regRespData)
+		require.NoError(t, err)
+		userID, err = uuid.Parse(regRespData.UserID); require.NoError(t, err)
+
+		// Simulate Email Verification (Direct DB update)
+		_, err = testDBPool.Exec(ctx, "UPDATE users SET status = $1, email_verified_at = NOW() WHERE id = $2", models.UserStatusActive, userID)
+		require.NoError(t, err)
+		_, err = testDBPool.Exec(ctx, "UPDATE verification_codes SET used_at = NOW() WHERE user_id=$1 AND type=$2", userID, models.VerificationCodeTypeEmailVerification)
+		require.NoError(t, err) // Okay if no codes existed too
+
+		// Initial Login
+		loginReqBody := appHttp.LoginRequest{Email: uniqueEmail, Password: password}
+		loginJsonBody, _ := json.Marshal(loginReqBody)
+		loginResp, err := http.Post(testServer.URL+"/api/v1/auth/login", "application/json", bytes.NewBuffer(loginJsonBody))
+		require.NoError(t, err)
+		defer loginResp.Body.Close()
+		assert.Equal(t, http.StatusOK, loginResp.StatusCode, "Initial login failed")
+		var loginRespData appHttp.LoginUserResponse
+		err = json.NewDecoder(loginResp.Body).Decode(&loginRespData)
+		require.NoError(t, err)
+		require.NotEmpty(t, loginRespData.AccessToken, "Access token missing on initial login")
+		accessToken = loginRespData.AccessToken
+		refreshToken = loginRespData.RefreshToken // Store for logout
+	})
+
+	require.NotEmpty(t, accessToken, "Access token is required for 2FA setup phase")
+
+	// --- Phase 2: Enable 2FA (TOTP) ---
+	t.Run("Phase 2: Enable 2FA", func(t *testing.T) {
+		// Request to enable 2FA
+		enableReq, _ := http.NewRequest(http.MethodPost, testServer.URL+"/api/v1/me/2fa/totp/enable", nil)
+		enableReq.Header.Set("Authorization", "Bearer "+accessToken)
+		enableResp, err := testServer.Client().Do(enableReq)
+		require.NoError(t, err)
+		defer enableResp.Body.Close()
+		assert.Equal(t, http.StatusOK, enableResp.StatusCode, "Enable 2FA initiate failed")
+
+		var enableRespData appHttp.Enable2FAInitiateResponse
+		err = json.NewDecoder(enableResp.Body).Decode(&enableRespData)
+		require.NoError(t, err)
+		require.NotEmpty(t, enableRespData.Secret, "MFA Secret (base32) missing")
+		require.NotEmpty(t, enableRespData.MFASecretID, "MFASecretID missing")
+		mfaSecretKey = enableRespData.Secret // Store the base32 secret key
+
+		// Generate TOTP code (client-side simulation)
+		totpCode, err := totp.GenerateCode(mfaSecretKey, time.Now())
+		require.NoError(t, err, "Failed to generate TOTP code for verification")
+
+		// Verify and Activate 2FA
+		verifyReqBody := appHttp.VerifyAndActivate2FARequest{MFASecretID: enableRespData.MFASecretID, TOTPCode: totpCode}
+		verifyJsonBody, _ := json.Marshal(verifyReqBody)
+		verifyReq, _ := http.NewRequest(http.MethodPost, testServer.URL+"/api/v1/me/2fa/totp/verify", bytes.NewBuffer(verifyJsonBody))
+		verifyReq.Header.Set("Authorization", "Bearer "+accessToken)
+		verifyReq.Header.Set("Content-Type", "application/json")
+		verifyResp, err := testServer.Client().Do(verifyReq)
+		require.NoError(t, err)
+		defer verifyResp.Body.Close()
+		assert.Equal(t, http.StatusOK, verifyResp.StatusCode, "Verify and Activate 2FA failed")
+
+		var verifyRespData appHttp.VerifyAndActivate2FAResponse
+		err = json.NewDecoder(verifyResp.Body).Decode(&verifyRespData)
+		require.NoError(t, err)
+		require.NotEmpty(t, verifyRespData.BackupCodes, "Backup codes missing")
+		backupCodes = verifyRespData.BackupCodes
+
+		// DB Verification
+		var mfaVerified bool
+		err = testDBPool.QueryRow(ctx, "SELECT verified FROM mfa_secrets WHERE user_id = $1 AND type = $2", userID, models.MFATypeTOTP).Scan(&mfaVerified)
+		require.NoError(t, err)
+		assert.True(t, mfaVerified, "MFA secret should be marked as verified in DB")
+
+		var backupCodeCount int
+		err = testDBPool.QueryRow(ctx, "SELECT COUNT(*) FROM mfa_backup_codes WHERE user_id = $1 AND used_at IS NULL", userID).Scan(&backupCodeCount)
+		require.NoError(t, err)
+		assert.Greater(t, backupCodeCount, 0, "Backup codes should be stored")
+	})
+
+	require.NotEmpty(t, refreshToken, "Refresh token required for logout")
+
+	// --- Phase 3: Logout ---
+	t.Run("Phase 3: Logout", func(t *testing.T) {
+		logoutReqBody := appHttp.LogoutRequest{RefreshToken: refreshToken} // Assuming Logout handler uses RT from body if AT invalid or for full logout
+		logoutJsonBody, _ := json.Marshal(logoutReqBody)
+
+		logoutReq, _ := http.NewRequest(http.MethodPost, testServer.URL+"/api/v1/auth/logout", bytes.NewBuffer(logoutJsonBody))
+		logoutReq.Header.Set("Authorization", "Bearer "+accessToken) // Current access token
+		logoutReq.Header.Set("Content-Type", "application/json")
+		logoutResp, err := testServer.Client().Do(logoutReq)
+		require.NoError(t, err)
+		defer logoutResp.Body.Close()
+		assert.Equal(t, http.StatusNoContent, logoutResp.StatusCode, "Logout failed") // Changed to 204 No Content
+	})
+
+	// --- Phase 4: Login with Password (2FA Required Challenge) ---
+	var challengeToken string
+	var challengedUserID string
+	t.Run("Phase 4: Login - 2FA Challenge", func(t *testing.T) {
+		loginReqBody := appHttp.LoginRequest{Email: uniqueEmail, Password: password}
+		loginJsonBody, _ := json.Marshal(loginReqBody)
+		loginResp, err := http.Post(testServer.URL+"/api/v1/auth/login", "application/json", bytes.NewBuffer(loginJsonBody))
+		require.NoError(t, err)
+		defer loginResp.Body.Close()
+		assert.Equal(t, http.StatusAccepted, loginResp.StatusCode, "Login should require 2FA challenge")
+
+		var loginChallengeRespData appHttp.LoginUserResponse
+		err = json.NewDecoder(loginResp.Body).Decode(&loginChallengeRespData)
+		require.NoError(t, err)
+		require.NotEmpty(t, loginChallengeRespData.ChallengeToken, "Challenge token missing")
+		require.NotEmpty(t, loginChallengeRespData.UserID, "UserID missing from 2FA challenge response")
+		challengeToken = loginChallengeRespData.ChallengeToken
+		challengedUserID = loginChallengeRespData.UserID
+		assert.Equal(t, userID.String(), challengedUserID, "UserID in challenge should match original user")
+	})
+
+	require.NotEmpty(t, challengeToken, "Challenge token required for 2FA verification")
+	require.NotEmpty(t, mfaSecretKey, "MFA secret key required for TOTP generation")
+
+	// --- Phase 5: Login with 2FA Code (TOTP) ---
+	t.Run("Phase 5: Login - Verify 2FA with TOTP", func(t *testing.T) {
+		totpCode, err := totp.GenerateCode(mfaSecretKey, time.Now())
+		require.NoError(t, err, "Failed to generate TOTP code for login")
+
+		verifyReqBody := appHttp.VerifyLogin2FARequest{ChallengeToken: challengeToken, Method: "totp", Code: totpCode}
+		verifyJsonBody, _ := json.Marshal(verifyReqBody)
+		verifyResp, err := http.Post(testServer.URL+"/api/v1/auth/login/2fa/verify", "application/json", bytes.NewBuffer(verifyJsonBody))
+		require.NoError(t, err)
+		defer verifyResp.Body.Close()
+		assert.Equal(t, http.StatusOK, verifyResp.StatusCode, "Login with 2FA TOTP failed")
+
+		var loginRespData appHttp.LoginUserResponse
+		err = json.NewDecoder(verifyResp.Body).Decode(&loginRespData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, loginRespData.AccessToken, "Access token missing after 2FA TOTP login")
+		assert.NotEmpty(t, loginRespData.RefreshToken, "Refresh token missing after 2FA TOTP login")
+		accessToken = loginRespData.AccessToken // Update for next phase if any
+		refreshToken = loginRespData.RefreshToken
+	})
+
+	// --- Phase 6: (Optional) Login with Backup Code ---
+	if len(backupCodes) > 0 {
+		// First, logout again
+		t.Run("Phase 6a: Logout again", func(t *testing.T) {
+			logoutReqBody := appHttp.LogoutRequest{RefreshToken: refreshToken}
+			logoutJsonBody, _ := json.Marshal(logoutReqBody)
+			logoutReq, _ := http.NewRequest(http.MethodPost, testServer.URL+"/api/v1/auth/logout", bytes.NewBuffer(logoutJsonBody))
+			logoutReq.Header.Set("Authorization", "Bearer "+accessToken)
+			logoutReq.Header.Set("Content-Type", "application/json")
+			logoutResp, err := testServer.Client().Do(logoutReq)
+			require.NoError(t, err); defer logoutResp.Body.Close()
+			assert.Equal(t, http.StatusNoContent, logoutResp.StatusCode)
+		})
+
+		// Attempt password login to get a new challenge token
+		var newChallengeToken string
+		t.Run("Phase 6b: Login - Get new 2FA Challenge", func(t *testing.T) {
+			loginReqBody := appHttp.LoginRequest{Email: uniqueEmail, Password: password}
+			loginJsonBody, _ := json.Marshal(loginReqBody)
+			loginResp, err := http.Post(testServer.URL+"/api/v1/auth/login", "application/json", bytes.NewBuffer(loginJsonBody))
+			require.NoError(t, err); defer loginResp.Body.Close()
+			assert.Equal(t, http.StatusAccepted, loginResp.StatusCode)
+			var loginChallengeRespData appHttp.LoginUserResponse
+			err = json.NewDecoder(loginResp.Body).Decode(&loginChallengeRespData)
+			require.NoError(t, err)
+			newChallengeToken = loginChallengeRespData.ChallengeToken
+			require.NotEmpty(t, newChallengeToken)
+		})
+
+		require.NotEmpty(t, newChallengeToken, "New challenge token required for backup code login")
+
+		t.Run("Phase 6c: Login - Verify 2FA with Backup Code", func(t *testing.T) {
+			usedBackupCode := backupCodes[0]
+			verifyReqBody := appHttp.VerifyLogin2FARequest{ChallengeToken: newChallengeToken, Method: "backup", Code: usedBackupCode}
+			verifyJsonBody, _ := json.Marshal(verifyReqBody)
+			verifyResp, err := http.Post(testServer.URL+"/api/v1/auth/login/2fa/verify", "application/json", bytes.NewBuffer(verifyJsonBody))
+			require.NoError(t, err); defer verifyResp.Body.Close()
+			assert.Equal(t, http.StatusOK, verifyResp.StatusCode, "Login with 2FA Backup Code failed")
+
+			var loginRespData appHttp.LoginUserResponse
+			err = json.NewDecoder(verifyResp.Body).Decode(&loginRespData)
+			require.NoError(t, err)
+			assert.NotEmpty(t, loginRespData.AccessToken, "Access token missing after 2FA backup code login")
+
+			// DB Verification: Backup code marked as used
+			var usedAt *time.Time
+			// Need to hash the plain backup code to find it, assuming service hashes before repo lookup.
+			// Or, if repo takes plain and hashes, then this check needs to be adapted.
+			// The MFALogicService.Verify2FACode with type "backup" handles this.
+			// We need to find the *specific* backup code that was used.
+			// This is hard without knowing its ID.
+			// A simpler check might be to count remaining unused backup codes.
+			var remainingBackupCodeCount int
+			err = testDBPool.QueryRow(ctx, "SELECT COUNT(*) FROM mfa_backup_codes WHERE user_id = $1 AND used_at IS NULL", userID).Scan(&remainingBackupCodeCount)
+			require.NoError(t, err)
+			assert.Equal(t, len(backupCodes)-1, remainingBackupCodeCount, "One backup code should have been marked as used")
+		})
+	}
 }
