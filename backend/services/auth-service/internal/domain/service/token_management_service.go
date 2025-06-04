@@ -46,10 +46,24 @@ type TokenManagementService interface {
 
 	// Validate2FAChallengeToken validates the challenge token and returns the userID.
 	Validate2FAChallengeToken(tokenString string) (userID string, err error)
+
+	// GenerateStateJWT creates a short-lived JWT for OAuth state cookie.
+	GenerateStateJWT(claims *OAuthStateClaims, secret string, ttl time.Duration) (string, error)
+	// ValidateStateJWT validates the OAuth state JWT from cookie.
+	ValidateStateJWT(tokenString string, secret string) (*OAuthStateClaims, error)
 }
 
 // ChallengeClaims represents the JWT claims for 2FA challenge tokens.
 type ChallengeClaims struct {
 	UserID string `json:"user_id"`
+	jwt.RegisteredClaims
+}
+
+// OAuthStateClaims represents the JWT claims for storing OAuth state.
+type OAuthStateClaims struct {
+	ProviderName            string `json:"provider_name"`
+	ClientProvidedRedirectURI string `json:"client_redirect_uri,omitempty"`
+	ClientProvidedState     string `json:"client_state,omitempty"`
+	CSRFToken               string `json:"csrf_token"` // The actual random value used in provider's state param
 	jwt.RegisteredClaims
 }

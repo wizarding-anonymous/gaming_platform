@@ -30,9 +30,10 @@ type TokenService struct {
 	logger               *zap.Logger
 	tokenMgmtService     domainService.TokenManagementService
 	refreshTokenRepo     repoInterfaces.RefreshTokenRepository
-	userRepo             repoInterfaces.UserRepository
-	sessionRepo          repoInterfaces.SessionRepository
-	// jwtConfig is now part of tokenMgmtService's internal config
+	userRepo             repoInterfaces.UserRepository     // For fetching user details if needed during refresh
+	sessionRepo          repoInterfaces.SessionRepository  // For validating session during refresh
+	userRolesRepo        repoInterfaces.UserRolesRepository  // Added for JWT enrichment
+	roleRepo             repoInterfaces.RoleRepository     // Added for JWT enrichment (permissions per role)
 }
 
 // NewTokenService создает новый экземпляр TokenService
@@ -43,6 +44,8 @@ func NewTokenService(
 	refreshTokenRepo repoInterfaces.RefreshTokenRepository,
 	userRepo repoInterfaces.UserRepository,
 	sessionRepo repoInterfaces.SessionRepository,
+	userRolesRepo repoInterfaces.UserRolesRepository, // Added
+	roleRepo repoInterfaces.RoleRepository,       // Added
 ) *TokenService {
 	return &TokenService{
 		redisClient:          redisClient,
@@ -51,6 +54,8 @@ func NewTokenService(
 		refreshTokenRepo:     refreshTokenRepo,
 		userRepo:             userRepo,
 		sessionRepo:          sessionRepo,
+		userRolesRepo:        userRolesRepo, // Added
+		roleRepo:             roleRepo,       // Added
 	}
 }
 
@@ -72,12 +77,41 @@ func (s *TokenService) CreateTokenPairWithSession(ctx context.Context, user *mod
 	// This part highlights a dependency: need fully populated user or fetch roles here.
 	// For simplicity, if user.Roles is not directly available as []string, pass empty.
 	// This should be refined based on how user details are propagated.
-	// Let's assume for this step, user.Roles is not directly on the models.User used here,
-	// or it needs to be fetched. We might need userRepo here.
-	// For now, using empty roles/permissions for placeholder.
-	// In a real scenario, these would be populated from userRepo.GetRolesForUser(user.ID) -> then permissions for those roles.
+	// Fetch roles and permissions for the user for JWT claims
+	roleIDs, err := s.userRolesRepo.GetRoleIDsForUser(ctx, user.ID)
+	if err != nil {
+		s.logger.Error("Failed to get role IDs for user for token generation", zap.Error(err), zap.String("userID", user.ID.String()))
+		// Decide if this is a fatal error for token generation or proceed with no roles/permissions
+		// For now, proceed with empty, but log it.
+		roleIDs = []string{}
+	}
 
-	accessTokenString, claims, err := s.tokenMgmtService.GenerateAccessToken(user.ID.String(), user.Username, roleNames /*permissionNames,*/ ,nil, sessionID.String())
+	roleNames := make([]string, 0, len(roleIDs))
+	permissionNames := make([]string, 0)
+	permissionSet := make(map[string]struct{}) // To store unique permission names
+
+	for _, roleID := range roleIDs {
+		role, errRole := s.roleRepo.GetByID(ctx, roleID)
+		if errRole != nil {
+			s.logger.Warn("Failed to get role details for token generation", zap.Error(errRole), zap.String("roleID", roleID))
+			continue // Skip this role if details can't be fetched
+		}
+		roleNames = append(roleNames, role.Name)
+
+		perms, errPerms := s.roleRepo.GetPermissionsForRole(ctx, roleID)
+		if errPerms != nil {
+			s.logger.Warn("Failed to get permissions for role for token generation", zap.Error(errPerms), zap.String("roleID", roleID))
+			continue // Skip permissions for this role if error
+		}
+		for _, p := range perms {
+			if _, exists := permissionSet[p.ID]; !exists { // Using p.ID as permission name/key
+				permissionNames = append(permissionNames, p.ID)
+				permissionSet[p.ID] = struct{}{}
+			}
+		}
+	}
+
+	accessTokenString, claims, err := s.tokenMgmtService.GenerateAccessToken(user.ID.String(), user.Username, roleNames, permissionNames, sessionID.String())
 	if err != nil {
 		return models.TokenPair{}, fmt.Errorf("failed to generate access token: %w", err)
 	}

@@ -80,6 +80,59 @@ type PasswordChangedEvent struct {
 	ChangedAt time.Time `json:"changed_at"`
 }
 
+// --- RBAC Event Structs ---
+
+// RoleCreatedEvent is published when a new role is created.
+type RoleCreatedEvent struct {
+	RoleID      string    `json:"role_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// RoleUpdatedEvent is published when a role's details are updated.
+type RoleUpdatedEvent struct {
+	RoleID      string    `json:"role_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// RoleDeletedEvent is published when a role is deleted.
+type RoleDeletedEvent struct {
+	RoleID    string    `json:"role_id"`
+	DeletedAt time.Time `json:"deleted_at"`
+}
+
+// RoleAssignedEvent is published when a role is assigned to a user.
+type RoleAssignedEvent struct {
+	UserID          string    `json:"user_id"`
+	RoleID          string    `json:"role_id"`
+	RoleName        string    `json:"role_name"` // For context
+	AssignedAt      time.Time `json:"assigned_at"`
+	ChangedByUserID string    `json:"changed_by_user_id,omitempty"` // Admin/system that made the change
+}
+
+// RoleRemovedEvent is published when a role is removed from a user.
+// This specific event might be deprecated in favor of UserRolesChangedEvent.
+type RoleRemovedEvent struct {
+	UserID          string    `json:"user_id"`
+	RoleID          string    `json:"role_id"` // The specific role that was removed
+	RoleName        string    `json:"role_name"` // For context
+	RemovedAt       time.Time `json:"removed_at"`
+	ChangedByUserID string    `json:"changed_by_user_id,omitempty"`
+}
+
+// UserRolesChangedEvent is a more general event for when a user's role assignments change.
+// This can cover both assignment and removal.
+type UserRolesChangedEvent struct {
+	UserID          string    `json:"user_id"`
+	OldRoleIDs      []string  `json:"old_role_ids"` // List of role IDs before the change
+	NewRoleIDs      []string  `json:"new_role_ids"` // List of role IDs after the change
+	ChangedByUserID *string   `json:"changed_by_user_id,omitempty"` // Admin/system ID, use pointer for optional
+	ChangeTimestamp time.Time `json:"change_timestamp"`
+}
+
 
 // Add other event structs as needed for Kafka integration,
 // ensuring they align with `auth_event_streaming.md`.

@@ -17,8 +17,23 @@ type Config struct {
 	GRPC      GRPCConfig      `mapstructure:"grpc"`
 	CORS      CORSConfig      `mapstructure:"cors"`
 	Security  SecurityConfig  `mapstructure:"security"`
-	MFA       MFAConfig       `mapstructure:"mfa"`
+	MFA            MFAConfig                        `mapstructure:"mfa"`
+	OAuthProviders map[string]OAuthProviderConfig `mapstructure:"oauth_providers"`
 }
+
+// OAuthProviderConfig holds configuration for a single OAuth 2.0 provider.
+type OAuthProviderConfig struct {
+	ClientID     string   `mapstructure:"client_id"`
+	ClientSecret string   `mapstructure:"client_secret"`
+	RedirectURL  string   `mapstructure:"redirect_url"` // Default redirect URL for this auth service
+	AuthURL      string   `mapstructure:"auth_url"`     // Provider's authorization endpoint
+	TokenURL     string   `mapstructure:"token_url"`    // Provider's token endpoint
+	UserInfoURL  string   `mapstructure:"user_info_url"`// Provider's user info endpoint
+	Scopes       []string `mapstructure:"scopes"`       // List of scopes to request
+	// Some providers might need additional fields, e.g., Odnoklassniki public key
+	ProviderSpecific map[string]string `mapstructure:"provider_specific,omitempty"`
+}
+
 
 // MFAConfig holds configuration for Multi-Factor Authentication.
 type MFAConfig struct {
@@ -41,7 +56,15 @@ type Argon2idConfig struct {
 type SecurityConfig struct {
 	PasswordHash Argon2idConfig `mapstructure:"password_hash"`
 	Lockout      LockoutConfig  `mapstructure:"lockout"`
+	OAuth        OAuthConfig    `mapstructure:"oauth_state"` // Added for OAuth state cookie
 	// Add other security settings here, e.g., rate_limit, ip_whitelist from YAML
+}
+
+// OAuthConfig holds parameters for OAuth state management.
+type OAuthConfig struct {
+	StateSecret    string        `mapstructure:"state_secret"`    // Secret for signing/encrypting state cookie
+	StateCookieName string        `mapstructure:"state_cookie_name"`
+	StateCookieTTL  time.Duration `mapstructure:"state_cookie_ttl"` // e.g., "10m"
 }
 
 // LockoutConfig holds parameters for account lockout policy.

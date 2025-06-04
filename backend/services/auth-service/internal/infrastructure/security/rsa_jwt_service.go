@@ -235,3 +235,40 @@ func (s *rsaTokenManagementService) Validate2FAChallengeToken(tokenString string
 	}
 	return "", errors.New("invalid challenge token or claims type")
 }
+
+// GenerateStateJWT creates a short-lived JWT for OAuth state cookie.
+// This uses HMAC-SHA256 as it's a symmetric secret known only to this service.
+func (s *rsaTokenManagementService) GenerateStateJWT(claims *service.OAuthStateClaims, secret string, ttl time.Duration) (string, error) {
+	if secret == "" {
+		return "", errors.New("OAuth state JWT secret cannot be empty")
+	}
+	claims.RegisteredClaims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(ttl))
+	claims.RegisteredClaims.IssuedAt = jwt.NewNumericDate(time.Now())
+	claims.RegisteredClaims.NotBefore = jwt.NewNumericDate(time.Now())
+	// JTI can be added if needed: claims.RegisteredClaims.ID = uuid.NewString()
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
+}
+
+// ValidateStateJWT validates the OAuth state JWT from cookie.
+func (s *rsaTokenManagementService) ValidateStateJWT(tokenString string, secret string) (*service.OAuthStateClaims, error) {
+	if secret == "" {
+		return nil, errors.New("OAuth state JWT secret cannot be empty for validation")
+	}
+	token, err := jwt.ParseWithClaims(tokenString, &service.OAuthStateClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method for state JWT: %v", token.Header["alg"])
+		}
+		return []byte(secret), nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("state JWT validation failed: %w", err)
+	}
+
+	if claims, ok := token.Claims.(*service.OAuthStateClaims); ok && token.Valid {
+		return claims, nil
+	}
+	return nil, errors.New("invalid state JWT or claims type")
+}

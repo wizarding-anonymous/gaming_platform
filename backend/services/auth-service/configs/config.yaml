@@ -157,7 +157,11 @@ security:
     key_length: 32
   lockout: # Added
     max_failed_attempts: 5 # Added
-    lockout_duration: 15m # Added
+    lockout_duration: 15m
+  oauth_state: # Added
+    state_secret: "a_very_secure_random_string_for_oauth_state_at_least_32_bytes" # MUST be changed in production
+    state_cookie_name: "oauth_state_csrf" # Added
+    state_cookie_ttl: 10m # Added (10 minutes)
   rate_limit:
     enabled: true
     requests: 100
@@ -175,3 +179,33 @@ mfa:
   # Example: openssl rand -hex 32
   totp_secret_encryption_key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   totp_backup_code_count: 10
+
+# Настройки OAuth провайдеров
+oauth_providers:
+  vk:
+    client_id: "YOUR_VK_CLIENT_ID_HERE"
+    client_secret: "YOUR_VK_CLIENT_SECRET_HERE"
+    redirect_url: "http://localhost:8080/api/v1/auth/oauth/vk/callback" # Adjust port/host as needed
+    auth_url: "https://oauth.vk.com/authorize"
+    token_url: "https://oauth.vk.com/access_token"
+    user_info_url: "https://api.vk.com/method/users.get"
+    # Example: user_info_url: "https://api.vk.com/method/users.get?v=5.131&fields=id,first_name,last_name,email" (ensure version and fields)
+    scopes: ["email", "offline"] # Standard scopes, adjust as needed
+  odnoklassniki:
+    client_id: "YOUR_OK_CLIENT_ID_HERE" # Often a numerical ID
+    client_secret: "YOUR_OK_CLIENT_SECRET_KEY_HERE" # The actual secret key
+    redirect_url: "http://localhost:8080/api/v1/auth/oauth/ok/callback"
+    auth_url: "https://connect.ok.ru/oauth/authorize"
+    token_url: "https://api.ok.ru/oauth/token.do"
+    user_info_url: "https://api.ok.ru/fb.do" # Requires params like method=users.getCurrentUser, application_key, sig
+    scopes: ["GET_EMAIL", "VALUABLE_ACCESS"] # Standard scopes for OK
+    provider_specific:
+      public_key: "YOUR_OK_APP_PUBLIC_KEY_HERE" # Odnoklassniki also uses an application public key for some API calls / session validation
+  # google:
+  #   client_id: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+  #   client_secret: "YOUR_GOOGLE_CLIENT_SECRET"
+  #   redirect_url: "http://localhost:8080/api/v1/auth/oauth/google/callback"
+  #   auth_url: "https://accounts.google.com/o/oauth2/v2/auth"
+  #   token_url: "https://oauth2.googleapis.com/token"
+  #   user_info_url: "https://www.googleapis.com/oauth2/v3/userinfo"
+  #   scopes: ["openid", "email", "profile"]

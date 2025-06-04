@@ -218,20 +218,32 @@ func (h *AuthHandler) OAuthLogin(c *gin.Context) {
 	clientRedirectURI := c.Query("redirect_uri") // Optional: client can specify where to be redirected after our callback
 	clientState := c.Query("state")             // Optional: client can pass its own state
 
-	// Service generates the actual auth URL and might store state/redirect_uri in a cookie
-	authURL, err := h.authService.InitiateOAuthLogin(c.Request.Context(), provider, clientRedirectURI, clientState)
+	// Service generates the actual auth URL and the state JWT to be stored in a cookie.
+	authURL, stateCookieJWT, err := h.authService.InitiateOAuthLogin(c.Request.Context(), provider, clientRedirectURI, clientState)
 	if err != nil {
 		if errors.Is(err, domainErrors.ErrUnsupportedOAuthProvider) {
 			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Unsupported OAuth provider", err)
+		} else if errors.Is(err, domainErrors.ErrInternal) { // Catch specific internal errors if service returns them
+			ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Failed to initiate OAuth login (internal)", err)
 		} else {
 			ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Failed to initiate OAuth login", err)
 		}
 		return
 	}
 
-	// Store state in a short-lived, secure cookie if not handled by service directly
-	// For now, assume service handles state storage if needed (e.g., via server-side session or signed state in URL)
-	// http.SetCookie(c.Writer, &http.Cookie{...})
+	// Set the state JWT in an HttpOnly, Secure cookie
+	// The cookie name should be dynamic based on provider or a general one.
+	// Using a general name from config for now.
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     h.cfg.Security.OAuth.StateCookieName, // e.g., "oauth_state_csrf"
+		Value:    stateCookieJWT,
+		Expires:  time.Now().Add(h.cfg.Security.OAuth.StateCookieTTL),
+		Path:     "/api/v1/auth/oauth/" + provider + "/callback", // Scope cookie to the callback path
+		Domain:   c.Request.URL.Host, // Set domain appropriately
+		Secure:   c.Request.TLS != nil, // True if HTTPS
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	c.Redirect(http.StatusTemporaryRedirect, authURL)
 }
@@ -240,8 +252,9 @@ func (h *AuthHandler) OAuthLogin(c *gin.Context) {
 // GET /api/v1/auth/oauth/{provider}/callback
 func (h *AuthHandler) OAuthCallback(c *gin.Context) {
 	provider := c.Param("provider")
-	code := c.Query("code")
-	state := c.Query("state") // State from provider
+	authorizationCode := c.Query("code") // 'code' from provider
+	receivedStateCSRF := c.Query("state")   // This is the CSRF token from provider's 'state' param
+
 	providerError := c.Query("error")
 	errorDescription := c.Query("error_description")
 
@@ -251,24 +264,40 @@ func (h *AuthHandler) OAuthCallback(c *gin.Context) {
 			zap.String("error", providerError),
 			zap.String("description", errorDescription),
 		)
-		// Redirect to a frontend error page or return JSON
 		ErrorResponse(c.Writer, h.logger, http.StatusUnauthorized, fmt.Sprintf("OAuth provider error: %s", errorDescription), errors.New(providerError))
 		return
 	}
 
-	if code == "" {
+	if authorizationCode == "" {
 		ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Authorization code missing in OAuth callback", nil)
 		return
 	}
 
-	// State validation should occur within AuthService.HandleOAuthCallback
+	// Retrieve state cookie
+	stateCookieJWT, err := c.Cookie(h.cfg.Security.OAuth.StateCookieName)
+	if err != nil {
+		h.logger.Warn("OAuthCallback: State cookie not found or failed to read", zap.Error(err))
+		ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "OAuth state validation failed: missing state cookie", err)
+		return
+	}
+	// Clear the state cookie immediately after reading
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     h.cfg.Security.OAuth.StateCookieName,
+		Value:    "",
+		Path:     "/api/v1/auth/oauth/" + provider + "/callback",
+		Expires:  time.Unix(0,0),
+		HttpOnly: true,
+		Secure:   c.Request.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	deviceInfo := map[string]string{
 		"user_agent": c.Request.UserAgent(),
 		"ip_address": c.ClientIP(),
 	}
 
-	tokenPair, user, err := h.authService.HandleOAuthCallback(c.Request.Context(), provider, code, state, deviceInfo)
+	// Pass stateCookieJWT and receivedStateCSRF to AuthService for validation
+	tokenPair, user, err := h.authService.HandleOAuthCallback(c.Request.Context(), provider, authorizationCode, receivedStateCSRF, stateCookieJWT, deviceInfo)
 	if err != nil {
 		if errors.Is(err, domainErrors.ErrOAuthStateMismatch) || errors.Is(err, domainErrors.ErrInvalidRequest) {
 			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "OAuth callback error: invalid state or request", err)

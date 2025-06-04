@@ -89,9 +89,10 @@ func main() {
 	mfaSecretRepo := repoPostgres.NewMFASecretRepositoryPostgres(dbPool)
 	mfaBackupCodeRepo := repoPostgres.NewMFABackupCodeRepositoryPostgres(dbPool)
 	apiKeyRepo := repoPostgres.NewAPIKeyRepositoryPostgres(dbPool)
-	auditLogRepo := repoPostgres.NewAuditLogRepositoryPostgres(dbPool) // Added
-	// TODO: Initialize RoleRepository, PermissionRepository for RoleService
-	// TODO: Initialize UserRolesRepository for UserService/RoleService (admin part)
+	auditLogRepo := repoPostgres.NewAuditLogRepositoryPostgres(dbPool)
+	userRolesRepo := repoPostgres.NewUserRolesRepositoryPostgres(dbPool) // Added
+	roleRepo := repoPostgres.NewRoleRepositoryPostgres(dbPool) // Added (needed for RoleService)
+	// TODO: Initialize PermissionRepository for RoleService if RoleService needs it directly for more complex ops
 
 	// Инициализация подключения к Redis
 	redisClient, err := redis.NewRedisClient(cfg.Redis)
@@ -148,13 +149,20 @@ func main() {
 		mfaBackupCodeRepo,
 		userRepo,
 		passwordService,
+		auditLogService, // Added
 	)
 
-	// Инициализация APIKeyService
-	apiKeyService := service.NewAPIKeyService(apiKeyRepo, passwordService)
-
 	// Инициализация AuditLogService
-	auditLogService := service.NewAuditLogService(auditLogRepo, logger) // Added
+	auditLogService := service.NewAuditLogService(auditLogRepo, logger) // Moved up to ensure it's available for services below
+
+	// Инициализация APIKeyService
+	apiKeyServiceConfig := domainService.APIKeyServiceConfig{ // Changed: Use domainService.APIKeyServiceConfig
+		APIKeyRepo:      apiKeyRepo,
+		PasswordService: passwordService,
+		AuditLogRecorder: auditLogService, // Added
+	}
+	apiKeyService := domainService.NewAPIKeyService(apiKeyServiceConfig) // Changed: Use domainService.NewAPIKeyService
+
 
 	// Инициализация сервисов
 	// Old TokenService is being refactored. NewTokenService will take new dependencies.
@@ -184,18 +192,36 @@ func main() {
 		cfg,
 		logger,
 		passwordService,
-		tokenManagementService, // Now directly injecting into AuthService
-		mfaSecretRepo,        // Injecting MFASecretRepository
-		mfaLogicService,      // Injecting MFALogicService
+		tokenManagementService,
+		mfaSecretRepo,
+		mfaLogicService,
+		userRolesRepo,
+		roleService,          // Added missing parameter
+		externalAccountRepo,  // Added missing parameter
+		telegramService,      // Added missing parameter (as telegramVerifier)
+		auditLogService,      // Added for audit logging
 	)
 
-	// Assuming UserService and RoleService need specific repositories now, not the generic pgRepo
-	// This part is still placeholder as full DI for these services is out of scope for current MFA focus
-	// For them to work, they'd need their respective repositories created above and passed here.
-	// Example: roleRepo := repoPostgres.NewRoleRepositoryPostgres(dbPool)
-	// roleService := service.NewRoleService(roleRepo, logger)
-	var userService *service.UserService // Placeholder - needs proper initialization with specific repos
-	var roleService *service.RoleService // Placeholder - needs proper initialization with specific repos
+	// Assuming UserService and RoleService need specific repositories now
+	roleService := service.NewRoleService(
+		roleRepo,
+		userRepo,
+		userRolesRepo,
+		kafkaProducer,
+		logger,
+		auditLogService, // Added
+	)
+	// var userService *service.UserService // Placeholder - needs proper initialization with specific repos
+	userService := service.NewUserService(
+		userRepo,
+		// roleRepo, // user_service.go's NewUserService takes roleRepo
+		userRolesRepo, // Corrected: user_service.go's NewUserService takes userRolesRepo instead of just roleRepo based on recent file reads. Let me double check.
+		              // Reading user_service.go again: NewUserService(userRepo, roleRepo, kafkaClient, logger, auditLogRecorder) -> it does take roleRepo.
+		roleRepo,     // Correcting based on actual signature from user_service.go
+		kafkaProducer,
+		logger,
+		auditLogService, // Added
+	)
 
 	telegramService := service.NewTelegramService(cfg.Telegram, logger)
 	// twoFactorService from previous setup is now replaced by mfaLogicService via AuthService
