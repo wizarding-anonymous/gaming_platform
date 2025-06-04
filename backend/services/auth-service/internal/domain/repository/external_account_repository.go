@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/domain/models" // Updated import path
+	"github.com/your-org/auth-service/internal/domain/models"
+	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Ensure this import
 )
 
 // ExternalAccountRepository defines the interface for interacting with external account data

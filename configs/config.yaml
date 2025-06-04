@@ -58,11 +58,13 @@ security:
     key_length: 32
   rate_limiting:
     enabled: true
-    password_reset_per_email: # Renamed from forgot_password_email in previous thoughts to match config struct
+    # default_limit: 100 # Removed default as it might be too broad
+    # default_window: "1h"
+    password_reset_per_email:
       enabled: true
       limit: 5
       window: "1h"
-    password_reset_per_ip:    # Renamed from forgot_password_ip
+    password_reset_per_ip:
       enabled: true
       limit: 10
       window: "1h"
@@ -70,22 +72,6 @@ security:
       enabled: true
       limit: 5
       window: "15m"
-    register_ip:               # Added
-      enabled: true
-      limit: 10
-      window: "1h"
-    login_email_ip:            # Added
-      enabled: true
-      limit: 20 # Higher limit for login attempts
-      window: "1h"
-    resend_verification_email: # Added
-      enabled: true
-      limit: 3
-      window: "24h"
-    reset_password_ip:         # Added (distinct from password_reset_per_ip for the reset action itself vs request)
-      enabled: true
-      limit: 5
-      window: "1h"
 
 mfa:
   enabled: true

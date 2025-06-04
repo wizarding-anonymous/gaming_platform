@@ -1,4 +1,7 @@
-// File: internal/service/auth_service.go
+// Package service contains the core business logic for the authentication service.
+// It orchestrates operations between repositories, external services (like token generation, password hashing),
+// and other domain services to fulfill application use cases such as user registration, login,
+// token management, MFA, and external authentication.
 package service
 
 import (
@@ -18,27 +21,33 @@ import (
 	"go.uber.org/zap"
 )
 
-// AuthService предоставляет методы для аутентификации и авторизации
+// AuthService provides methods for user authentication, authorization, and account management.
+// It encapsulates the core business logic related to user identity, sessions, tokens,
+// multi-factor authentication (MFA), password management, and external authentication providers.
 type AuthService struct {
-	userRepo               repoInterfaces.UserRepository
-	verificationCodeRepo   repoInterfaces.VerificationCodeRepository
-	tokenService           *TokenService // This is the refactored one
-	sessionService         *SessionService
-	kafkaClient            *kafka.Client
-	logger                 *zap.Logger
-	passwordService        domainService.PasswordService
-	tokenManagementService domainService.TokenManagementService
-	mfaSecretRepo          repoInterfaces.MFASecretRepository
-	mfaLogicService        domainService.MFALogicService
-	userRolesRepo          repoInterfaces.UserRolesRepository
-	roleService            *RoleService // For getting role details for JWT
-	externalAccountRepo    repoInterfaces.ExternalAccountRepository // Added for external auth
-	telegramVerifier       domainService.TelegramVerifierService    // Added for Telegram login
-	auditLogRecorder       domainService.AuditLogRecorder           // Added for audit logging
-	cfg                    *config.Config
+	userRepo               repoInterfaces.UserRepository // Handles user data persistence.
+	verificationCodeRepo   repoInterfaces.VerificationCodeRepository // Manages verification codes (e.g., email, password reset).
+	tokenService           *TokenService // Manages creation and validation of access/refresh token pairs with sessions.
+	sessionService         *SessionService // Handles user session lifecycle.
+	kafkaClient            *kafka.Client // Kafka client for publishing events.
+	logger                 *zap.Logger // Application logger.
+	passwordService        domainService.PasswordService // Service for hashing and verifying passwords.
+	tokenManagementService domainService.TokenManagementService // Core service for JWT generation and validation (RS256).
+	mfaSecretRepo          repoInterfaces.MFASecretRepository // Repository for MFA secrets.
+	mfaLogicService        domainService.MFALogicService // Business logic for MFA operations.
+	userRolesRepo          repoInterfaces.UserRolesRepository // Manages user-role assignments.
+	roleService            *RoleService // Service for role and permission related logic, used for enriching JWTs.
+	externalAccountRepo    repoInterfaces.ExternalAccountRepository // Repository for external (OAuth, Telegram) account links.
+	telegramVerifier       domainService.TelegramVerifierService    // Service for verifying Telegram authentication data.
+	auditLogRecorder       domainService.AuditLogRecorder           // Service for recording audit log events.
+	cfg                    *config.Config // Application configuration.
+	httpClient             *http.Client                             // HTTP client for external calls (e.g., OAuth providers).
+	rateLimiter            domainService.RateLimiter                // Service for rate limiting operations.
 }
 
-// NewAuthService создает новый экземпляр AuthService
+// NewAuthService creates a new instance of AuthService with all its dependencies.
+// It initializes the service with various repositories, sub-services, configuration,
+// and utility clients required for its operations.
 func NewAuthService(
 	userRepo repoInterfaces.UserRepository,
 	verificationCodeRepo repoInterfaces.VerificationCodeRepository,
@@ -56,7 +65,11 @@ func NewAuthService(
 	externalAccountRepo repoInterfaces.ExternalAccountRepository, // Added
 	telegramVerifier domainService.TelegramVerifierService,    // Added
 	auditLogRecorder domainService.AuditLogRecorder,           // Added
+	rateLimiter domainService.RateLimiter, // Added
 ) *AuthService {
+	httpClient := &http.Client{
+		Timeout: 15 * time.Second, // Default timeout for OAuth HTTP calls
+	}
 	return &AuthService{
 		userRepo:               userRepo,
 		verificationCodeRepo:   verificationCodeRepo,
@@ -74,11 +87,18 @@ func NewAuthService(
 		telegramVerifier:       telegramVerifier,    // Added
 		auditLogRecorder:       auditLogRecorder,    // Added
 		cfg:                    cfg,
+		httpClient:             httpClient,          // Added
+		rateLimiter:            rateLimiter,         // Added
 	}
 }
 
-// Register регистрирует нового пользователя
-// Returns the created user, the plain verification token, and an error.
+// Register handles new user registration.
+// It validates input, checks for existing users, hashes the password, creates the user record,
+// generates an email verification token, stores it, and publishes a UserRegisteredEvent.
+// An audit log event is recorded for the registration attempt (success or failure).
+// It returns the newly created user, the plain verification token (for email sending), and an error if any.
+// Possible errors include domainErrors.ErrEmailExists, domainErrors.ErrUsernameExists,
+// domainErrors.ErrRateLimitExceeded, or other internal errors.
 func (s *AuthService) Register(ctx context.Context, req models.CreateUserRequest) (*models.User, string, error) {
 	// Audit log helper vars
 	var auditErrorDetails map[string]interface{}
@@ -90,6 +110,19 @@ func (s *AuthService) Register(ctx context.Context, req models.CreateUserRequest
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
 		if val, exists := md["ip-address"]; exists { ipAddress = val }
 		if val, exists := md["user-agent"]; exists { userAgent = val }
+	}
+
+	// Rate limit by IP
+	allowed, rlErr := s.rateLimiter.Allow(ctx, "register_ip:"+ipAddress, s.cfg.Security.RateLimiting.RegisterIP)
+	if rlErr != nil {
+		s.logger.Error("Rate limiter failed for register_ip", zap.Error(rlErr), zap.String("ipAddress", ipAddress))
+		// Decide policy: fail open or closed. For now, fail open but log. Consider returning an error.
+	}
+	if !allowed {
+		s.logger.Warn("Rate limit exceeded for register_ip", zap.String("ipAddress", ipAddress))
+		auditErrorDetails = map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "ip_address": ipAddress}
+		s.auditLogRecorder.RecordEvent(ctx, actorUserID, "user_register", models.AuditLogStatusFailure, nil, nil, auditErrorDetails, ipAddress, userAgent)
+		return nil, "", domainErrors.ErrRateLimitExceeded
 	}
 
 	_, err := s.userRepo.FindByEmail(ctx, req.Email)
@@ -207,8 +240,19 @@ func (s *AuthService) Register(ctx context.Context, req models.CreateUserRequest
 	return createdUser, plainVerificationToken, nil
 }
 
-// Login аутентифицирует пользователя
-// Returns: access/refresh token pair, user details, 2FA challenge token (if required), error
+// Login authenticates a user based on their email and password.
+// It performs rate limiting, user lookup, password verification, and checks for account status (blocked, unverified).
+// If Multi-Factor Authentication (MFA/2FA) is enabled and verified for the user, it returns domainErrors.Err2FARequired
+// along with a 2FA challenge token. The user must then complete the 2FA step using CompleteLoginAfter2FA.
+// On successful login (or successful first phase if 2FA is required):
+// - Failed login attempts are reset.
+// - Last login time is updated.
+// - A new session and token pair (access and refresh) are generated if 2FA is not required.
+// - A UserLoginSuccessEvent is published via Kafka.
+// - An audit log event is recorded.
+// Returns the token pair, user details, a 2FA challenge token (if 2FA is required), and an error if any.
+// Possible errors: domainErrors.ErrInvalidCredentials, domainErrors.ErrUserLockedOut, domainErrors.ErrUserBlocked,
+// domainErrors.ErrEmailNotVerified, domainErrors.Err2FARequired, domainErrors.ErrRateLimitExceeded.
 func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*models.TokenPair, *models.User, string, error) {
 	var auditErrorDetails map[string]interface{}
 	var userIDForAudit *uuid.UUID // Use pointer for nil possibility
@@ -218,6 +262,18 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
 		if val, exists := md["ip-address"]; exists { ipAddress = val }
 		if val, exists := md["user-agent"]; exists { userAgent = val }
+	}
+
+	// Rate limit by email and IP
+	allowed, rlErr := s.rateLimiter.Allow(ctx, "login_email_ip:"+req.Email+":"+ipAddress, s.cfg.Security.RateLimiting.LoginEmailIP)
+	if rlErr != nil {
+		s.logger.Error("Rate limiter failed for login_email_ip", zap.Error(rlErr), zap.String("email", req.Email), zap.String("ipAddress", ipAddress))
+		// Fail open or closed policy
+	}
+	if !allowed {
+		s.logger.Warn("Rate limit exceeded for login_email_ip", zap.String("email", req.Email), zap.String("ipAddress", ipAddress))
+		// Not logging to audit here as it might be a brute force, audit log for failed login later covers it.
+		return nil, nil, "", domainErrors.ErrRateLimitExceeded
 	}
 
 	user, err := s.userRepo.FindByEmail(ctx, req.Email)
@@ -373,7 +429,18 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
 	return tokenPair, user, "", nil
 }
 
-// CompleteLoginAfter2FA finalizes login after successful 2FA.
+// CompleteLoginAfter2FA finalizes the login process after a user has successfully passed a 2FA challenge.
+// This method should be called after the initial Login method returned domainErrors.Err2FARequired and a challenge token,
+// and the user has provided a valid 2FA code (TOTP or backup) which was verified by the appropriate handler calling MFALogicService.Verify2FACode.
+// It performs final checks (user status), resets failed login attempts, updates last login time,
+// creates a user session, generates access and refresh tokens, and publishes relevant events.
+// An audit log event is recorded for the 2FA completion.
+// Parameters:
+// - ctx: The context for the request.
+// - userID: The ID of the user completing the login.
+// - deviceInfo: A map containing device information like user_agent and ip_address.
+// Returns the token pair, user details, and an error if any.
+// Possible errors: domainErrors.ErrUserNotFound, domainErrors.ErrUserBlocked, domainErrors.ErrEmailNotVerified.
 func (s *AuthService) CompleteLoginAfter2FA(ctx context.Context, userID uuid.UUID, deviceInfo map[string]string) (*models.TokenPair, *models.User, error) {
 	var auditErrorDetails map[string]interface{}
 	actorAndTargetID := &userID // In this context, actor and target are the same user.
@@ -752,6 +819,27 @@ func (s *AuthService) VerifyEmail(ctx context.Context, plainVerificationTokenVal
 
 // ResendVerificationEmail resends email verification.
 func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string) error {
+	ipAddress := "unknown"
+	userAgent := "unknown" // User agent not strictly needed for audit here, but good practice if available
+	if md, ok := ctx.Value("metadata").(map[string]string); ok {
+		if val, exists := md["ip-address"]; exists { ipAddress = val }
+		if val, exists := md["user-agent"]; exists { userAgent = val }
+	}
+	var actorUserID *uuid.UUID // will be set if user found
+
+	// Rate limit by email
+	allowed, rlErr := s.rateLimiter.Allow(ctx, "resend_verification_email:"+email, s.cfg.Security.RateLimiting.ResendVerificationEmail)
+	if rlErr != nil {
+		s.logger.Error("Rate limiter failed for resend_verification_email", zap.Error(rlErr), zap.String("email", email))
+	}
+	if !allowed {
+		s.logger.Warn("Rate limit exceeded for resend_verification_email", zap.String("email", email))
+		// Audit this attempt if it's a known email, otherwise it's an enumeration attempt.
+		// For now, just return error. User will not exist for audit if enumeration.
+		s.auditLogRecorder.RecordEvent(ctx, nil, "resend_verification_request", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "email": email}, ipAddress, userAgent)
+		return domainErrors.ErrRateLimitExceeded
+	}
+
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, domainErrors.ErrUserNotFound) {
@@ -798,6 +886,28 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	}
 	auditDetails := map[string]interface{}{"email": email}
 	var actorUserID, targetUserID *uuid.UUID // actor is unknown, target might be known if user exists
+
+	// Rate limit by email
+	allowedEmail, rlErrEmail := s.rateLimiter.Allow(ctx, "forgot_password_email:"+email, s.cfg.Security.RateLimiting.PasswordResetPerEmail)
+	if rlErrEmail != nil {
+		s.logger.Error("Rate limiter failed for forgot_password_email", zap.Error(rlErrEmail), zap.String("email", email))
+	}
+	if !allowedEmail {
+		s.logger.Warn("Rate limit exceeded for forgot_password_email", zap.String("email", email))
+		s.auditLogRecorder.RecordEvent(ctx, nil, "password_reset_request", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "email": email, "reason": "email rate limit"}, ipAddress, userAgent)
+		return domainErrors.ErrRateLimitExceeded // Return error to prevent further processing
+	}
+
+	// Rate limit by IP
+	allowedIP, rlErrIP := s.rateLimiter.Allow(ctx, "forgot_password_ip:"+ipAddress, s.cfg.Security.RateLimiting.PasswordResetPerIP)
+	if rlErrIP != nil {
+		s.logger.Error("Rate limiter failed for forgot_password_ip", zap.Error(rlErrIP), zap.String("ipAddress", ipAddress))
+	}
+	if !allowedIP {
+		s.logger.Warn("Rate limit exceeded for forgot_password_ip", zap.String("ipAddress", ipAddress))
+		s.auditLogRecorder.RecordEvent(ctx, nil, "password_reset_request", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "ip_address": ipAddress, "reason": "ip rate limit"}, ipAddress, userAgent)
+		return domainErrors.ErrRateLimitExceeded // Return error
+	}
 
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
@@ -862,6 +972,18 @@ func (s *AuthService) ResetPassword(ctx context.Context, plainToken, newPassword
 	}
 	var actorUserID, targetUserID *uuid.UUID
 	var auditDetails map[string]interface{}
+
+	// Rate limit by IP
+	allowed, rlErr := s.rateLimiter.Allow(ctx, "reset_password_ip:"+ipAddress, s.cfg.Security.RateLimiting.ResetPasswordIP)
+	if rlErr != nil {
+		s.logger.Error("Rate limiter failed for reset_password_ip", zap.Error(rlErr), zap.String("ipAddress", ipAddress))
+	}
+	if !allowed {
+		s.logger.Warn("Rate limit exceeded for reset_password_ip", zap.String("ipAddress", ipAddress))
+		// We don't know the user yet, so audit with nil user ID.
+		s.auditLogRecorder.RecordEvent(ctx, nil, "password_reset", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "ip_address": ipAddress}, ipAddress, userAgent)
+		return domainErrors.ErrRateLimitExceeded
+	}
 
 	hashedToken := appSecurity.HashToken(plainToken)
 	verificationCode, err := s.verificationCodeRepo.FindByCodeHashAndType(ctx, hashedToken, models.VerificationCodeTypePasswordReset)
@@ -1372,18 +1494,147 @@ func (s *AuthService) HandleOAuthCallback(
 	// idToken := "dummy-id-token-" + providerName
 
 
-	// TODO: 3. Fetch User Info from Provider - Make HTTP GET/POST to providerConfig.UserInfoURL with providerAccessToken
-	//    Parse JSON response. Extract externalUserID, email (if available and verified), name, username.
-	//    This part is highly provider-specific.
-	s.logger.Info("OAuth Fetch User Info step is a TODO.", zap.String("provider", providerName))
-	// Placeholder external user data
-	externalUserID := "ext_user_" + providerName + "_" + uuid.NewString()[:8]
-	externalEmail := fmt.Sprintf("%s_user@example-provider.com", providerName) // May not be available or verified
-	externalUsername := fmt.Sprintf("%s_username", providerName)
-	externalFirstName := providerName + "User"
+	var externalUserID, externalEmail, externalUsername, externalFirstName, externalPhotoURL string
+	var providerData interface{} // To store raw provider response if needed
+
+	switch providerName {
+	case "vk":
+		// VK Token Exchange
+		vkTokenURL := providerConfig.TokenURL
+		vkData := url.Values{}
+		vkData.Set("client_id", providerConfig.ClientID)
+		vkData.Set("client_secret", providerConfig.ClientSecret)
+		vkData.Set("redirect_uri", providerConfig.RedirectURL)
+		vkData.Set("code", authorizationCode)
+
+		var vkTokenResponse struct {
+			AccessToken string `json:"access_token"`
+			ExpiresIn   int    `json:"expires_in"`
+			UserID      int64  `json:"user_id"` // VK returns user_id as int
+			Email       string `json:"email"`   // Optional, depends on scope
+		}
+		if err := s.makePostFormRequest(vkTokenURL, vkData, &vkTokenResponse); err != nil {
+			s.logger.Error("VK token exchange failed", zap.Error(err), zap.String("provider", providerName))
+			return nil, nil, fmt.Errorf("VK token exchange failed: %w", err)
+		}
+		if vkTokenResponse.AccessToken == "" {
+			s.logger.Error("VK token exchange returned empty access token", zap.String("provider", providerName))
+			return nil, nil, errors.New("VK token exchange failed: empty access token")
+		}
+		providerData = vkTokenResponse
+
+		// VK Fetch User Info
+		// Ensure UserInfoURL is set in config, e.g., "https://api.vk.com/method/users.get"
+		vkUserInfoURL, _ := url.Parse(providerConfig.UserInfoURL)
+		q := vkUserInfoURL.Query()
+		q.Set("user_ids", fmt.Sprintf("%d", vkTokenResponse.UserID))
+		// Example fields: "screen_name,first_name,last_name,photo_max_orig"
+		// Add "email" to fields if email scope was requested and granted.
+		requestedFields := "screen_name,first_name,last_name,photo_max_orig"
+		if providerConfig.ProviderSpecific["request_email_scope"] == "true" { // Example custom config
+			requestedFields += ",email"
+		}
+		q.Set("fields", requestedFields)
+		q.Set("access_token", vkTokenResponse.AccessToken)
+		q.Set("v", providerConfig.ProviderSpecific["v"]) // e.g., "5.199" from config
+		vkUserInfoURL.RawQuery = q.Encode()
+
+		var vkUserResponse struct {
+			Response []struct {
+				ID        int64  `json:"id"`
+				ScreenName string `json:"screen_name"`
+				FirstName string `json:"first_name"`
+				LastName  string `json:"last_name"`
+				PhotoMax  string `json:"photo_max_orig"` // Or other photo field
+				Email     string `json:"email"`          // If requested and available
+			} `json:"response"`
+		}
+		if err := s.makeGetRequest(vkUserInfoURL.String(), &vkUserResponse); err != nil {
+			s.logger.Error("VK user info fetch failed", zap.Error(err), zap.String("provider", providerName))
+			return nil, nil, fmt.Errorf("VK user info fetch failed: %w", err)
+		}
+		if len(vkUserResponse.Response) == 0 {
+			return nil, nil, errors.New("VK user info fetch failed: empty response")
+		}
+		vkUser := vkUserResponse.Response[0]
+		externalUserID = fmt.Sprintf("%d", vkUser.ID)
+		externalEmail = vkUser.Email // Might be empty if not provided or scope not granted
+		if externalEmail == "" && vkTokenResponse.Email != "" { // Fallback to email from token response if available
+			externalEmail = vkTokenResponse.Email
+		}
+		externalUsername = vkUser.ScreenName
+		if externalUsername == "" { // Fallback for username
+			externalUsername = fmt.Sprintf("vk_%d", vkUser.ID)
+		}
+		externalFirstName = vkUser.FirstName // Concatenate if desired: vkUser.FirstName + " " + vkUser.LastName
+		externalPhotoURL = vkUser.PhotoMax
 
 
-	// --- Steps 4, 5, 6: Account Linking/Creation, Session & Token Gen, Final Updates ---
+	case "odnoklassniki": // OK
+		okTokenURL := providerConfig.TokenURL
+		okData := url.Values{}
+		okData.Set("code", authorizationCode)
+		okData.Set("client_id", providerConfig.ClientID)
+		okData.Set("client_secret", providerConfig.ClientSecret) // This is application_secret_key for OK
+		okData.Set("redirect_uri", providerConfig.RedirectURL)
+		okData.Set("grant_type", "authorization_code")
+
+		var okTokenResponse struct {
+			AccessToken string `json:"access_token"`
+			TokenType   string `json:"token_type"`
+			ExpiresIn   int    `json:"expires_in"`
+		}
+		if err := s.makePostFormRequest(okTokenURL, okData, &okTokenResponse); err != nil {
+			s.logger.Error("OK token exchange failed", zap.Error(err), zap.String("provider", providerName))
+			return nil, nil, fmt.Errorf("OK token exchange failed: %w", err)
+		}
+		if okTokenResponse.AccessToken == "" {
+			s.logger.Error("OK token exchange returned empty access token", zap.String("provider", providerName))
+			return nil, nil, errors.New("OK token exchange failed: empty access token")
+		}
+		providerData = okTokenResponse
+
+		// OK Fetch User Info
+		// UserInfoURL e.g., "https://api.ok.ru/fb.do"
+		// Params: method=users.getCurrentUser, application_key (public key), access_token, sig
+		okUserInfoURL, _ := url.Parse(providerConfig.UserInfoURL)
+		okParams := url.Values{}
+		okParams.Set("method", "users.getCurrentUser")
+		okParams.Set("application_key", providerConfig.ProviderSpecific["application_public_key"]) // Public key from config
+		okParams.Set("access_token", okTokenResponse.AccessToken)
+		// Calculate sig: md5(sorted_params_concat + client_secret/application_secret_key)
+		sig := appSecurity.CalculateOkSig(okParams, providerConfig.ClientSecret) // Helper needed
+		okParams.Set("sig", sig)
+		okUserInfoURL.RawQuery = okParams.Encode()
+
+		var okUserResponse struct {
+			UID       string `json:"uid"`
+			Name      string `json:"name"`
+			FirstName string `json:"first_name"`
+			LastName  string `json:"last_name"`
+			PicFull   string `json:"pic_full"` // Example photo field
+			// Email might not be available or require specific scope/permissions
+		}
+		if err := s.makeGetRequest(okUserInfoURL.String(), &okUserResponse); err != nil {
+			s.logger.Error("OK user info fetch failed", zap.Error(err), zap.String("provider", providerName))
+			return nil, nil, fmt.Errorf("OK user info fetch failed: %w", err)
+		}
+		externalUserID = okUserResponse.UID
+		externalEmail = "" // OK usually doesn't provide email easily
+		externalUsername = okUserResponse.Name // Or a generated one like ok_<uid>
+		if externalUsername == "" {
+			externalUsername = fmt.Sprintf("ok_%s", okUserResponse.UID)
+		}
+		externalFirstName = okUserResponse.FirstName
+		externalPhotoURL = okUserResponse.PicFull
+
+	default:
+		s.logger.Warn("Unsupported OAuth provider in callback", zap.String("provider", providerName))
+		return nil, nil, domainErrors.ErrUnsupportedOAuthProvider
+	}
+	_ = providerData // Use providerData if needed for storing raw tokens or additional info
+
+	// --- Steps 4, 5, 6: Account Linking/Creation, Session & Platform Token Gen, Final Updates ---
 	// This logic is very similar to LoginWithTelegram, refactor into a helper if possible.
 	var user *models.User
 	isNewUser := false
@@ -1494,21 +1745,91 @@ func (s *AuthService) HandleOAuthCallback(
 // generateUniquePlatformUsername is a helper, can be moved to a common util if needed
 func (s *AuthService) generateUniquePlatformUsername(ctx context.Context, baseUsername string) (string, error) {
 	username := baseUsername
-	for i := 0; i < 5; i++ { // Try up to 5 times to find a unique username
+	for i := 0; i < 5; i++ {
 		_, err := s.userRepo.FindByUsername(ctx, username)
 		if err != nil {
 			if errors.Is(err, domainErrors.ErrUserNotFound) {
-				return username, nil // Username is unique
+				return username, nil
 			}
-			return "", fmt.Errorf("error checking username uniqueness: %w", err) // DB error
+			return "", fmt.Errorf("error checking username uniqueness: %w", err)
 		}
-		// Username exists, generate a new one with a suffix
-		suffix, _ := appSecurity.GenerateSecureToken(2) // ~4 hex chars
+		suffix, _ := appSecurity.GenerateSecureToken(2)
 		username = fmt.Sprintf("%s_%s", baseUsername, suffix)
-		if len(username) > 255 { // Ensure it doesn't exceed DB limit
+		if len(username) > 255 {
 			username = username[:255]
 		}
 	}
 	return "", errors.New("failed to generate unique username after multiple attempts")
+}
+
+
+// --- HTTP Client Helper Methods ---
+
+func (s *AuthService) makePostFormRequest(url string, data url.Values, target interface{}) error {
+	s.logger.Debug("Making POST form request", zap.String("url", url), zap.Any("data", data))
+	resp, err := s.httpClient.PostForm(url, data)
+	if err != nil {
+		s.logger.Error("HTTP POST request failed", zap.Error(err), zap.String("url", url))
+		return fmt.Errorf("http post request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read response body", zap.Error(err), zap.String("url", url))
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+	s.logger.Debug("Received HTTP response", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("body", string(bodyBytes)))
+
+
+	if resp.StatusCode != http.StatusOK {
+		// Try to unmarshal into a generic error structure if possible, or just return status
+		var errorResponse map[string]interface{}
+		if json.Unmarshal(bodyBytes, &errorResponse) == nil {
+			s.logger.Warn("OAuth provider returned non-200 status with JSON body", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.Any("error_body", errorResponse))
+		} else {
+			s.logger.Warn("OAuth provider returned non-200 status", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("body_text", string(bodyBytes)))
+		}
+		return fmt.Errorf("oauth provider returned non-200 status: %d - %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	if err := json.Unmarshal(bodyBytes, target); err != nil {
+		s.logger.Error("Failed to unmarshal JSON response", zap.Error(err), zap.String("url", url), zap.String("body", string(bodyBytes)))
+		return fmt.Errorf("failed to unmarshal JSON response: %w. Body: %s", err, string(bodyBytes))
+	}
+	return nil
+}
+
+func (s *AuthService) makeGetRequest(url string, target interface{}) error {
+	s.logger.Debug("Making GET request", zap.String("url", url))
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		s.logger.Error("HTTP GET request failed", zap.Error(err), zap.String("url", url))
+		return fmt.Errorf("http get request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read response body", zap.Error(err), zap.String("url", url))
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+	s.logger.Debug("Received HTTP response", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("body", string(bodyBytes)))
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResponse map[string]interface{}
+		if json.Unmarshal(bodyBytes, &errorResponse) == nil {
+			s.logger.Warn("OAuth provider returned non-200 status with JSON body", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.Any("error_body", errorResponse))
+		} else {
+			s.logger.Warn("OAuth provider returned non-200 status", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("body_text", string(bodyBytes)))
+		}
+		return fmt.Errorf("oauth provider returned non-200 status: %d - %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	if err := json.Unmarshal(bodyBytes, target); err != nil {
+		s.logger.Error("Failed to unmarshal JSON response", zap.Error(err), zap.String("url", url), zap.String("body", string(bodyBytes)))
+		return fmt.Errorf("failed to unmarshal JSON response: %w. Body: %s", err, string(bodyBytes))
+	}
+	return nil
 }
 >>>>>>> REPLACE

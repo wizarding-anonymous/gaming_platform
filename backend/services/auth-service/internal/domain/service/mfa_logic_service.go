@@ -45,7 +45,7 @@ type MFALogicService interface {
 
 // mfaLogicService implements MFALogicService.
 type mfaLogicService struct {
-	cfg                   *config.MFAConfig
+	cfg                   *config.Config // Changed to global Config
 	totpService           TOTPService
 	encryptionService     security.EncryptionService
 	mfaSecretRepo         repoInterfaces.MFASecretRepository
@@ -54,12 +54,13 @@ type mfaLogicService struct {
 	passwordService       PasswordService
 	auditLogRecorder      AuditLogRecorder      // Added for audit logging
 	kafkaProducer         *kafkaPkg.Producer    // Added for event publishing
+	rateLimiter           RateLimiter           // Added for rate limiting
 }
 
 
 // NewMFALogicService creates a new instance of MFALogicService.
 func NewMFALogicService(
-	cfg *config.MFAConfig,
+	cfg *config.Config, // Changed to global Config
 	totpService TOTPService,
 	encryptionService security.EncryptionService,
 	mfaSecretRepo repoInterfaces.MFASecretRepository,
@@ -68,9 +69,10 @@ func NewMFALogicService(
 	passwordService PasswordService,
 	auditLogRecorder AuditLogRecorder,      // Added
 	kafkaProducer *kafkaPkg.Producer,   // Added
+	rateLimiter RateLimiter,          // Added
 ) MFALogicService {
 	return &mfaLogicService{
-		cfg:                   cfg,
+		cfg:                   cfg, // Will now be global Config
 		totpService:           totpService,
 		encryptionService:     encryptionService,
 		mfaSecretRepo:         mfaSecretRepo,
@@ -79,6 +81,7 @@ func NewMFALogicService(
 		passwordService:       passwordService,
 		auditLogRecorder:      auditLogRecorder,      // Added
 		kafkaProducer:         kafkaProducer,   // Added
+		rateLimiter:           rateLimiter,           // Added
 	}
 }
 
@@ -119,14 +122,14 @@ func (s *mfaLogicService) Enable2FAInitiate(ctx context.Context, userID uuid.UUI
         return uuid.Nil, "", "", fmt.Errorf("error checking existing MFA secret: %w", err)
     }
 
-	secretBase32, otpAuthURL, err := s.totpService.GenerateSecret(accountName, s.cfg.TOTPIssuerName)
+	secretBase32, otpAuthURL, err := s.totpService.GenerateSecret(accountName, s.cfg.MFA.TOTPIssuerName) // Adjusted: s.cfg.MFA
 	if err != nil {
 		auditDetails = map[string]interface{}{"error": "failed to generate TOTP secret", "details": err.Error()}
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_initiate", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 		return uuid.Nil, "", "", fmt.Errorf("failed to generate TOTP secret: %w", err)
 	}
 
-	encryptedSecret, err := s.encryptionService.Encrypt(secretBase32, s.cfg.TOTPSecretEncryptionKey)
+	encryptedSecret, err := s.encryptionService.Encrypt(secretBase32, s.cfg.MFA.TOTPSecretEncryptionKey) // Adjusted: s.cfg.MFA
 	if err != nil {
 		auditDetails = map[string]interface{}{"error": "failed to encrypt TOTP secret", "details": err.Error()}
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_initiate", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
@@ -223,9 +226,9 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 		auditDetails = map[string]interface{}{"warning": "failed to delete old backup codes", "details": err.Error()}
 	}
 
-	plainBackupCodes := make([]string, s.cfg.TOTPBackupCodeCount)
-	backupCodesToStore := make([]*models.MFABackupCode, s.cfg.TOTPBackupCodeCount)
-	for i := 0; i < s.cfg.TOTPBackupCodeCount; i++ {
+	plainBackupCodes := make([]string, s.cfg.MFA.TOTPBackupCodeCount) // Adjusted: s.cfg.MFA
+	backupCodesToStore := make([]*models.MFABackupCode, s.cfg.MFA.TOTPBackupCodeCount) // Adjusted: s.cfg.MFA
+	for i := 0; i < s.cfg.MFA.TOTPBackupCodeCount; i++ { // Adjusted: s.cfg.MFA
 		codeStr, errGen := security.GenerateSecureToken(6)
 		if errGen != nil {
 			logDetails := map[string]interface{}{"error": "failed to generate backup code string", "details": errGen.Error()}
@@ -277,47 +280,141 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 
 // Verify2FACode implements MFALogicService.
 func (s *mfaLogicService) Verify2FACode(ctx context.Context, userID uuid.UUID, code string, codeType models.MFAType) (bool, error) {
+	// Audit log context
+	actorAndTargetID := &userID
+	ipAddress := "unknown"
+	userAgent := "unknown"
+	if md, ok := ctx.Value("metadata").(map[string]string); ok {
+		if val, exists := md["ip-address"]; exists { ipAddress = val }
+		if val, exists := md["user-agent"]; exists { userAgent = val }
+	}
+	var auditDetails = make(map[string]interface{}) // Initialize to avoid nil checks later
+	auditDetails["code_type"] = string(codeType)
+
+	// Rate Limiting
+	rateLimitRule := s.cfg.Security.RateLimiting.TwoFAVerificationPerUser
+	if rateLimitRule.Enabled {
+		rateKey := "2faverify_user:" + userID.String()
+		// Note: The RateLimiter interface might need to be adapted if it doesn't take RateLimitRule directly.
+		// Assuming a simplified Allow(key, rule) or Allow(key, limit, window) exists.
+		// For now, let's assume the existing interface can work or will be adapted.
+		// The current redis_rate_limiter.Allow takes: ctx, key string, rule config.RateLimitRule
+		allowed, rlErr := s.rateLimiter.Allow(ctx, rateKey, rateLimitRule)
+		if rlErr != nil {
+			// s.logger.Error("Rate limiter failed for 2FA verification", zap.Error(rlErr), zap.String("userID", userID.String()))
+			// Decide policy: fail open or closed. For now, log and fail open (proceed with verification).
+			// If critical, should return an error here.
+			auditDetails["warning_rate_limit_check_failed"] = rlErr.Error()
+		}
+		if !allowed {
+			// s.logger.Warn("Rate limit exceeded for 2FA verification", zap.String("userID", userID.String()))
+			auditDetails["error"] = domainErrors.ErrRateLimitExceeded.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+			return false, domainErrors.ErrRateLimitExceeded
+		}
+	}
+
 	if codeType == models.MFATypeTOTP {
 		mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, models.MFATypeTOTP)
 		if err != nil {
 			if errors.Is(err, domainErrors.ErrNotFound) {
+				auditDetails["error"] = domainErrors.Err2FANotEnabled.Error()
+				s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 				return false, domainErrors.Err2FANotEnabled // No TOTP setup for user
 			}
+			auditDetails["error"] = "error fetching TOTP secret"
+			auditDetails["details"] = err.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 			return false, fmt.Errorf("error fetching TOTP secret: %w", err)
 		}
 		if !mfaSecret.Verified {
+			auditDetails["error"] = domainErrors.ErrMFANotVerified.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 			return false, domainErrors.ErrMFANotVerified // TOTP setup not completed/verified
 		}
-		decryptedSecret, err := s.encryptionService.Decrypt(mfaSecret.SecretKeyEncrypted, s.cfg.TOTPSecretEncryptionKey)
+		decryptedSecret, err := s.encryptionService.Decrypt(mfaSecret.SecretKeyEncrypted, s.cfg.MFA.TOTPSecretEncryptionKey) // Adjusted: s.cfg.MFA
 		if err != nil {
+			auditDetails["error"] = "failed to decrypt TOTP secret"
+			auditDetails["details"] = err.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 			return false, fmt.Errorf("failed to decrypt TOTP secret: %w", err)
 		}
 		isValid, err := s.totpService.ValidateCode(decryptedSecret, code)
 		if err != nil {
+			auditDetails["error"] = "error validating TOTP code"
+			auditDetails["details"] = err.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 			return false, fmt.Errorf("error validating TOTP code: %w", err)
 		}
+		if !isValid {
+			auditDetails["error"] = domainErrors.ErrInvalid2FACode.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		} else {
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		}
 		return isValid, nil
-	} else if codeType == "backup" {
-		hashedCode, err := s.passwordService.HashPassword(code)
+	} else if codeType == models.MFATypeBackup { // Ensure using models.MFATypeBackup
+		// For backup codes, we hash the provided plain code to compare with stored hashes
+		// No, this is incorrect. The stored backup codes are already hashed.
+		// We need to iterate through stored backup codes, hash the input, and compare.
+		// OR, the repository FindByUserIDAndCodeHash should take the plain code, hash it, then search.
+		// Re-checking `mfa_backup_code_repository_postgres.go`:
+		// FindByUserIDAndCodeHash(ctx context.Context, userID uuid.UUID, plainCode string)
+		// It hashes the plainCode inside. So, passing plain `code` is correct.
+
+		// The original code was:
+		// hashedCode, err := s.passwordService.HashPassword(code)
+		// if err != nil { return false, fmt.Errorf("failed to hash backup code for verification: %w", err) }
+		// backupCode, err := s.mfaBackupCodeRepo.FindByUserIDAndCodeHash(ctx, userID, hashedCode)
+		// This implies the repo expects an already hashed code. This contradicts the idea of a generic PasswordService
+		// being used to hash the *input* code to compare against *already hashed* stored codes.
+		// Let's assume the repo's FindByUserIDAndCodeHash actually takes a *hashed* code.
+		// The passwordService.HashPassword is for creating hashes, not for verifying them against existing ones.
+		// For backup codes, we should iterate through the user's *hashed* backup codes and use passwordService.CheckPasswordHash for each.
+
+		// Corrected logic for backup code verification:
+		allBackupCodes, err := s.mfaBackupCodeRepo.FindByUserID(ctx, userID)
 		if err != nil {
-			return false, fmt.Errorf("failed to hash backup code for verification: %w", err)
+			auditDetails["error"] = "failed to retrieve backup codes for verification"
+			auditDetails["details"] = err.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+			return false, fmt.Errorf("failed to retrieve backup codes: %w", err)
 		}
-		backupCode, err := s.mfaBackupCodeRepo.FindByUserIDAndCodeHash(ctx, userID, hashedCode)
-		if err != nil {
-			if errors.Is(err, domainErrors.ErrNotFound) {
-				return false, domainErrors.ErrInvalid2FACode // Backup code not found
+
+		var validBackupCode *models.MFABackupCode
+		for _, bc := range allBackupCodes {
+			match, checkErr := s.passwordService.CheckPasswordHash(code, bc.CodeHash)
+			if checkErr != nil {
+				// Log individual check error but continue checking others
+				// s.logger.Error("Error checking backup code hash", zap.Error(checkErr), zap.String("backupCodeID", bc.ID.String()))
+				continue
 			}
-			return false, fmt.Errorf("error retrieving backup code: %w", err)
+			if match {
+				validBackupCode = bc
+				break
+			}
 		}
-		// FindByUserIDAndCodeHash in repo already checks if UsedAt IS NULL
+
+		if validBackupCode == nil {
+			auditDetails["error"] = domainErrors.ErrInvalid2FACode.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+			return false, domainErrors.ErrInvalid2FACode // No matching backup code found
+		}
 
 		// Mark as used
-		if err := s.mfaBackupCodeRepo.MarkAsUsed(ctx, backupCode.ID, time.Now()); err != nil {
+		if err := s.mfaBackupCodeRepo.MarkAsUsed(ctx, validBackupCode.ID, time.Now()); err != nil {
+			auditDetails["error"] = "failed to mark backup code as used"
+			auditDetails["details"] = err.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 			return false, fmt.Errorf("failed to mark backup code as used: %w", err)
 		}
 		// TODO: Publish event: auth.2fa.backup_code_used (UserID, BackupCodeID)
+		auditDetails["backup_code_id_used"] = validBackupCode.ID.String()
+		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 		return true, nil
 	}
+	auditDetails["error"] = "unsupported 2FA code type"
+	s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_code_verify", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 	return false, fmt.Errorf("unsupported 2FA code type: %s", codeType)
 }
 
@@ -422,9 +519,9 @@ func (s *mfaLogicService) RegenerateBackupCodes(ctx context.Context, userID uuid
 		return nil, fmt.Errorf("could not delete old backup codes: %w", errDel)
 	}
 
-	plainBackupCodes := make([]string, s.cfg.TOTPBackupCodeCount)
-	backupCodesToStore := make([]*models.MFABackupCode, s.cfg.TOTPBackupCodeCount)
-	for i := 0; i < s.cfg.TOTPBackupCodeCount; i++ {
+	plainBackupCodes := make([]string, s.cfg.MFA.TOTPBackupCodeCount) // Adjusted: s.cfg.MFA
+	backupCodesToStore := make([]*models.MFABackupCode, s.cfg.MFA.TOTPBackupCodeCount) // Adjusted: s.cfg.MFA
+	for i := 0; i < s.cfg.MFA.TOTPBackupCodeCount; i++ { // Adjusted: s.cfg.MFA
 		codeStr, errGen := security.GenerateSecureToken(6)
 		if errGen != nil {
 			auditDetails = map[string]interface{}{"error": "failed to generate backup code string", "details": errGen.Error()}

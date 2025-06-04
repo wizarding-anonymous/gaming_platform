@@ -101,6 +101,10 @@ func main() {
 	}
 	defer redisClient.Close()
 
+	// Инициализация RateLimiter
+	rateLimiter := redis.NewRedisRateLimiter(redisClient, cfg.RateLimit, logger)
+	logger.Info("Redis Rate Limiter initialized")
+
 	// Инициализация Kafka Producer
 	// Note: NewProducer signature changed: NewProducer(brokers []string, logger logger.Logger, cloudEventSource string)
 	// Assuming the logger (*zap.Logger) from telemetry.NewLogger satisfies the logger.Logger interface expected by NewProducer.
@@ -145,14 +149,16 @@ func main() {
 
 	// Инициализация MFALogicService
 	mfaLogicService := service.NewMFALogicService(
-		&cfg.MFA,
+		cfg, // Changed to global cfg
 		totpService,
 		encryptionService,
 		mfaSecretRepo,
 		mfaBackupCodeRepo,
 		userRepo,
 		passwordService,
-		auditLogService, // Added
+		auditLogService,
+		kafkaProducer, // Added kafkaProducer
+		rateLimiter,   // Added rateLimiter
 	)
 
 	// Инициализация AuditLogService
@@ -203,6 +209,7 @@ func main() {
 		externalAccountRepo,  // Added missing parameter
 		telegramService,      // Added missing parameter (as telegramVerifier)
 		auditLogService,      // Added for audit logging
+		rateLimiter,          // Added rateLimiter
 	)
 
 	// Assuming UserService and RoleService need specific repositories now

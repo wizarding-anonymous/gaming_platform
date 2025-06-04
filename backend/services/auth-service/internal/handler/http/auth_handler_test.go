@@ -199,7 +199,16 @@ func setupAuthHandlerTestSuite(t *testing.T) *AuthHandlerTestSuite {
 		authRoutes.POST("/login/2fa/verify", ts.authHandler.VerifyLogin2FA)
 		authRoutes.POST("/token/refresh", ts.authHandler.RefreshToken)
 		authRoutes.POST("/password/forgot", ts.authHandler.ForgotPassword)
-		// Add other routes as their tests are written
+		authRoutes.POST("/password/reset", ts.authHandler.ResetPassword)
+		authRoutes.POST("/email/verify", ts.authHandler.VerifyEmailHandler)
+		authRoutes.POST("/email/resend-verification", ts.authHandler.ResendVerificationEmailHandler)
+		authRoutes.POST("/logout", ts.authHandler.Logout) // Assuming auth middleware handles getting user from token
+		authRoutes.POST("/logout/all", ts.authHandler.LogoutAll) // Assuming auth middleware
+
+		// OAuth & Telegram
+		authRoutes.GET("/oauth/:provider", ts.authHandler.OAuthLogin)
+		authRoutes.GET("/oauth/:provider/callback", ts.authHandler.OAuthCallback)
+		authRoutes.POST("/telegram/login", ts.authHandler.TelegramLogin)
 	}
 	return ts
 }
@@ -258,6 +267,48 @@ func TestAuthHandler_RegisterUser_Failure_EmailExists(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 	ts.mockAuthService.AssertExpectations(t)
 }
+
+func TestAuthHandler_RegisterUser_BadRequest_InvalidPayload(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	// Malformed JSON
+	malformedJsonBody := []byte(`{"email": "test@example.com", "username": "testuser", "password":`)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(malformedJsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// Missing required field (e.g., password)
+	missingFieldBody := RegisterUserRequest{Email: "test@example.com", Username: "testuser"} // Password missing
+	jsonBody, _ := json.Marshal(missingFieldBody)
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code) // Gin's binding should catch this
+}
+
+func TestAuthHandler_RegisterUser_Failure_InternalServiceError(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	reqBody := RegisterUserRequest{Email: "test@example.com", Username: "testuser", Password: "password123"}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	// Mock service to return a generic internal error
+	ts.mockAuthService.On("Register", mock.Anything, mock.AnythingOfType("models.CreateUserRequest")).Return(nil, "", errors.New("internal server error")).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
 
 // --- LoginUser Tests ---
 func TestAuthHandler_LoginUser_Success_No2FA(t *testing.T) {
@@ -329,6 +380,64 @@ func TestAuthHandler_LoginUser_Failure_InvalidCredentials(t *testing.T) {
 	ts.mockAuthService.AssertExpectations(t)
 }
 
+func TestAuthHandler_LoginUser_BadRequest_MissingFields(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	// Missing email
+	reqBodyMissingEmail := LoginRequest{Password: "password123"}
+	jsonBody, _ := json.Marshal(reqBodyMissingEmail)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// Missing password
+	reqBodyMissingPassword := LoginRequest{Email: "test@example.com"}
+	jsonBody, _ = json.Marshal(reqBodyMissingPassword)
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAuthHandler_LoginUser_Failure_UserNotFound(t *testing.T) { // Example of another service error
+	ts := setupAuthHandlerTestSuite(t)
+	reqBody := LoginRequest{Email: "notfound@example.com", Password: "password123"}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	ts.mockAuthService.On("Login", mock.Anything, mock.AnythingOfType("models.LoginRequest")).Return(nil, nil, "", domainErrors.ErrUserNotFound).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	// ErrUserNotFound should map to ErrInvalidCredentials by the service, then to 401 by handler
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_LoginUser_Failure_UserBlocked(t *testing.T) {
+    ts := setupAuthHandlerTestSuite(t)
+    reqBody := LoginRequest{Email: "blocked@example.com", Password: "password123"}
+    jsonBody, _ := json.Marshal(reqBody)
+
+    ts.mockAuthService.On("Login", mock.Anything, mock.AnythingOfType("models.LoginRequest")).Return(nil, nil, "", domainErrors.ErrUserBlocked).Once()
+
+    w := httptest.NewRecorder()
+    req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(jsonBody))
+    req.Header.Set("Content-Type", "application/json")
+    ts.router.ServeHTTP(w, req)
+
+    assert.Equal(t, http.StatusForbidden, w.Code) // Or 401 depending on desired behavior for "blocked"
+    ts.mockAuthService.AssertExpectations(t)
+}
+
+
 // --- VerifyLogin2FA Tests ---
 func TestAuthHandler_VerifyLogin2FA_Success(t *testing.T) {
 	ts := setupAuthHandlerTestSuite(t)
@@ -399,6 +508,29 @@ func TestAuthHandler_VerifyLogin2FA_Failure_Invalid2FACode(t *testing.T) {
 	ts.mockAuthService.AssertNotCalled(t, "CompleteLoginAfter2FA")
 }
 
+
+func TestAuthHandler_VerifyLogin2FA_BadRequest(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	// Missing ChallengeToken
+	reqBodyNoChallenge := VerifyLogin2FARequest{Code: "123456"}
+	jsonBody, _ := json.Marshal(reqBodyNoChallenge)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login/2fa/verify", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// Missing Code
+	reqBodyNoCode := VerifyLogin2FARequest{ChallengeToken: "challenge"}
+	jsonBody, _ = json.Marshal(reqBodyNoCode)
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/login/2fa/verify", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 // --- RefreshToken Tests ---
 func TestAuthHandler_RefreshToken_Success(t *testing.T) {
 	ts := setupAuthHandlerTestSuite(t)
@@ -438,6 +570,25 @@ func TestAuthHandler_RefreshToken_Failure(t *testing.T) {
 	ts.mockAuthService.AssertExpectations(t)
 }
 
+func TestAuthHandler_RefreshToken_BadRequest(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	// Empty request body
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/token/refresh", bytes.NewBuffer([]byte("{}")))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code) // Assuming RefreshToken field is required
+
+	// Malformed JSON
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/token/refresh", bytes.NewBuffer([]byte(`{"refresh_token":`)))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+
 // --- ForgotPassword Tests ---
 func TestAuthHandler_ForgotPassword_Success(t *testing.T) {
 	ts := setupAuthHandlerTestSuite(t)
@@ -460,6 +611,413 @@ func TestAuthHandler_ForgotPassword_Success(t *testing.T) {
 
 
 	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_ForgotPassword_BadRequest(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	// Empty request body
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/password/forgot", bytes.NewBuffer([]byte("{}")))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code) // Assuming Email field is required
+
+	// Malformed JSON
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/password/forgot", bytes.NewBuffer([]byte(`{"email":`)))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+
+// TODO: Add tests for ResetPassword, VerifyEmailHandler, ResendVerificationEmailHandler, Logout, LogoutAll
+// - Test success cases.
+// - Test bad request (missing/invalid fields).
+// - Test service errors (e.g., token not found, user not found, etc.) mapping to HTTP statuses.
+
+// Example for ResetPassword - Bad Request
+func TestAuthHandler_ResetPassword_BadRequest(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	ts.router.POST("/api/v1/auth/password/reset", ts.authHandler.ResetPassword) // Ensure route is registered
+
+	// Missing token
+	reqBodyNoToken := ResetPasswordRequest{NewPassword: "newPassword123!"}
+	jsonBody, _ := json.Marshal(reqBodyNoToken)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/password/reset", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// Missing password
+	reqBodyNoPassword := ResetPasswordRequest{Token: "resetToken"}
+	jsonBody, _ = json.Marshal(reqBodyNoPassword)
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/password/reset", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// Example for ResetPassword - Service Error (e.g. invalid token)
+func TestAuthHandler_ResetPassword_InvalidTokenError(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	ts.router.POST("/api/v1/auth/password/reset", ts.authHandler.ResetPassword)
+
+	reqBody := ResetPasswordRequest{Token: "invalidToken", NewPassword: "newPassword123!"}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	ts.mockAuthService.On("ResetPassword", mock.Anything, reqBody.Token, reqBody.NewPassword).Return(domainErrors.ErrInvalidToken).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/password/reset", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code) // Or StatusBadRequest based on how ErrInvalidToken should be treated
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_ResetPassword_Success(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	// Route already registered in setup for previous ResetPassword tests
+
+	reqBody := ResetPasswordRequest{Token: "validToken", NewPassword: "newPassword123!"}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	ts.mockAuthService.On("ResetPassword", mock.Anything, reqBody.Token, reqBody.NewPassword).Return(nil).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/password/reset", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+// --- VerifyEmailHandler Tests ---
+func TestAuthHandler_VerifyEmailHandler_Success(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	reqBody := VerifyEmailRequest{Token: "validVerifyToken"}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	ts.mockAuthService.On("VerifyEmail", mock.Anything, reqBody.Token).Return(nil).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_VerifyEmailHandler_BadRequest(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer([]byte(`{"token":""}`))) // Empty token
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAuthHandler_VerifyEmailHandler_InvalidToken(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	reqBody := VerifyEmailRequest{Token: "invalidToken"}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	ts.mockAuthService.On("VerifyEmail", mock.Anything, reqBody.Token).Return(domainErrors.ErrInvalidToken).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/email/verify", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code) // Or BadRequest
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+
+// --- ResendVerificationEmailHandler Tests ---
+func TestAuthHandler_ResendVerificationEmailHandler_Success(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	reqBody := ResendVerificationEmailRequest{Email: "user@example.com"}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	ts.mockAuthService.On("ResendVerificationEmail", mock.Anything, reqBody.Email).Return(nil).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/email/resend-verification", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_ResendVerificationEmailHandler_BadRequest(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/email/resend-verification", bytes.NewBuffer([]byte(`{"email":""}`))) // Empty email
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAuthHandler_ResendVerificationEmailHandler_UserNotFound(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	reqBody := ResendVerificationEmailRequest{Email: "notfound@example.com"}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	ts.mockAuthService.On("ResendVerificationEmail", mock.Anything, reqBody.Email).Return(domainErrors.ErrUserNotFound).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/email/resend-verification", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	// Service returns ErrUserNotFound, handler should probably still return OK to prevent enumeration
+	assert.Equal(t, http.StatusOK, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+
+// --- Logout / LogoutAll Tests (Basic) ---
+// These tests assume middleware correctly extracts user/token info and passes to handler via context.
+// For Logout, the handler itself is simple, most logic is in service.
+// For LogoutAll, also simple.
+
+func TestAuthHandler_Logout_Success(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	// Simulate middleware providing tokens (actual values don't matter much for handler logic itself if service is mocked)
+	// The handler reads them from cookies.
+
+	ts.mockAuthService.On("Logout", mock.Anything, "test-access-token", "test-refresh-token").Return(nil).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+	// Simulate cookies being present
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: "test-access-token"})
+	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: "test-refresh-token"})
+
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// Check cookies are cleared
+	clearedAccess := false
+	clearedRefresh := false
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == "access_token" && cookie.MaxAge < 0 {
+			clearedAccess = true
+		}
+		if cookie.Name == "refresh_token" && cookie.MaxAge < 0 {
+			clearedRefresh = true
+		}
+	}
+	assert.True(t, clearedAccess, "Access token cookie should be cleared")
+	assert.True(t, clearedRefresh, "Refresh token cookie should be cleared")
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_LogoutAll_Success(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	ts.mockAuthService.On("LogoutAll", mock.Anything, "test-access-token").Return(nil).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout/all", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: "test-access-token"})
+	// refresh_token cookie is not strictly needed by LogoutAll handler if AT is primary for identifying user.
+
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// Check cookies are cleared
+	clearedAccess := false
+	clearedRefresh := false
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == "access_token" && cookie.MaxAge < 0 {
+			clearedAccess = true
+		}
+		if cookie.Name == "refresh_token" && cookie.MaxAge < 0 { // Also expect refresh to be cleared
+			clearedRefresh = true
+		}
+	}
+	assert.True(t, clearedAccess, "Access token cookie should be cleared on logout all")
+	assert.True(t, clearedRefresh, "Refresh token cookie should be cleared on logout all")
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+// --- OAuthLogin Tests ---
+func TestAuthHandler_OAuthLogin_Success(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	provider := "google" // Example provider
+	expectedAuthURL := "https://provider.com/auth?client_id=123"
+	expectedStateCookieJWT := "state.jwt.token"
+
+	ts.mockAuthService.On("InitiateOAuthLogin", mock.Anything, provider, "", "").Return(expectedAuthURL, expectedStateCookieJWT, nil).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/auth/oauth/"+provider, nil)
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
+	assert.Equal(t, expectedAuthURL, w.Header().Get("Location"))
+
+	// Check for state cookie
+	foundCookie := false
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == "oauth_state" {
+			foundCookie = true
+			assert.Equal(t, expectedStateCookieJWT, cookie.Value)
+			assert.True(t, cookie.HttpOnly)
+			// Check other cookie params like Path, MaxAge, SameSite if set by handler
+			break
+		}
+	}
+	assert.True(t, foundCookie, "oauth_state cookie not set")
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_OAuthLogin_UnsupportedProvider(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	provider := "unknownprovider"
+
+	ts.mockAuthService.On("InitiateOAuthLogin", mock.Anything, provider, "", "").Return("", "", domainErrors.ErrUnsupportedOAuthProvider).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/auth/oauth/"+provider, nil)
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+
+// --- OAuthCallback Tests ---
+func TestAuthHandler_OAuthCallback_Success(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	provider := "google"
+	authCode := "auth_code_from_provider"
+	stateFromProvider := "state_from_provider"
+	stateCookieValue := "state.jwt.from.cookie" // This is the JWT from the cookie
+
+	mockTokenPair := &models.TokenPair{AccessToken: "access_token", RefreshToken: "refresh_token"}
+	mockUser := &models.User{ID: uuid.New(), Email: "oauth@example.com"}
+
+	ts.mockAuthService.On("HandleOAuthCallback", mock.Anything, provider, authCode, stateFromProvider, stateCookieValue, mock.AnythingOfType("map[string]string")).Return(mockTokenPair, mockUser, nil).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/auth/oauth/"+provider+"/callback?code="+authCode+"&state="+stateFromProvider, nil)
+	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: stateCookieValue}) // Simulate cookie presence
+	req.Header.Set("User-Agent", "test-callback-agent")
+
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var respBody LoginUserResponse
+	err := json.Unmarshal(w.Body.Bytes(), &respBody)
+	require.NoError(t, err)
+	assert.Equal(t, mockTokenPair.AccessToken, respBody.AccessToken)
+	// Check for auth cookies being set
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_OAuthCallback_StateMismatch(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	provider := "google"
+	authCode := "auth_code"
+	stateFromProvider := "state_A"
+	stateCookieValue := "state_jwt_B" // Mismatch or invalid JWT
+
+	ts.mockAuthService.On("HandleOAuthCallback", mock.Anything, provider, authCode, stateFromProvider, stateCookieValue, mock.AnythingOfType("map[string]string")).Return(nil, nil, domainErrors.ErrOAuthStateMismatch).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/auth/oauth/"+provider+"/callback?code="+authCode+"&state="+stateFromProvider, nil)
+	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: stateCookieValue})
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_OAuthCallback_NoStateCookie(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	provider := "google"
+	authCode := "auth_code"
+	stateFromProvider := "state_A"
+	// No oauth_state cookie set in the request
+
+	// The service might not even be called if the handler checks for the cookie first.
+	// If HandleOAuthCallback is called with an empty stateCookieJWT:
+	ts.mockAuthService.On("HandleOAuthCallback", mock.Anything, provider, authCode, stateFromProvider, "", mock.AnythingOfType("map[string]string")).Return(nil, nil, domainErrors.ErrOAuthStateMismatch).Maybe()
+
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/auth/oauth/"+provider+"/callback?code="+authCode+"&state="+stateFromProvider, nil)
+	// No cookie added to req
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code) // Or Unauthorized depending on how strict the missing cookie is handled
+	// ts.mockAuthService.AssertExpectations(t) // May or may not be called
+}
+
+
+// --- TelegramLogin Tests ---
+func TestAuthHandler_TelegramLogin_Success(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	tgReq := models.TelegramLoginRequest{ID: 12345, FirstName: "Tele", Username: "teleUser", AuthDate: time.Now().Unix(), Hash: "validhash"}
+	jsonBody, _ := json.Marshal(tgReq)
+
+	mockTokenPair := &models.TokenPair{AccessToken: "tg_access_token", RefreshToken: "tg_refresh_token"}
+	mockUser := &models.User{ID: uuid.New(), Username: "teleUser"}
+
+	ts.mockAuthService.On("LoginWithTelegram", mock.Anything, tgReq, mock.AnythingOfType("map[string]string")).Return(mockTokenPair, mockUser, nil).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/telegram/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "test-telegram-agent")
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var respBody LoginUserResponse
+	err := json.Unmarshal(w.Body.Bytes(), &respBody)
+	require.NoError(t, err)
+	assert.Equal(t, mockTokenPair.AccessToken, respBody.AccessToken)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_TelegramLogin_AuthFailed(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	tgReq := models.TelegramLoginRequest{ID: 12345, Hash: "invalidhash"} // Incomplete/invalid data
+	jsonBody, _ := json.Marshal(tgReq)
+
+	ts.mockAuthService.On("LoginWithTelegram", mock.Anything, tgReq, mock.AnythingOfType("map[string]string")).Return(nil, nil, domainErrors.ErrTelegramAuthFailed).Once()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/telegram/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_TelegramLogin_BadRequest(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+
+	w := httptest.NewRecorder()
+	// Missing 'id' which is required by struct binding
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/telegram/login", bytes.NewBuffer([]byte(`{"username":"test"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 

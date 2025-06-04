@@ -33,6 +33,9 @@ RUN adduser -D -H -h /app appuser
 # Установка рабочей директории
 WORKDIR /app
 
+# Copy configuration files
+COPY configs ./configs
+
 # Копирование бинарного файла из предыдущего этапа
 COPY --from=builder /app/auth-service .
 
