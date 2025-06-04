@@ -102,7 +102,10 @@ func main() {
 	defer redisClient.Close()
 
 	// Инициализация Kafka Producer
-	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers, cfg.Kafka.Producer.Topic)
+	// Note: NewProducer signature changed: NewProducer(brokers []string, logger logger.Logger, cloudEventSource string)
+	// Assuming the logger (*zap.Logger) from telemetry.NewLogger satisfies the logger.Logger interface expected by NewProducer.
+	// The CloudEventSource constant is from internal/events/models/cloudevent.go
+	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers, logger, models.CloudEventSource)
 	if err != nil {
 		logger.Fatal("Failed to initialize Kafka producer", zap.Error(err))
 	}
@@ -229,8 +232,45 @@ func main() {
 
 
 	// Инициализация обработчиков событий
-	eventHandlers := kafka.NewEventHandlers(authService, userService, logger)
-	go kafkaConsumer.StartConsuming(eventHandlers.HandleEvent)
+	// Instantiate new event handlers
+	accountHandler := eventHandlers.NewAccountEventsHandler(
+		logger,
+		cfg,
+		userRepo,
+		verificationCodeRepo,
+		authService,
+		kafkaProducer,
+		sessionRepo,        // Added for HandleAccountUserDeleted
+		refreshTokenRepo,   // Added for HandleAccountUserDeleted
+		mfaSecretRepo,      // Added for HandleAccountUserDeleted
+		mfaBackupCodeRepo,  // Added for HandleAccountUserDeleted
+		apiKeyRepo,         // Added for HandleAccountUserDeleted
+		externalAccountRepo,// Added for HandleAccountUserDeleted
+		auditLogService,    // Added for HandleAccountUserDeleted (as AuditLogRecorder)
+	)
+	adminHandler := eventHandlers.NewAdminEventsHandler(
+		logger,
+		cfg,
+		userRepo,
+		authService,
+		kafkaProducer,
+		auditLogService,    // Added for AdminEventsHandler
+	)
+
+	// Register handlers with the consumer
+	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.account.user.profile_updated.v1"), accountHandler.HandleAccountUserProfileUpdated)
+	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.account.user.deleted.v1"), accountHandler.HandleAccountUserDeleted) // Added handler
+	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.admin.user.force_logout.v1"), adminHandler.HandleAdminUserForceLogout)
+	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.admin.user.block.v1"), adminHandler.HandleAdminUserBlock)
+	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.admin.user.unblock.v1"), adminHandler.HandleAdminUserUnblock)
+
+	// Start the consumer
+	go func() {
+		if err := kafkaConsumer.Start(); err != nil {
+			logger.Error("Kafka consumer error", zap.Error(err))
+			// Optionally, decide if this should be fatal, e.g., panic(err)
+		}
+	}()
 
 	// Инициализация HTTP сервера
 	// SetupRouter now takes mfaLogicService directly for AuthHandler

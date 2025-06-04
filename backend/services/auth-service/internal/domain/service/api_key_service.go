@@ -32,13 +32,15 @@ type apiKeyServiceImpl struct {
 	apiKeyRepo      repository.APIKeyRepository
 	passwordService PasswordService // For hashing the secret part of the key
 	auditLogRecorder AuditLogRecorder // Added
+	kafkaProducer   *kafkaPkg.Producer // Added for event publishing
 }
 
 // APIKeyServiceConfig holds dependencies for APIKeyService.
 type APIKeyServiceConfig struct {
-	APIKeyRepo      repository.APIKeyRepository
-	PasswordService PasswordService
-	AuditLogRecorder AuditLogRecorder // Added for audit logging
+	APIKeyRepo       repository.APIKeyRepository
+	PasswordService  PasswordService
+	AuditLogRecorder AuditLogRecorder   // Added for audit logging
+	KafkaProducer    *kafkaPkg.Producer // Added
 }
 
 // NewAPIKeyService creates a new apiKeyServiceImpl.
@@ -47,6 +49,7 @@ func NewAPIKeyService(cfg APIKeyServiceConfig) APIKeyService {
 		apiKeyRepo:      cfg.APIKeyRepo,
 		passwordService: cfg.PasswordService,
 		auditLogRecorder: cfg.AuditLogRecorder, // Added
+		kafkaProducer:   cfg.KafkaProducer,    // Added
 	}
 }
 
@@ -128,8 +131,37 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 	}
 
 	targetIDSuccessStr := &storedKey.ID
-	auditDetails["key_prefix_stored"] = storedKey.KeyPrefix // Log the prefix that was stored
-	s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_create", models.AuditLogStatusSuccess, targetIDSuccessStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent)
+	auditDetails["key_prefix_stored"] = storedKey.KeyPrefix
+
+	// Publish CloudEvent
+	apiKeyCreatedPayload := eventModels.APIKeyCreatedPayload{
+		APIKeyID:    storedKey.ID,
+		UserID:      storedKey.UserID, // UserID is string here
+		Name:        storedKey.Name,
+		KeyPrefix:   storedKey.KeyPrefix,
+		CreatedAt:   storedKey.CreatedAt,
+		ExpiresAt:   storedKey.ExpiresAt,
+		// Permissions: storedKey.Permissions, // storedKey.Permissions is json.RawMessage, payload expects []string
+	}
+	if storedKey.Permissions != nil {
+		var perms []string
+		if errUnmarshal := json.Unmarshal(storedKey.Permissions, &perms); errUnmarshal == nil {
+			apiKeyCreatedPayload.Permissions = perms
+		} else {
+			// logger.Error("GenerateAndStoreAPIKey: Failed to unmarshal permissions for Kafka event", zap.Error(errUnmarshal), zap.String("apiKeyID", storedKey.ID))
+			if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+			auditDetails["warning_unmarshal_permissions_for_event"] = errUnmarshal.Error()
+		}
+	}
+
+	// TODO: Determine correct topic. Using placeholder "auth-events".
+	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthAPIKeyCreatedV1, storedKey.UserID, apiKeyCreatedPayload); err != nil {
+		// s.logger.Error("GenerateAndStoreAPIKey: Failed to publish CloudEvent for API key created", zap.Error(err), zap.String("apiKeyID", storedKey.ID))
+		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+		auditDetails["warning_cloudevent_publish"] = err.Error()
+	}
+
+	s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_create", authDomainModels.AuditLogStatusSuccess, targetIDSuccessStr, authDomainModels.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent)
 	return rawAPIKey, storedKey, nil
 }
 
@@ -178,7 +210,20 @@ func (s *apiKeyServiceImpl) RevokeUserAPIKey(ctx context.Context, userID string,
 		return fmt.Errorf("failed to revoke API key %s for user %s: %w", keyID, userID, err)
 	}
 
-	s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_revoke", models.AuditLogStatusSuccess, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent)
+	// Publish CloudEvent
+	apiKeyRevokedPayload := eventModels.APIKeyRevokedPayload{
+		APIKeyID:  keyID,
+		UserID:    userID, // UserID is string here
+		RevokedAt: time.Now(),
+	}
+	// TODO: Determine correct topic
+	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthAPIKeyRevokedV1, userID, apiKeyRevokedPayload); err != nil {
+		// s.logger.Error("RevokeUserAPIKey: Failed to publish CloudEvent for API key revoked", zap.Error(err), zap.String("apiKeyID", keyID))
+		if auditDetails == nil { auditDetails = make(map[string]interface{})} // Ensure auditDetails is not nil
+		auditDetails["warning_cloudevent_publish"] = err.Error()
+	}
+
+	s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_revoke", authDomainModels.AuditLogStatusSuccess, targetKeyIDStr, authDomainModels.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent)
 	return nil
 }
 

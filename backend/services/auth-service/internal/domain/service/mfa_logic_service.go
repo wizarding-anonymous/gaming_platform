@@ -52,8 +52,8 @@ type mfaLogicService struct {
 	mfaBackupCodeRepo     repoInterfaces.MFABackupCodeRepository
 	userRepo              repoInterfaces.UserRepository
 	passwordService       PasswordService
-	auditLogRecorder      AuditLogRecorder // Added for audit logging
-	// kafkaProducer      *kafka.Client
+	auditLogRecorder      AuditLogRecorder      // Added for audit logging
+	kafkaProducer         *kafkaPkg.Producer    // Added for event publishing
 }
 
 
@@ -66,8 +66,8 @@ func NewMFALogicService(
 	mfaBackupCodeRepo repoInterfaces.MFABackupCodeRepository,
 	userRepo repoInterfaces.UserRepository,
 	passwordService PasswordService,
-	auditLogRecorder AuditLogRecorder, // Added
-	// kafkaProducer *kafka.Client,
+	auditLogRecorder AuditLogRecorder,      // Added
+	kafkaProducer *kafkaPkg.Producer,   // Added
 ) MFALogicService {
 	return &mfaLogicService{
 		cfg:                   cfg,
@@ -77,8 +77,8 @@ func NewMFALogicService(
 		mfaBackupCodeRepo:     mfaBackupCodeRepo,
 		userRepo:              userRepo,
 		passwordService:       passwordService,
-		auditLogRecorder:      auditLogRecorder, // Added
-		// kafkaProducer:      kafkaProducer,
+		auditLogRecorder:      auditLogRecorder,      // Added
+		kafkaProducer:         kafkaProducer,   // Added
 	}
 }
 
@@ -251,10 +251,24 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 		return nil, fmt.Errorf("2FA activated, but failed to store backup codes: %w", err)
 	}
 
-	// TODO: Publish auth.2fa.enabled Kafka event (UserID, Type: TOTP, ActivatedAt)
+	enabledAt := time.Now() // Capture consistent timestamp
+	// Publish CloudEvent for MFA enabled
+	mfaEnabledPayload := eventModels.MFAEnabledPayload{
+		UserID:    userID.String(),
+		MFAType:   string(models.MFATypeTOTP), // Assuming models.MFATypeTOTP is "totp"
+		EnabledAt: enabledAt,
+	}
+	// TODO: Determine correct topic, using placeholder "auth-events" for now. Should be from cfg.
+	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthMFAEnabledV1, userID.String(), mfaEnabledPayload); err != nil {
+		// s.logger.Error("Failed to publish CloudEvent for MFA enabled", zap.Error(err), zap.String("userID", userID.String()))
+		// Add to audit details as a warning, as core MFA activation succeeded.
+		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+		auditDetails["warning_cloudevent_publish"] = err.Error()
+	}
+
 	if auditDetails == nil { auditDetails = make(map[string]interface{})} // Ensure not nil
 	auditDetails["mfa_secret_id"] = mfaSecretID.String()
-	auditDetails["mfa_type"] = models.MFATypeTOTP
+	auditDetails["mfa_type"] = string(models.MFATypeTOTP)
 	auditDetails["backup_codes_generated"] = len(plainBackupCodes)
 	s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_complete", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 	return plainBackupCodes, nil
@@ -345,12 +359,21 @@ func (s *mfaLogicService) Disable2FA(ctx context.Context, userID uuid.UUID, veri
 
 	auditDetails = map[string]interface{}{"secrets_deleted_count": deletedSecrets, "backup_codes_deleted_count": deletedBackupCodes}
 	if deletedSecrets > 0 || deletedBackupCodes > 0 {
-		// TODO: Publish auth.2fa.disabled Kafka event (UserID, DisabledAt)
+		disabledAt := time.Now()
+		mfaDisabledPayload := eventModels.MFADisabledPayload{
+			UserID:     userID.String(),
+			MFAType:    string(models.MFATypeTOTP), // Assuming disable implies TOTP for now
+			DisabledAt: disabledAt,
+		}
+		// TODO: Determine correct topic
+		if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthMFADisabledV1, userID.String(), mfaDisabledPayload); err != nil {
+			// s.logger.Error("Failed to publish CloudEvent for MFA disabled", zap.Error(err), zap.String("userID", userID.String()))
+			auditDetails["warning_cloudevent_publish"] = err.Error()
+		}
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_disable", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 	} else {
-		auditDetails["info"] = domainErrors.Err2FANotEnabled.Error() // Add info that nothing was enabled
+		auditDetails["info"] = domainErrors.Err2FANotEnabled.Error()
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_disable", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
-		// return domainErrors.Err2FANotEnabled // Returning success as the state is "disabled"
 	}
 	return nil
 }

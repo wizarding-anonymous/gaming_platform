@@ -131,12 +131,30 @@ func (s *RoleService) CreateRole(ctx context.Context, req models.CreateRoleReque
 		event := models.RoleCreatedEvent{
 			RoleID:      createdRoleForEvent.ID,
 			Name:        createdRoleForEvent.Name,
-			Description: createdRoleForEvent.Description,
+			Description: createdRoleForEvent.Description, // In payload, Description is *string
 			CreatedAt:   createdRoleForEvent.CreatedAt,
 		}
-		if errKafka := s.kafkaClient.PublishRoleEvent(ctx, "role.created", event); errKafka != nil {
-			s.logger.Error("Failed to publish role created event", zap.Error(errKafka), zap.String("role_id", role.ID))
-			auditDetails["warning_kafka_event"] = errKafka.Error()
+		// Map to new payload
+		roleCreatedPayload := eventModels.RoleCreatedPayload{
+			RoleID:      createdRoleForEvent.ID,
+			Name:        createdRoleForEvent.Name,
+			// Description: &createdRoleForEvent.Description, // Assuming Description in Role is string, and in Payload is *string
+			CreatedAt:   createdRoleForEvent.CreatedAt,
+			// ActorID needs to be string or *string in payload. adminUserID is *uuid.UUID.
+		}
+		if createdRoleForEvent.Description != "" { // Handle if description can be empty
+			roleCreatedPayload.Description = &createdRoleForEvent.Description
+		}
+		if actorID != nil {
+			actorIDStr := actorID.String()
+			roleCreatedPayload.ActorID = &actorIDStr
+		}
+
+		// TODO: Determine correct topic
+		if errKafka := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthRoleCreatedV1, createdRoleForEvent.ID, roleCreatedPayload); errKafka != nil {
+			s.logger.Error("Failed to publish CloudEvent for role created", zap.Error(errKafka), zap.String("role_id", role.ID))
+			if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+			auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 		}
 	}
 
@@ -213,15 +231,29 @@ func (s *RoleService) UpdateRole(ctx context.Context, id string, req models.Upda
 		s.logger.Warn("Could not fetch role after update for event details", zap.String("roleID", id), zap.Error(errFetchUpdate))
 		auditDetails["warning_fetch_for_event"] = errFetchUpdate.Error()
 	} else {
-		event := models.RoleUpdatedEvent{
-			RoleID:      updatedRoleForEvent.ID,
-			Name:        updatedRoleForEvent.Name,
-			Description: updatedRoleForEvent.Description,
-			UpdatedAt:   updatedRoleForEvent.UpdatedAt,
+		// Map to new CloudEvent payload
+		roleUpdatePayload := eventModels.RoleUpdatedPayload{
+			RoleID:    updatedRoleForEvent.ID,
+			UpdatedAt: updatedRoleForEvent.UpdatedAt,
+			ChangedFields: changedFields, // This was captured earlier in the method
 		}
-		if errKafka := s.kafkaClient.PublishRoleEvent(ctx, "role.updated", event); errKafka != nil {
-			s.logger.Error("Failed to publish role updated event", zap.Error(errKafka), zap.String("role_id", role.ID))
-			auditDetails["warning_kafka_event"] = errKafka.Error()
+		// Only include Name and Description in payload if they were actually part of the update request
+		if req.Name != nil {
+			roleUpdatePayload.Name = req.Name
+		}
+		if req.Description != nil {
+			roleUpdatePayload.Description = req.Description
+		}
+		if actorID != nil {
+			actorIDStr := actorID.String()
+			roleUpdatePayload.ActorID = &actorIDStr
+		}
+
+		// TODO: Determine correct topic
+		if errKafka := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthRoleUpdatedV1, updatedRoleForEvent.ID, roleUpdatePayload); errKafka != nil {
+			s.logger.Error("Failed to publish CloudEvent for role updated", zap.Error(errKafka), zap.String("role_id", role.ID))
+			if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+			auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 		}
 	}
 
@@ -265,13 +297,21 @@ func (s *RoleService) DeleteRole(ctx context.Context, id string, actorID *uuid.U
 		return err
 	}
 
-	event := models.RoleDeletedEvent{
+	deletedAt := time.Now()
+	roleDeletedPayload := eventModels.RoleDeletedPayload{
 		RoleID:    role.ID,
-		DeletedAt: time.Now(),
+		DeletedAt: deletedAt,
 	}
-	if errKafka := s.kafkaClient.PublishRoleEvent(ctx, "role.deleted", event); errKafka != nil {
-		s.logger.Error("Failed to publish role deleted event", zap.Error(errKafka), zap.String("role_id", role.ID))
-		auditDetails["warning_kafka_event"] = errKafka.Error()
+	if actorID != nil {
+		actorIDStr := actorID.String()
+		roleDeletedPayload.ActorID = &actorIDStr
+	}
+
+	// TODO: Determine correct topic
+	if errKafka := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthRoleDeletedV1, role.ID, roleDeletedPayload); errKafka != nil {
+		s.logger.Error("Failed to publish CloudEvent for role deleted", zap.Error(errKafka), zap.String("role_id", role.ID))
+		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+		auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 	}
 
 	s.auditLogRecorder.RecordEvent(ctx, actorID, "role_delete", models.AuditLogStatusSuccess, targetRoleID, models.AuditTargetTypeRole, auditDetails, ipAddress, userAgent)
@@ -349,9 +389,12 @@ func (s *RoleService) AssignRoleToUser(ctx context.Context, userID uuid.UUID, ro
 		ChangedByUserID: changedByKafka,
 		ChangeTimestamp: time.Now(),
 	}
-	if errKafka := s.kafkaClient.PublishUserEvent(ctx, "auth.user.roles_changed.v1", event); errKafka != nil {
-		s.logger.Error("Failed to publish role assigned event", zap.Error(errKafka), zap.String("user_id", userID.String()), zap.String("role_id", roleID))
-		auditDetails["warning_kafka_event"] = errKafka.Error()
+	// Publish CloudEvent
+	// TODO: Determine correct topic, using placeholder "auth-events" for now. Should be from cfg.
+	if errKafka := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthUserRoleAssignedV1, userID.String(), event); errKafka != nil {
+		s.logger.Error("Failed to publish CloudEvent for user role assigned", zap.Error(errKafka), zap.String("user_id", userID.String()), zap.String("role_id", roleID))
+		if auditDetails == nil { auditDetails = make(map[string]interface{}) } // Ensure auditDetails is not nil
+		auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 	}
 
 	s.auditLogRecorder.RecordEvent(ctx, adminUserID, "user_role_assign", models.AuditLogStatusSuccess, targetUserID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
@@ -426,9 +469,12 @@ func (s *RoleService) RemoveRoleFromUser(ctx context.Context, userID uuid.UUID, 
 		ChangedByUserID: changedByKafka,
 		ChangeTimestamp: time.Now(),
 	}
-	if errKafka := s.kafkaClient.PublishUserEvent(ctx, "auth.user.roles_changed.v1", event); errKafka != nil {
-		s.logger.Error("Failed to publish role removed event", zap.Error(errKafka), zap.String("user_id", userID.String()), zap.String("role_id", roleID))
-		auditDetails["warning_kafka_event"] = errKafka.Error()
+	// Publish CloudEvent
+	// TODO: Determine correct topic
+	if errKafka := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthUserRoleRevokedV1, userID.String(), event); errKafka != nil {
+		s.logger.Error("Failed to publish CloudEvent for user role revoked", zap.Error(errKafka), zap.String("user_id", userID.String()), zap.String("role_id", roleID))
+		if auditDetails == nil { auditDetails = make(map[string]interface{}) } // Ensure auditDetails is not nil
+		auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 	}
 
 	s.auditLogRecorder.RecordEvent(ctx, adminUserID, "user_role_revoke", models.AuditLogStatusSuccess, targetUserID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
