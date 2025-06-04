@@ -6,149 +6,95 @@ import (
 	"github.com/google/uuid"
 )
 
-// User представляет модель пользователя в системе
+// User represents the user entity in the database, aligned with auth_data_model.md after migration 000008.
 type User struct {
-	ID              uuid.UUID  `json:"id" db:"id"`
-	Email           string     `json:"email" db:"email"`
-	Username        string     `json:"username" db:"username"`
-	PasswordHash    string     `json:"-" db:"password_hash"`
-	EmailVerified   bool       `json:"email_verified" db:"email_verified"`
-	TwoFactorSecret string     `json:"-" db:"two_factor_secret"`
-	TwoFactorEnabled bool      `json:"two_factor_enabled" db:"two_factor_enabled"`
-	TelegramID      *string    `json:"telegram_id,omitempty" db:"telegram_id"`
-	Status          string     `json:"status" db:"status"`
-	LastLoginAt     *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
-	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
-	Roles           []Role     `json:"roles,omitempty" db:"-"`
+	ID                  uuid.UUID  `json:"id" db:"id"`
+	Username            string     `json:"username" db:"username"`
+	Email               string     `json:"email" db:"email"`
+	PasswordHash        string     `json:"-" db:"password_hash"`
+	Status              UserStatus `json:"status" db:"status"` // 'active', 'inactive', 'blocked', 'pending_verification', 'deleted'
+	EmailVerifiedAt     *time.Time `json:"email_verified_at,omitempty" db:"email_verified_at"`
+	LastLoginAt         *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
+	FailedLoginAttempts int        `json:"failed_login_attempts" db:"failed_login_attempts"`
+	LockoutUntil        *time.Time `json:"lockout_until,omitempty" db:"lockout_until"`
+	CreatedAt           time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at" db:"updated_at"`
+	DeletedAt           *time.Time `json:"deleted_at,omitempty" db:"deleted_at"`
+	Roles               []Role     `json:"roles,omitempty" db:"-"` // Loaded separately
 }
 
-// UserStatus определяет возможные статусы пользователя
+// UserStatus defines the possible statuses for a user.
 type UserStatus string
 
 const (
-	UserStatusActive   UserStatus = "active"
-	UserStatusInactive UserStatus = "inactive"
-	UserStatusBlocked  UserStatus = "blocked"
-	UserStatusDeleted  UserStatus = "deleted"
+	UserStatusActive             UserStatus = "active"
+	UserStatusInactive           UserStatus = "inactive"
+	UserStatusBlocked            UserStatus = "blocked"
+	UserStatusPendingVerification UserStatus = "pending_verification"
+	UserStatusDeleted            UserStatus = "deleted"
 )
 
-// CreateUserRequest представляет запрос на создание нового пользователя
+// ListUsersParams defines parameters for listing users with pagination and filtering.
+type ListUsersParams struct {
+	Page             int        `json:"page"`
+	PageSize         int        `json:"page_size"`
+	Status           UserStatus `json:"status,omitempty"`
+	UsernameContains string     `json:"username_contains,omitempty"`
+	EmailContains    string     `json:"email_contains,omitempty"`
+	// Add other filter fields as needed, e.g., CreatedAfter, CreatedBefore
+}
+
+// CreateUserRequest represents the data needed to create a new user.
+// Typically used in service layer, not directly in repository.
 type CreateUserRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Username string `json:"username" validate:"required,min=3,max=50"`
-	Password string `json:"password" validate:"required,min=8,max=100"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"` // Plain password, to be hashed by service
 }
 
-// UpdateUserRequest представляет запрос на обновление пользователя
+// UpdateUserRequest represents data for updating a user.
+// Typically used in service layer.
 type UpdateUserRequest struct {
-	Username string `json:"username" validate:"omitempty,min=3,max=50"`
-	Status   string `json:"status" validate:"omitempty,oneof=active inactive blocked"`
+	Username            *string     `json:"username,omitempty"`
+	Email               *string     `json:"email,omitempty"`
+	Status              *UserStatus `json:"status,omitempty"`
+	EmailVerifiedAt     *time.Time  `json:"email_verified_at,omitempty"` // Explicitly set verification
+	FailedLoginAttempts *int        `json:"failed_login_attempts,omitempty"`
+	LockoutUntil        *time.Time  `json:"lockout_until,omitempty"`     // To lock or unlock account
 }
 
-// LoginRequest представляет запрос на аутентификацию
-type LoginRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required"`
-}
-
-// TelegramLoginRequest представляет запрос на аутентификацию через Telegram
-type TelegramLoginRequest struct {
-	ID        int64  `json:"id" validate:"required"`
-	FirstName string `json:"first_name" validate:"required"`
-	Username  string `json:"username" validate:"required"`
-	PhotoURL  string `json:"photo_url" validate:"omitempty,url"`
-	AuthDate  int64  `json:"auth_date" validate:"required"`
-	Hash      string `json:"hash" validate:"required"`
-}
-
-// VerifyEmailRequest представляет запрос на подтверждение email
-type VerifyEmailRequest struct {
-	Token string `json:"token" validate:"required"`
-}
-
-// ResendVerificationRequest представляет запрос на повторную отправку подтверждения
-type ResendVerificationRequest struct {
-	Email string `json:"email" validate:"required,email"`
-}
-
-// ForgotPasswordRequest представляет запрос на восстановление пароля
-type ForgotPasswordRequest struct {
-	Email string `json:"email" validate:"required,email"`
-}
-
-// ResetPasswordRequest представляет запрос на сброс пароля
-type ResetPasswordRequest struct {
-	Token       string `json:"token" validate:"required"`
-	NewPassword string `json:"new_password" validate:"required,min=8,max=100"`
-}
-
-// TwoFactorEnableRequest представляет запрос на включение 2FA
-type TwoFactorEnableRequest struct {
-	Code string `json:"code" validate:"required,len=6,numeric"`
-}
-
-// TwoFactorVerifyRequest представляет запрос на проверку кода 2FA
-type TwoFactorVerifyRequest struct {
-	Code string `json:"code" validate:"required,len=6,numeric"`
-}
-
-// TwoFactorDisableRequest представляет запрос на отключение 2FA
-type TwoFactorDisableRequest struct {
-	Code string `json:"code" validate:"required,len=6,numeric"`
-}
-
-// UserResponse представляет ответ с информацией о пользователе
+// UserResponse structures the user data returned by API endpoints.
 type UserResponse struct {
-	ID              uuid.UUID `json:"id"`
-	Email           string    `json:"email"`
-	Username        string    `json:"username"`
-	EmailVerified   bool      `json:"email_verified"`
-	TwoFactorEnabled bool     `json:"two_factor_enabled"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	Roles           []string  `json:"roles,omitempty"`
+	ID                  uuid.UUID  `json:"id"`
+	Username            string     `json:"username"`
+	Email               string     `json:"email"`
+	Status              UserStatus `json:"status"`
+	EmailVerifiedAt     *time.Time `json:"email_verified_at,omitempty"`
+	LastLoginAt         *time.Time `json:"last_login_at,omitempty"`
+	FailedLoginAttempts int        `json:"failed_login_attempts"`
+	LockoutUntil        *time.Time `json:"lockout_until,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	Roles               []string   `json:"roles,omitempty"`
 }
 
-// UserListResponse представляет ответ со списком пользователей
-type UserListResponse struct {
-	Users      []UserResponse `json:"users"`
-	TotalCount int64          `json:"total_count"`
-	Page       int            `json:"page"`
-	PageSize   int            `json:"page_size"`
-}
-
-// NewUserFromRequest создает новую модель пользователя из запроса
-func NewUserFromRequest(req CreateUserRequest) User {
-	now := time.Now()
-	return User{
-		ID:            uuid.New(),
-		Email:         req.Email,
-		Username:      req.Username,
-		EmailVerified: false,
-		Status:        string(UserStatusActive),
-		CreatedAt:     now,
-		UpdatedAt:     now,
+// ToResponse converts a User model to an API UserResponse.
+func (u *User) ToResponse() UserResponse {
+	roleNames := make([]string, len(u.Roles))
+	for i, r := range u.Roles {
+		roleNames[i] = r.Name // Assuming Role struct has a Name field
 	}
-}
-
-// ToResponse преобразует модель пользователя в ответ API
-func (u User) ToResponse() UserResponse {
-	roles := make([]string, 0, len(u.Roles))
-	for _, role := range u.Roles {
-		roles = append(roles, role.Name)
-	}
-
 	return UserResponse{
-		ID:              u.ID,
-		Email:           u.Email,
-		Username:        u.Username,
-		EmailVerified:   u.EmailVerified,
-		TwoFactorEnabled: u.TwoFactorEnabled,
-		Status:          u.Status,
-		CreatedAt:       u.CreatedAt,
-		UpdatedAt:       u.UpdatedAt,
-		Roles:           roles,
+		ID:                  u.ID,
+		Username:            u.Username,
+		Email:               u.Email,
+		Status:              u.Status,
+		EmailVerifiedAt:     u.EmailVerifiedAt,
+		LastLoginAt:         u.LastLoginAt,
+		FailedLoginAttempts: u.FailedLoginAttempts,
+		LockoutUntil:        u.LockoutUntil,
+		CreatedAt:           u.CreatedAt,
+		UpdatedAt:           u.UpdatedAt,
+		Roles:               roleNames,
 	}
 }

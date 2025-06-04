@@ -273,14 +273,15 @@ func (s *AuthService) Logout(ctx context.Context, accessToken, refreshToken stri
 	}
 
 	// Добавление токенов в черный список
-	err = s.tokenService.RevokeToken(ctx, accessToken)
+	err = s.tokenService.RevokeToken(ctx, accessToken) // Blacklist access token
 	if err != nil {
 		s.logger.Error("Failed to revoke access token", zap.Error(err))
 	}
 
-	err = s.tokenService.RevokeToken(ctx, refreshToken)
-	if err != nil {
-		s.logger.Error("Failed to revoke refresh token", zap.Error(err))
+	// Revoke the specific refresh token from PostgreSQL
+	if err := s.tokenService.RevokeRefreshToken(ctx, refreshToken); err != nil {
+		s.logger.Error("Failed to revoke refresh token from DB", zap.Error(err), zap.String("session_id", sessionID.String()))
+		// Non-fatal to logout flow, but needs monitoring
 	}
 
 	// Получение ID пользователя из claims
@@ -327,11 +328,18 @@ func (s *AuthService) LogoutAll(ctx context.Context, accessToken string) error {
 		return models.ErrInvalidToken
 	}
 
-	// Деактивация всех сессий пользователя
+	// Деактивация всех сессий пользователя (deletes session records)
 	err = s.sessionService.DeactivateAllUserSessions(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to deactivate all user sessions", zap.Error(err), zap.String("user_id", userID.String()))
-		return err
+		// Not returning error here, as some sessions might have been deactivated.
+		// Primary goal is to revoke tokens.
+	}
+
+	// Revoke all refresh tokens for the user from PostgreSQL
+	if _, err := s.tokenService.RevokeAllRefreshTokensForUser(ctx, userID); err != nil {
+		s.logger.Error("Failed to revoke all refresh tokens for user from DB", zap.Error(err), zap.String("user_id", userID.String()))
+		// Non-fatal to logout flow overall
 	}
 
 	// Отправка события о выходе пользователя из всех сессий

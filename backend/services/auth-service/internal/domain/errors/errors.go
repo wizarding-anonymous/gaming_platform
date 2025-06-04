@@ -28,6 +28,7 @@ var (
 	ErrUsernameExists    = errors.New("имя пользователя уже используется")
 	ErrInvalidPassword   = errors.New("неверный пароль")
 	ErrUserBlocked       = errors.New("пользователь заблокирован")
+	ErrUserLockedOut     = errors.New("пользователь временно заблокирован") // Added
 	ErrEmailNotVerified  = errors.New("email не подтвержден")
 	
 	// Ошибки ролей и разрешений

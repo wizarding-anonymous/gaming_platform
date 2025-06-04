@@ -16,8 +16,11 @@ func SetupRouter(
 	userService *service.UserService,
 	roleService *service.RoleService,
 	tokenService *service.TokenService,
+	tokenManagementService domainService.TokenManagementService,
+	sessionService *service.SessionService, // Added
 	twoFactorService *service.TwoFactorService,
 	telegramService *service.TelegramService,
+	cfg *config.Config, // Added
 	logger *zap.Logger,
 ) *gin.Engine {
 	// Создание роутера
@@ -31,10 +34,13 @@ func SetupRouter(
 	router.Use(middleware.TracingMiddleware())
 
 	// Создание обработчиков
-	authHandler := NewAuthHandler(authService, tokenService, twoFactorService, telegramService, logger)
+	// Pass cfg to NewAuthHandler if it needs config for CSRF, etc.
+	authHandler := NewAuthHandler(authService, tokenService, sessionService, twoFactorService, telegramService, cfg, logger)
 	userHandler := NewUserHandler(userService, logger)
 	roleHandler := NewRoleHandler(roleService, logger)
-	validationHandler := NewValidationHandler(tokenService, logger)
+	// Pass tokenManagementService to validationHandler if it needs to validate RS256 tokens
+	validationHandler := NewValidationHandler(tokenService, tokenManagementService, logger)
+
 
 	// Настройка маршрутов для метрик и проверки работоспособности
 	router.GET("/metrics", gin.WrapF(telemetry.PrometheusHandler()))
@@ -44,6 +50,12 @@ func SetupRouter(
 	router.GET("/readiness", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+
+	// JWKS Endpoint
+	jwksHandler := NewJWKSHandler(tokenManagementService, logger)
+	// Standard path for JWKS. Can also be /api/v1/auth/jwks.json if preferred under API group.
+	router.GET("/.well-known/jwks.json", gin.WrapF(jwksHandler.GetJWKS))
+
 
 	// Группа маршрутов API
 	api := router.Group("/api/v1")
@@ -71,7 +83,8 @@ func SetupRouter(
 
 		// Защищенные маршруты (требуют аутентификации)
 		protected := api.Group("/")
-		protected.Use(middleware.AuthMiddleware(tokenService, logger))
+		// AuthMiddleware might need TokenManagementService if access tokens are RS256
+		protected.Use(middleware.AuthMiddleware(tokenManagementService, logger))
 		{
 			// Маршруты пользователя
 			user := protected.Group("/users")
@@ -101,7 +114,8 @@ func SetupRouter(
 
 		// Маршруты администратора (требуют роли admin)
 		admin := api.Group("/admin")
-		admin.Use(middleware.AuthMiddleware(tokenService, logger))
+		// AuthMiddleware for admin routes
+		admin.Use(middleware.AuthMiddleware(tokenManagementService, logger))
 		admin.Use(middleware.RoleMiddleware([]string{"admin"}))
 		{
 			// Маршруты управления ролями

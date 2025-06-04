@@ -2,59 +2,60 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
+	"github.com/google/uuid"
+	"github.com/your-org/auth-service/internal/domain/models" // Updated import path
 )
 
 // APIKeyRepository defines the interface for interacting with API key data.
 type APIKeyRepository interface {
 	// Create persists a new API key to the database.
-	Create(ctx context.Context, apiKey *entity.APIKey) error
+	Create(ctx context.Context, apiKey *models.APIKey) error
 
-	// FindByID retrieves an API key by its unique ID, ensuring it belongs to the specified userID.
-	// Returns entity.ErrAPIKeyNotFound if not found or if userID does not match.
-	FindByID(ctx context.Context, id string, userID string) (*entity.APIKey, error)
+	// FindByID retrieves an API key by its unique ID.
+	// For security, it might be better to always require userID if the key is user-specific.
+	// However, a global admin might need to fetch by ID directly.
+	// Consider if userID should be optional or if there should be two methods.
+	FindByID(ctx context.Context, id uuid.UUID) (*models.APIKey, error)
+
+	// FindByUserIDAndID retrieves an API key by its ID, ensuring it belongs to the specified userID.
+	// Returns domainErrors.ErrNotFound if not found or if userID does not match.
+	FindByUserIDAndID(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*models.APIKey, error)
 
 	// FindByKeyPrefix retrieves an API key by its unique key prefix.
-	// This can be used for quick lookups if the prefix is indexed.
-	// Note: This method alone is not sufficient for authentication as it doesn't verify the secret.
-	// Returns entity.ErrAPIKeyNotFound if not found.
-	FindByKeyPrefix(ctx context.Context, prefix string) (*entity.APIKey, error)
+	// This is used for initial lookup before hash comparison.
+	// Returns domainErrors.ErrNotFound if not found.
+	FindByKeyPrefix(ctx context.Context, prefix string) (*models.APIKey, error)
 	
-	// FindByPrefixAndHash retrieves an API key by its prefix and the hash of its secret part.
+	// FindByPrefixAndHash retrieves an active API key by its prefix and the hash of its secret part.
 	// This is the primary method for authenticating an API key.
-	// Returns entity.ErrAPIKeyNotFound if not found or if hash doesn't match.
-	FindByPrefixAndHash(ctx context.Context, prefix string, hash string) (*entity.APIKey, error)
+	// Returns domainErrors.ErrNotFound if not found, hash doesn't match, or key is revoked/expired.
+	// Note: This method implies the repository has access to the raw key for hashing,
+	// or more likely, the hash is passed in. The latter is correct.
+	FindByPrefixAndHash(ctx context.Context, prefix string, keyHash string) (*models.APIKey, error)
 
-	// ListByUserID retrieves all API key metadata (excluding key_hash) associated with a specific user ID.
-	// Should allow for pagination in a real application.
-	ListByUserID(ctx context.Context, userID string) ([]*entity.APIKey, error)
+	// ListByUserID retrieves all API key metadata (excluding key_hash) for a specific user ID.
+	ListByUserID(ctx context.Context, userID uuid.UUID) ([]*models.APIKey, error)
 
 	// UpdateLastUsedAt updates the last_used_at timestamp for an API key by its ID.
-	UpdateLastUsedAt(ctx context.Context, id string) error // Will use time.Now() internally
+	UpdateLastUsedAt(ctx context.Context, id uuid.UUID, lastUsedAt time.Time) error
 	
 	// UpdateNameAndPermissions updates the name and permissions of an API key.
 	// Ensures key belongs to userID.
-	UpdateNameAndPermissions(ctx context.Context, id string, userID string, name string, permissions []byte) error // permissions as json.RawMessage
+	UpdateNameAndPermissions(ctx context.Context, id uuid.UUID, userID uuid.UUID, name string, permissions json.RawMessage) error
 
 	// Revoke marks an API key as revoked by setting revoked_at.
 	// Ensures the key belongs to the specified userID before revoking.
-	Revoke(ctx context.Context, id string, userID string) error // Will use time.Now() internally for revoked_at
+	Revoke(ctx context.Context, id uuid.UUID, userID uuid.UUID, revokedAt time.Time) error
 
-	// Delete removes an API key from the database.
-	// This should typically be used for keys that are already revoked and/or expired.
-	// Ensures key belongs to userID or is globally admin-deleted.
-	Delete(ctx context.Context, id string) error
+	// Delete removes an API key from the database by its ID.
+	Delete(ctx context.Context, id uuid.UUID) error
 	
 	// DeleteExpiredAndRevoked removes API keys that are past their expires_at
 	// or have been revoked for a certain period.
-	DeleteExpiredAndRevoked(ctx context.Context, olderThanRevoked time.Duration) (int64, error)
+	DeleteExpiredAndRevoked(ctx context.Context, olderThanRevokedPeriod time.Duration) (int64, error)
 }
 
-// Note: entity.ErrAPIKeyNotFound would be a custom error.
-// Define in an appropriate error definitions file.
-// Example:
-// package entity
-// import "errors"
-// var ErrAPIKeyNotFound = errors.New("api key not found")
+// Note: domainErrors.ErrNotFound or a specific ErrAPIKeyNotFound should be used.

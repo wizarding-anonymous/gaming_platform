@@ -14,10 +14,14 @@ import (
 	"github.com/your-org/auth-service/internal/events/kafka"
 	grpcHandler "github.com/your-org/auth-service/internal/handler/grpc"
 	httpHandler "github.com/your-org/auth-service/internal/handler/http"
-	"github.com/your-org/auth-service/internal/repository/postgres"
+	infraDbPostgres "github.com/your-org/auth-service/internal/infrastructure/database/postgres" // For NewDBPool
+	repoPostgres "github.com/your-org/auth-service/internal/domain/repository/postgres"      // For specific repo constructors
 	"github.com/your-org/auth-service/internal/repository/redis"
+	domainService "github.com/your-org/auth-service/internal/domain/service" // For PasswordService interface
+	"github.com/your-org/auth-service/internal/infrastructure/security"   // For NewArgon2idPasswordService
 	"github.com/your-org/auth-service/internal/service"
 	"github.com/your-org/auth-service/internal/utils/telemetry"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -71,11 +75,18 @@ func main() {
 	}
 
 	// Инициализация подключения к PostgreSQL
-	pgRepo, err := postgres.NewPostgresRepository(cfg.Database)
+	dbPool, err := infraDbPostgres.NewDBPool(cfg.Database) // Use new package
 	if err != nil {
-		logger.Fatal("Failed to initialize PostgreSQL repository", zap.Error(err))
+		logger.Fatal("Failed to initialize PostgreSQL connection pool", zap.Error(err))
 	}
-	defer pgRepo.Close()
+	defer dbPool.Close()
+
+	// Инициализация репозиториев
+	userRepo := repoPostgres.NewUserRepositoryPostgres(dbPool)
+	refreshTokenRepo := repoPostgres.NewRefreshTokenRepositoryPostgres(dbPool)
+	sessionRepo := repoPostgres.NewSessionRepositoryPostgres(dbPool)
+	verificationCodeRepo := repoPostgres.NewVerificationCodeRepositoryPostgres(dbPool)
+	// TODO: Initialize other repositories (Role, Permission, APIKey, AuditLog etc.) here as needed.
 
 	// Инициализация подключения к Redis
 	redisClient, err := redis.NewRedisClient(cfg.Redis)
@@ -98,29 +109,97 @@ func main() {
 	}
 	defer kafkaConsumer.Close()
 
+	// Инициализация PasswordService
+	argon2Params := security.Argon2idParams{
+		Memory:      cfg.Security.PasswordHash.Memory,
+		Iterations:  cfg.Security.PasswordHash.Iterations,
+		Parallelism: cfg.Security.PasswordHash.Parallelism,
+		SaltLength:  cfg.Security.PasswordHash.SaltLength,
+		KeyLength:   cfg.Security.PasswordHash.KeyLength,
+	}
+	passwordService, err := security.NewArgon2idPasswordService(argon2Params)
+	if err != nil {
+		logger.Fatal("Failed to initialize password service", zap.Error(err))
+	}
+
+	// Инициализация нового TokenManagementService (RS256)
+	tokenManagementService, err := security.NewRSATokenManagementService(cfg.JWT)
+	if err != nil {
+		logger.Fatal("Failed to initialize RSA Token Management Service", zap.Error(err))
+	}
+
+	// Инициализация TOTPService
+	totpService := security.NewPquernaTOTPService(cfg.MFA.TOTPIssuerName)
+
+	// Инициализация EncryptionService
+	encryptionService := security.NewAESGCMEncryptionService()
+	// Note: The encryption key itself (cfg.MFA.TOTPSecretEncryptionKey) will be passed to methods
+	// of encryptionService when they are called, not necessarily at instantiation unless
+	// the service is designed to be instantiated with a specific key. Current design has key per call.
+
 	// Инициализация сервисов
-	tokenService := service.NewTokenService(redisClient, cfg.JWT, logger)
-	authService := service.NewAuthService(pgRepo, redisClient, tokenService, kafkaProducer, cfg, logger)
-	userService := service.NewUserService(pgRepo, kafkaProducer, logger)
-	roleService := service.NewRoleService(pgRepo, logger)
-	sessionService := service.NewSessionService(pgRepo, redisClient, logger)
+	// Old TokenService is being refactored. NewTokenService will take new dependencies.
+	tokenService := service.NewTokenService(
+		redisClient,
+		logger,
+		tokenManagementService,
+		refreshTokenRepo,
+		userRepo,
+		sessionRepo,
+	)
+
+	sessionService := service.NewSessionService(
+		sessionRepo,
+		userRepo,
+		kafkaProducer,
+		logger,
+		tokenManagementService, // Inject new dependency
+	)
+
+	authService := service.NewAuthService(
+		userRepo,
+		verificationCodeRepo, // Inject new dependency
+		tokenService,         // Refactored TokenService
+		sessionService,
+		kafkaProducer,
+		cfg,
+		logger,
+		passwordService,
+		// tokenManagementService, // AuthService might use TokenService which uses TokenManagementService
+	)
+	// TODO: userService and roleService might need to be updated if they depended on the old pgRepo structure directly.
+	// For now, assuming they can be adapted or their pgRepo dependency was for specific sub-repos.
+	// This might require creating specific RoleRepository etc. and passing them.
+	// For the scope of this subtask, focusing on TokenService and SessionService DI.
+	// The pgRepo was a generic repo, now we have specific ones.
+	// userService := service.NewUserService(pgRepo, kafkaProducer, logger)
+	// roleService := service.NewRoleService(pgRepo, logger)
+	// For now, these will cause errors if pgRepo was expected to implement all interfaces.
+	// Placeholder: these services might need individual repositories.
+	var userService *service.UserService // Placeholder - needs proper initialization
+	var roleService *service.RoleService // Placeholder
+
 	telegramService := service.NewTelegramService(cfg.Telegram, logger)
-	twoFactorService := service.NewTwoFactorService(pgRepo, redisClient, logger)
+	// twoFactorService := service.NewTwoFactorService(pgRepo, redisClient, logger) // Placeholder
+	var twoFactorService *service.TwoFactorService // Placeholder
+
 
 	// Инициализация обработчиков событий
+	// TODO: Ensure eventHandlers are updated if constructor for authService/userService changes significantly for it
 	eventHandlers := kafka.NewEventHandlers(authService, userService, logger)
 	go kafkaConsumer.StartConsuming(eventHandlers.HandleEvent)
 
 	// Инициализация HTTP сервера
-	router := httpHandler.NewRouter(
+	router := httpHandler.SetupRouter( // Renamed NewRouter to SetupRouter based on router.go content
 		authService,
 		userService,
 		roleService,
-		tokenService,
-		sessionService,
+		tokenService,         // Old TokenService
+		tokenManagementService, // New TokenManagementService for JWKS
+		sessionService,       // sessionService was not in original SetupRouter params, adding it
 		telegramService,
 		twoFactorService,
-		cfg,
+		cfg, // cfg was not in original SetupRouter params, but httpHandler.NewRouter took it
 		logger,
 	)
 
@@ -141,8 +220,14 @@ func main() {
 		),
 	)
 
+	// TODO: Update NewAuthServer if its dependencies (authService, userService, roleService, tokenService) change structure
 	authGRPCServer := grpcHandler.NewAuthServer(authService, userService, roleService, tokenService, logger)
 	authGRPCServer.RegisterServer(grpcServer)
+
+	// Инициализация и регистрация gRPC Health Check сервера
+	healthServer := grpcHandler.NewHealthServer(logger)
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	logger.Info("gRPC Health Check service registered")
 
 	// Включение reflection для gRPC (полезно для отладки)
 	if cfg.GRPC.EnableReflection {

@@ -1,15 +1,20 @@
 package service
 
-// TOTPService defines the interface for Time-based One-Time Password operations.
+// TOTPService defines the interface for Time-based One-Time Password generation and validation.
 type TOTPService interface {
-	// GenerateSecret creates a new TOTP secret for a user.
+	// GenerateSecret creates a new TOTP secret for a user account.
 	// accountName is typically the user's email or username.
-	// issuerName is the name of the application or service.
-	// Returns the base32 encoded secret, a QR code data URL for authenticator apps, and an error.
-	GenerateSecret(accountName, issuerName string) (secretB32 string, qrCodeDataURL string, err error)
+	// issuerNameOverride can be used if a specific issuer is needed for this key,
+	// otherwise the service's default issuer name is used.
+	// Returns:
+	// - secretBase32: The new secret key, base32 encoded (this is what should be stored, encrypted).
+	// - otpAuthURL: The otpauth:// URL for QR code generation (includes issuer, accountName, secret).
+	// - error: Any error encountered.
+	GenerateSecret(accountName string, issuerNameOverride string) (secretBase32 string, otpAuthURL string, err error)
 
 	// ValidateCode checks if the provided TOTP code is valid for the given secret.
-	// It should account for potential clock drift by checking codes for a small window
-	// around the current time.
-	ValidateCode(secretB32, code string) (isValid bool, err error)
+	// secretBase32 is the base32 encoded secret stored for the user.
+	// code is the TOTP code entered by the user.
+	// Returns true if valid, false otherwise, and any error.
+	ValidateCode(secretBase32 string, code string) (bool, error)
 }

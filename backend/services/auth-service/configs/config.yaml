@@ -91,15 +91,24 @@ jwt:
     expires_in: 15m
   refresh_token:
     secret: "your-refresh-token-secret-key-here"
-    expires_in: 720h # 30 дней
-  email_verification_token:
-    secret: "your-email-verification-token-secret-key-here"
+    expires_in: 720h # 30 дней -> This will become refresh_token_ttl
+  email_verification_token: # This is for simple random tokens now, not JWTs. Kept for duration config.
+    secret: "your-email-verification-token-secret-key-here" # Not used for simple tokens
     expires_in: 48h # 2 дня
-  password_reset_token:
-    secret: "your-password-reset-token-secret-key-here"
+  password_reset_token: # This is for simple random tokens now, not JWTs. Kept for duration config.
+    secret: "your-password-reset-token-secret-key-here" # Not used for simple tokens
     expires_in: 24h # 1 день
-  issuer: "auth-service"
-  audience: "russian-steam-platform"
+
+  # Common JWT settings (used for RS256 and potentially HMAC if still used)
+  issuer: "auth-service" # Copied from previous level
+  audience: "russian-steam-platform" # Copied from previous level
+  access_token_ttl: 15m # New for RS256 access tokens
+  refresh_token_ttl: 720h # New for RS256 refresh tokens (opaque value's intended lifespan)
+
+  # RS256 specific settings
+  rsa_private_key_pem_file: "configs/keys/dev_private_key.pem" # New
+  rsa_public_key_pem_file: "configs/keys/dev_public_key.pem"   # New
+  jwks_key_id: "auth-service-dev-key-1" # New
 
 # Настройки Telegram
 telegram:
@@ -142,10 +151,13 @@ security:
   password_hash:
     algorithm: "argon2id"
     memory: 65536
-    iterations: 3
-    parallelism: 2
+    iterations: 2 # Task spec
+    parallelism: 4 # Task spec
     salt_length: 16
     key_length: 32
+  lockout: # Added
+    max_failed_attempts: 5 # Added
+    lockout_duration: 15m # Added
   rate_limit:
     enabled: true
     requests: 100
@@ -154,3 +166,12 @@ security:
     enabled: false
     ips: []
   cors_enabled: true
+
+# Настройки MFA (Multi-Factor Authentication)
+mfa:
+  totp_issuer_name: "MyPlatformAuth"
+  # This key MUST be securely generated and stored (e.g., via Vault, K8s secrets).
+  # For dev, this is a placeholder. It should be 64 hex characters for a 32-byte key.
+  # Example: openssl rand -hex 32
+  totp_secret_encryption_key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  totp_backup_code_count: 10

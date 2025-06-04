@@ -1,116 +1,69 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// Session представляет модель сессии пользователя в системе
+// Session represents the session entity in the database,
+// aligned with auth_data_model.md and schema after migration 000008.
 type Session struct {
-	ID           uuid.UUID  `json:"id" db:"id"`
-	UserID       uuid.UUID  `json:"user_id" db:"user_id"`
-	RefreshToken string     `json:"-" db:"refresh_token"`
-	IP           string     `json:"ip" db:"ip"`
-	UserAgent    string     `json:"user_agent" db:"user_agent"`
-	DeviceID     string     `json:"device_id" db:"device_id"`
-	ExpiresAt    time.Time  `json:"expires_at" db:"expires_at"`
-	LastActivity time.Time  `json:"last_activity" db:"last_activity"`
-	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
-	RevokedAt    *time.Time `json:"revoked_at,omitempty" db:"revoked_at"`
+	ID             uuid.UUID       `json:"id" db:"id"`
+	UserID         uuid.UUID       `json:"user_id" db:"user_id"`
+	IPAddress      *string         `json:"ip_address,omitempty" db:"ip_address"`
+	UserAgent      *string         `json:"user_agent,omitempty" db:"user_agent"`
+	DeviceInfo     json.RawMessage `json:"device_info,omitempty" db:"device_info"` // Stored as JSONB
+	ExpiresAt      time.Time       `json:"expires_at" db:"expires_at"`
+	CreatedAt      time.Time       `json:"created_at" db:"created_at"`           // Handled by DB default
+	LastActivityAt time.Time       `json:"last_activity_at" db:"last_activity_at"` // Updated by app logic or trigger
+	UpdatedAt      time.Time       `json:"updated_at" db:"updated_at"`           // Handled by DB trigger
 }
 
-// SessionStatus определяет статусы сессии
-type SessionStatus string
+// ListSessionsParams defines parameters for listing sessions.
+type ListSessionsParams struct {
+	Page        int  `json:"page"`
+	PageSize    int  `json:"page_size"`
+	ActiveOnly  bool `json:"active_only"` // If true, only return sessions where expires_at > NOW()
+	UserID      uuid.UUID // Filter by UserID, if needed for admin purposes, otherwise GetUserSessions is specific
+}
 
-const (
-	SessionStatusActive  SessionStatus = "active"
-	SessionStatusExpired SessionStatus = "expired"
-	SessionStatusRevoked SessionStatus = "revoked"
-)
+// CreateSessionRequest represents data for creating a new session.
+// Typically used in service layer.
+type CreateSessionRequest struct {
+	UserID         uuid.UUID
+	IPAddress      *string
+	UserAgent      *string
+	DeviceInfo     json.RawMessage
+	SessionExpiresIn time.Duration // For calculating ExpiresAt
+}
 
-// SessionResponse представляет ответ с информацией о сессии
+
+// SessionResponse structures the session data returned by API endpoints.
 type SessionResponse struct {
-	ID           uuid.UUID `json:"id"`
-	IP           string    `json:"ip"`
-	UserAgent    string    `json:"user_agent"`
-	DeviceID     string    `json:"device_id"`
-	LastActivity time.Time `json:"last_activity"`
-	CreatedAt    time.Time `json:"created_at"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	Status       string    `json:"status"`
+	ID             uuid.UUID       `json:"id"`
+	UserID         uuid.UUID       `json:"user_id"`
+	IPAddress      *string         `json:"ip_address,omitempty"`
+	UserAgent      *string         `json:"user_agent,omitempty"`
+	DeviceInfo     json.RawMessage `json:"device_info,omitempty"`
+	ExpiresAt      time.Time       `json:"expires_at"`
+	CreatedAt      time.Time       `json:"created_at"`
+	LastActivityAt time.Time       `json:"last_activity_at"`
+	IsActive       bool            `json:"is_active"` // Calculated field
 }
 
-// SessionListResponse представляет ответ со списком сессий
-type SessionListResponse struct {
-	Sessions   []SessionResponse `json:"sessions"`
-	TotalCount int64             `json:"total_count"`
-}
-
-// LogoutRequest представляет запрос на выход из системы
-type LogoutRequest struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
-}
-
-// LogoutAllRequest представляет запрос на выход из всех устройств
-type LogoutAllRequest struct {
-	ExceptCurrent bool `json:"except_current"`
-}
-
-// NewSession создает новую модель сессии
-func NewSession(userID uuid.UUID, refreshToken, ip, userAgent, deviceID string, expiresIn time.Duration) Session {
-	now := time.Now()
-	return Session{
-		ID:           uuid.New(),
-		UserID:       userID,
-		RefreshToken: refreshToken,
-		IP:           ip,
-		UserAgent:    userAgent,
-		DeviceID:     deviceID,
-		ExpiresAt:    now.Add(expiresIn),
-		LastActivity: now,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-}
-
-// IsExpired проверяет, истек ли срок действия сессии
-func (s Session) IsExpired() bool {
-	return time.Now().After(s.ExpiresAt)
-}
-
-// IsRevoked проверяет, была ли сессия отозвана
-func (s Session) IsRevoked() bool {
-	return s.RevokedAt != nil
-}
-
-// IsValid проверяет, действительна ли сессия
-func (s Session) IsValid() bool {
-	return !s.IsExpired() && !s.IsRevoked()
-}
-
-// GetStatus возвращает статус сессии
-func (s Session) GetStatus() SessionStatus {
-	if s.IsRevoked() {
-		return SessionStatusRevoked
-	}
-	if s.IsExpired() {
-		return SessionStatusExpired
-	}
-	return SessionStatusActive
-}
-
-// ToResponse преобразует модель сессии в ответ API
-func (s Session) ToResponse() SessionResponse {
+// ToResponse converts a Session model to an API SessionResponse.
+func (s *Session) ToResponse() SessionResponse {
 	return SessionResponse{
-		ID:           s.ID,
-		IP:           s.IP,
-		UserAgent:    s.UserAgent,
-		DeviceID:     s.DeviceID,
-		LastActivity: s.LastActivity,
-		CreatedAt:    s.CreatedAt,
-		ExpiresAt:    s.ExpiresAt,
-		Status:       string(s.GetStatus()),
+		ID:             s.ID,
+		UserID:         s.UserID,
+		IPAddress:      s.IPAddress,
+		UserAgent:      s.UserAgent,
+		DeviceInfo:     s.DeviceInfo,
+		ExpiresAt:      s.ExpiresAt,
+		CreatedAt:      s.CreatedAt,
+		LastActivityAt: s.LastActivityAt,
+		IsActive:       s.ExpiresAt.After(time.Now()), // Calculated
 	}
 }

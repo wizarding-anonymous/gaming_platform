@@ -13,12 +13,20 @@ import (
 	"go.uber.org/zap"
 )
 
+	"github.com/your-org/auth-service/internal/domain/models"
+	"github.com/your-org/auth-service/internal/repository/interfaces"
+	"github.com/your-org/auth-service/internal/utils/kafka"
+	domainService "github.com/your-org/auth-service/internal/domain/service" // Added for TokenManagementService
+	"go.uber.org/zap"
+)
+
 // SessionService предоставляет методы для работы с сессиями пользователей
 type SessionService struct {
-	sessionRepo interfaces.SessionRepository
-	userRepo    interfaces.UserRepository
-	kafkaClient *kafka.Client
-	logger      *zap.Logger
+	sessionRepo      interfaces.SessionRepository
+	userRepo         interfaces.UserRepository // To verify user exists before creating session
+	kafkaClient      *kafka.Client
+	logger           *zap.Logger
+	tokenMgmtService domainService.TokenManagementService // Added
 }
 
 // NewSessionService создает новый экземпляр SessionService
@@ -27,36 +35,42 @@ func NewSessionService(
 	userRepo interfaces.UserRepository,
 	kafkaClient *kafka.Client,
 	logger *zap.Logger,
+	tokenMgmtService domainService.TokenManagementService, // Added
 ) *SessionService {
 	return &SessionService{
-		sessionRepo: sessionRepo,
-		userRepo:    userRepo,
-		kafkaClient: kafkaClient,
-		logger:      logger,
+		sessionRepo:      sessionRepo,
+		userRepo:         userRepo,
+		kafkaClient:      kafkaClient,
+		logger:           logger,
+		tokenMgmtService: tokenMgmtService, // Added
 	}
 }
 
 // CreateSession создает новую сессию пользователя
-func (s *SessionService) CreateSession(ctx context.Context, userID uuid.UUID, userAgent, ipAddress string) (*models.Session, error) {
-	// Проверка существования пользователя
-	_, err := s.userRepo.GetByID(ctx, userID)
+// UserAgent and IPAddress are now pointers in models.Session, pass accordingly.
+// DeviceInfo also needs to be handled if collected.
+func (s *SessionService) CreateSession(ctx context.Context, userID uuid.UUID, userAgent string, ipAddress string /* deviceInfo json.RawMessage */) (*models.Session, error) {
+	// Проверка существования пользователя (userRepo.FindByID now)
+	_, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get user for session creation", zap.Error(err), zap.String("user_id", userID.String()))
 		return nil, models.ErrUserNotFound
 	}
 
+	now := time.Now()
 	// Создание сессии
 	session := &models.Session{
-		ID:        uuid.New(),
-		UserID:    userID,
-		UserAgent: userAgent,
-		IPAddress: ipAddress,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(30 * 24 * time.Hour), // 30 дней
-		IsActive:  true,
+		ID:             uuid.New(),
+		UserID:         userID,
+		UserAgent:      &userAgent, // Assuming conversion to pointer
+		IPAddress:      &ipAddress, // Assuming conversion to pointer
+		// DeviceInfo:  deviceInfo, // Pass if available
+		CreatedAt:      now, // Will be set by DB default if not provided by repo.Create
+		LastActivityAt: now, // Initialize LastActivityAt
+		ExpiresAt:      now.Add(s.tokenMgmtService.GetRefreshTokenExpiry()), // Use TokenManagementService for expiry
 	}
 
-	// Сохранение сессии
+	// Сохранение сессии (sessionRepo.Create now takes *models.Session and returns error)
 	err = s.sessionRepo.Create(ctx, session)
 	if err != nil {
 		s.logger.Error("Failed to create session", zap.Error(err), zap.String("user_id", userID.String()))
@@ -81,6 +95,7 @@ func (s *SessionService) CreateSession(ctx context.Context, userID uuid.UUID, us
 
 // GetSession получает сессию по ID
 func (s *SessionService) GetSession(ctx context.Context, sessionID uuid.UUID) (*models.Session, error) {
+	// sessionRepo.GetByID now returns (*models.Session, error)
 	session, err := s.sessionRepo.GetByID(ctx, sessionID)
 	if err != nil {
 		s.logger.Error("Failed to get session", zap.Error(err), zap.String("session_id", sessionID.String()))
@@ -90,16 +105,16 @@ func (s *SessionService) GetSession(ctx context.Context, sessionID uuid.UUID) (*
 }
 
 // GetUserSessions получает все сессии пользователя
-func (s *SessionService) GetUserSessions(ctx context.Context, userID uuid.UUID) ([]*models.Session, error) {
-	// Проверка существования пользователя
-	_, err := s.userRepo.GetByID(ctx, userID)
+func (s *SessionService) GetUserSessions(ctx context.Context, userID uuid.UUID, params models.ListSessionsParams) ([]*models.Session, int, error) {
+	// Проверка существования пользователя (userRepo.FindByID now)
+	_, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get user for sessions retrieval", zap.Error(err), zap.String("user_id", userID.String()))
-		return nil, models.ErrUserNotFound
+		return nil, 0, models.ErrUserNotFound
 	}
 
-	// Получение сессий
-	sessions, err := s.sessionRepo.GetByUserID(ctx, userID)
+	// Получение сессий (sessionRepo.GetUserSessions now)
+	sessions, total, err := s.sessionRepo.GetUserSessions(ctx, userID, params)
 	if err != nil {
 		s.logger.Error("Failed to get user sessions", zap.Error(err), zap.String("user_id", userID.String()))
 		return nil, err
@@ -110,14 +125,16 @@ func (s *SessionService) GetUserSessions(ctx context.Context, userID uuid.UUID) 
 // GetActiveUserSessions получает активные сессии пользователя
 func (s *SessionService) GetActiveUserSessions(ctx context.Context, userID uuid.UUID) ([]*models.Session, error) {
 	// Проверка существования пользователя
-	_, err := s.userRepo.GetByID(ctx, userID)
+	_, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get user for active sessions retrieval", zap.Error(err), zap.String("user_id", userID.String()))
-		return nil, models.ErrUserNotFound
+		return nil, 0, models.ErrUserNotFound
 	}
 
 	// Получение активных сессий
-	sessions, err := s.sessionRepo.GetActiveByUserID(ctx, userID)
+	// sessionRepo.GetUserSessions handles filtering by activeOnly via ListSessionsParams
+	params := models.ListSessionsParams{ActiveOnly: true, PageSize: 0} // PageSize 0 to get all matching
+	sessions, _, err := s.sessionRepo.GetUserSessions(ctx, userID, params)
 	if err != nil {
 		s.logger.Error("Failed to get active user sessions", zap.Error(err), zap.String("user_id", userID.String()))
 		return nil, err
@@ -134,22 +151,23 @@ func (s *SessionService) DeactivateSession(ctx context.Context, sessionID uuid.U
 		return err
 	}
 
-	// Деактивация сессии
-	session.IsActive = false
-	session.UpdatedAt = time.Now()
-
-	// Сохранение сессии
-	err = s.sessionRepo.Update(ctx, session)
+	err = s.sessionRepo.Delete(ctx, sessionID)
 	if err != nil {
-		s.logger.Error("Failed to update session", zap.Error(err), zap.String("session_id", sessionID.String()))
+		// If already not found by Delete, consider it success for deactivation.
+		if errors.Is(err, domainErrors.ErrSessionNotFound) || errors.Is(err, domainErrors.ErrNotFound) {
+			s.logger.Info("Session already deleted during deactivation attempt.", zap.String("session_id", sessionID.String()))
+			return nil
+		}
+		s.logger.Error("Failed to delete session during deactivation", zap.Error(err), zap.String("session_id", sessionID.String()))
 		return err
 	}
 
-	// Отправка события о деактивации сессии
-	event := models.SessionDeactivatedEvent{
-		SessionID:    session.ID.String(),
-		UserID:       session.UserID.String(),
-		DeactivatedAt: session.UpdatedAt,
+	// Отправка события о деактивации/удалении сессии
+	// Ensure models.SessionDeactivatedEvent is defined or use a generic SessionDeletedEvent
+	event := models.SessionDeactivatedEvent{ // Or SessionDeletedEvent
+		SessionID:    sessionID.String(), // Use sessionID from param as 'session' might be from before delete
+		UserID:       session.UserID.String(), // UserID from fetched session
+		DeactivatedAt: time.Now(),
 	}
 	err = s.kafkaClient.PublishSessionEvent(ctx, "session.deactivated", event)
 	if err != nil {
@@ -162,23 +180,27 @@ func (s *SessionService) DeactivateSession(ctx context.Context, sessionID uuid.U
 // DeactivateAllUserSessions деактивирует все сессии пользователя
 func (s *SessionService) DeactivateAllUserSessions(ctx context.Context, userID uuid.UUID) error {
 	// Проверка существования пользователя
-	_, err := s.userRepo.GetByID(ctx, userID)
+	_, err := s.userRepo.FindByID(ctx, userID) // userRepo.FindByID now
 	if err != nil {
-		s.logger.Error("Failed to get user for sessions deactivation", zap.Error(err), zap.String("user_id", userID.String()))
+		s.logger.Error("Failed to get user for sessions deactivation/deletion", zap.Error(err), zap.String("user_id", userID.String()))
 		return models.ErrUserNotFound
 	}
 
-	// Деактивация всех сессий
-	err = s.sessionRepo.DeactivateAllByUserID(ctx, userID)
+	// Деактивация (удаление) всех сессий
+	// SessionRepository now has DeleteAllUserSessions(ctx, userID, exceptSessionID *uuid.UUID) (int64, error)
+	deletedCount, err := s.sessionRepo.DeleteAllUserSessions(ctx, userID, nil) // No session to exclude
 	if err != nil {
-		s.logger.Error("Failed to deactivate all user sessions", zap.Error(err), zap.String("user_id", userID.String()))
+		s.logger.Error("Failed to delete all user sessions", zap.Error(err), zap.String("user_id", userID.String()))
 		return err
 	}
+	s.logger.Info("Deleted all sessions for user", zap.String("user_id", userID.String()), zap.Int64("count", deletedCount))
 
-	// Отправка события о деактивации всех сессий
-	event := models.AllSessionsDeactivatedEvent{
+
+	// Отправка события о деактивации (удалении) всех сессий
+	// Ensure models.AllSessionsDeactivatedEvent is defined
+	event := models.AllSessionsDeactivatedEvent{ // Or AllSessionsDeletedEvent
 		UserID:       userID.String(),
-		DeactivatedAt: time.Now(),
+		DeactivatedAt: time.Now(), // Or DeletedAt
 	}
 	err = s.kafkaClient.PublishSessionEvent(ctx, "session.all_deactivated", event)
 	if err != nil {
@@ -191,7 +213,8 @@ func (s *SessionService) DeactivateAllUserSessions(ctx context.Context, userID u
 // CleanupExpiredSessions удаляет истекшие сессии
 func (s *SessionService) CleanupExpiredSessions(ctx context.Context) error {
 	// Удаление истекших сессий
-	count, err := s.sessionRepo.DeleteExpired(ctx)
+	// sessionRepo.DeleteExpiredSessions now
+	count, err := s.sessionRepo.DeleteExpiredSessions(ctx)
 	if err != nil {
 		s.logger.Error("Failed to delete expired sessions", zap.Error(err))
 		return err

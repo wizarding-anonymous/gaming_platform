@@ -16,6 +16,38 @@ type Config struct {
 	Telemetry TelemetryConfig `mapstructure:"telemetry"`
 	GRPC      GRPCConfig      `mapstructure:"grpc"`
 	CORS      CORSConfig      `mapstructure:"cors"`
+	Security  SecurityConfig  `mapstructure:"security"`
+	MFA       MFAConfig       `mapstructure:"mfa"`
+}
+
+// MFAConfig holds configuration for Multi-Factor Authentication.
+type MFAConfig struct {
+	TOTPIssuerName          string `mapstructure:"totp_issuer_name"`
+	TOTPSecretEncryptionKey string `mapstructure:"totp_secret_encryption_key"` // Hex or Base64 encoded 32-byte key for AES-256
+	TOTPBackupCodeCount     int    `mapstructure:"totp_backup_code_count"`
+}
+
+// Argon2idConfig holds parameters for Argon2id password hashing.
+type Argon2idConfig struct {
+	Memory      uint32 `mapstructure:"memory"`
+	Iterations  uint32 `mapstructure:"iterations"`
+	Parallelism uint8  `mapstructure:"parallelism"`
+	SaltLength  uint32 `mapstructure:"salt_length"`
+	KeyLength   uint32 `mapstructure:"key_length"`
+	// Algorithm string `mapstructure:"algorithm"` // Already specified as Argon2id
+}
+
+// SecurityConfig holds security-related configurations.
+type SecurityConfig struct {
+	PasswordHash Argon2idConfig `mapstructure:"password_hash"`
+	Lockout      LockoutConfig  `mapstructure:"lockout"`
+	// Add other security settings here, e.g., rate_limit, ip_whitelist from YAML
+}
+
+// LockoutConfig holds parameters for account lockout policy.
+type LockoutConfig struct {
+	MaxFailedAttempts int           `mapstructure:"max_failed_attempts"`
+	LockoutDuration   time.Duration `mapstructure:"lockout_duration"`
 }
 
 // ServerConfig содержит настройки HTTP сервера
@@ -70,11 +102,23 @@ type ConsumerConfig struct {
 
 // JWTConfig содержит настройки для работы с JWT токенами
 type JWTConfig struct {
-	AccessToken  TokenConfig `mapstructure:"access_token"`
-	RefreshToken TokenConfig `mapstructure:"refresh_token"`
+	// For HMAC (existing, might be phased out or used for specific internal tokens)
+	AccessToken            TokenConfig `mapstructure:"access_token"`            // Keep for now
+	RefreshToken           TokenConfig `mapstructure:"refresh_token"`           // Keep for now
+	EmailVerificationToken TokenConfig `mapstructure:"email_verification_token"` // Keep for now
+	PasswordResetToken     TokenConfig `mapstructure:"password_reset_token"`     // Keep for now
+
+	// For RS256 (new)
+	RSAPrivateKeyPEMFile string        `mapstructure:"rsa_private_key_pem_file"`
+	RSAPublicKeyPEMFile  string        `mapstructure:"rsa_public_key_pem_file"`
+	JWKSKeyID            string        `mapstructure:"jwks_key_id"`
+	AccessTokenTTL       time.Duration `mapstructure:"access_token_ttl"`  // e.g., "15m"
+	RefreshTokenTTL      time.Duration `mapstructure:"refresh_token_ttl"` // e.g., "720h"
+	Issuer               string        `mapstructure:"issuer"`
+	Audience             string        `mapstructure:"audience"`
 }
 
-// TokenConfig содержит настройки для конкретного типа токена
+// TokenConfig содержит настройки для конкретного типа токена (primarily for HMAC secrets)
 type TokenConfig struct {
 	Secret    string        `mapstructure:"secret"`
 	ExpiresIn time.Duration `mapstructure:"expires_in"`
