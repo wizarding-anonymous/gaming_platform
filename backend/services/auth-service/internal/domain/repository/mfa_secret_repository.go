@@ -12,6 +12,10 @@ type MFASecretRepository interface {
 	// Create persists a new MFA secret to the database.
 	Create(ctx context.Context, secret *models.MFASecret) error
 
+	// FindByID retrieves an MFA secret by its primary ID.
+	// Returns domainErrors.ErrNotFound if not found.
+	FindByID(ctx context.Context, id uuid.UUID) (*models.MFASecret, error)
+
 	// FindByUserIDAndType retrieves an MFA secret for a specific user and MFA type.
 	// Returns domainErrors.ErrNotFound (or specific error) if not found.
 	FindByUserIDAndType(ctx context.Context, userID uuid.UUID, mfaType models.MFAType) (*models.MFASecret, error)
@@ -26,6 +30,10 @@ type MFASecretRepository interface {
 	// DeleteAllForUser removes all MFA secrets for a given user ID.
 	// This might be used when a user wants to reset all their MFA configurations.
 	DeleteAllForUser(ctx context.Context, userID uuid.UUID) (int64, error) // Returns number of secrets deleted
+
+	// DeleteByUserIDAndTypeIfUnverified removes a specific type of MFA secret for a user ONLY if it's not verified.
+	// Returns true if a record was deleted, false otherwise.
+	DeleteByUserIDAndTypeIfUnverified(ctx context.Context, userID uuid.UUID, mfaType models.MFAType) (bool, error)
 }
 
 // Note: domainErrors.ErrNotFound or a specific ErrMFASecretNotFound should be used.

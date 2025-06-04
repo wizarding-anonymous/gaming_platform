@@ -26,6 +26,26 @@ func NewMFASecretRepositoryPostgres(pool *pgxpool.Pool) *MFASecretRepositoryPost
 	return &MFASecretRepositoryPostgres{pool: pool}
 }
 
+// FindByID retrieves an MFA secret by its primary ID.
+func (r *MFASecretRepositoryPostgres) FindByID(ctx context.Context, id uuid.UUID) (*models.MFASecret, error) {
+	query := `
+		SELECT id, user_id, type, secret_key_encrypted, verified, created_at, updated_at
+		FROM mfa_secrets
+		WHERE id = $1
+	`
+	s := &models.MFASecret{}
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&s.ID, &s.UserID, &s.Type, &s.SecretKeyEncrypted, &s.Verified, &s.CreatedAt, &s.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domainErrors.ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to find MFA secret by ID: %w", err)
+	}
+	return s, nil
+}
+
 // Create persists a new MFA secret.
 func (r *MFASecretRepositoryPostgres) Create(ctx context.Context, secret *models.MFASecret) error {
 	query := `
@@ -123,6 +143,19 @@ func (r *MFASecretRepositoryPostgres) DeleteAllForUser(ctx context.Context, user
 		return 0, fmt.Errorf("failed to delete all MFA secrets for user: %w", err)
 	}
 	return result.RowsAffected(), nil
+}
+
+// DeleteByUserIDAndTypeIfUnverified removes an unverified MFA secret for a user and type.
+func (r *MFASecretRepositoryPostgres) DeleteByUserIDAndTypeIfUnverified(ctx context.Context, userID uuid.UUID, mfaType models.MFAType) (bool, error) {
+	query := `
+		DELETE FROM mfa_secrets
+		WHERE user_id = $1 AND type = $2 AND verified = false
+	`
+	result, err := r.pool.Exec(ctx, query, userID, mfaType)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete unverified MFA secret by user ID and type: %w", err)
+	}
+	return result.RowsAffected() > 0, nil
 }
 
 var _ repository.MFASecretRepository = (*MFASecretRepositoryPostgres)(nil)

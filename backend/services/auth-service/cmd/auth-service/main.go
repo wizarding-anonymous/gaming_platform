@@ -86,7 +86,12 @@ func main() {
 	refreshTokenRepo := repoPostgres.NewRefreshTokenRepositoryPostgres(dbPool)
 	sessionRepo := repoPostgres.NewSessionRepositoryPostgres(dbPool)
 	verificationCodeRepo := repoPostgres.NewVerificationCodeRepositoryPostgres(dbPool)
-	// TODO: Initialize other repositories (Role, Permission, APIKey, AuditLog etc.) here as needed.
+	mfaSecretRepo := repoPostgres.NewMFASecretRepositoryPostgres(dbPool)
+	mfaBackupCodeRepo := repoPostgres.NewMFABackupCodeRepositoryPostgres(dbPool)
+	apiKeyRepo := repoPostgres.NewAPIKeyRepositoryPostgres(dbPool)
+	auditLogRepo := repoPostgres.NewAuditLogRepositoryPostgres(dbPool) // Added
+	// TODO: Initialize RoleRepository, PermissionRepository for RoleService
+	// TODO: Initialize UserRolesRepository for UserService/RoleService (admin part)
 
 	// Инициализация подключения к Redis
 	redisClient, err := redis.NewRedisClient(cfg.Redis)
@@ -133,9 +138,23 @@ func main() {
 
 	// Инициализация EncryptionService
 	encryptionService := security.NewAESGCMEncryptionService()
-	// Note: The encryption key itself (cfg.MFA.TOTPSecretEncryptionKey) will be passed to methods
-	// of encryptionService when they are called, not necessarily at instantiation unless
-	// the service is designed to be instantiated with a specific key. Current design has key per call.
+
+	// Инициализация MFALogicService
+	mfaLogicService := service.NewMFALogicService(
+		&cfg.MFA,
+		totpService,
+		encryptionService,
+		mfaSecretRepo,
+		mfaBackupCodeRepo,
+		userRepo,
+		passwordService,
+	)
+
+	// Инициализация APIKeyService
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, passwordService)
+
+	// Инициализация AuditLogService
+	auditLogService := service.NewAuditLogService(auditLogRepo, logger) // Added
 
 	// Инициализация сервисов
 	// Old TokenService is being refactored. NewTokenService will take new dependencies.
@@ -158,48 +177,50 @@ func main() {
 
 	authService := service.NewAuthService(
 		userRepo,
-		verificationCodeRepo, // Inject new dependency
-		tokenService,         // Refactored TokenService
+		verificationCodeRepo,
+		tokenService,
 		sessionService,
 		kafkaProducer,
 		cfg,
 		logger,
 		passwordService,
-		// tokenManagementService, // AuthService might use TokenService which uses TokenManagementService
+		tokenManagementService, // Now directly injecting into AuthService
+		mfaSecretRepo,        // Injecting MFASecretRepository
+		mfaLogicService,      // Injecting MFALogicService
 	)
-	// TODO: userService and roleService might need to be updated if they depended on the old pgRepo structure directly.
-	// For now, assuming they can be adapted or their pgRepo dependency was for specific sub-repos.
-	// This might require creating specific RoleRepository etc. and passing them.
-	// For the scope of this subtask, focusing on TokenService and SessionService DI.
-	// The pgRepo was a generic repo, now we have specific ones.
-	// userService := service.NewUserService(pgRepo, kafkaProducer, logger)
-	// roleService := service.NewRoleService(pgRepo, logger)
-	// For now, these will cause errors if pgRepo was expected to implement all interfaces.
-	// Placeholder: these services might need individual repositories.
-	var userService *service.UserService // Placeholder - needs proper initialization
-	var roleService *service.RoleService // Placeholder
+
+	// Assuming UserService and RoleService need specific repositories now, not the generic pgRepo
+	// This part is still placeholder as full DI for these services is out of scope for current MFA focus
+	// For them to work, they'd need their respective repositories created above and passed here.
+	// Example: roleRepo := repoPostgres.NewRoleRepositoryPostgres(dbPool)
+	// roleService := service.NewRoleService(roleRepo, logger)
+	var userService *service.UserService // Placeholder - needs proper initialization with specific repos
+	var roleService *service.RoleService // Placeholder - needs proper initialization with specific repos
 
 	telegramService := service.NewTelegramService(cfg.Telegram, logger)
-	// twoFactorService := service.NewTwoFactorService(pgRepo, redisClient, logger) // Placeholder
-	var twoFactorService *service.TwoFactorService // Placeholder
+	// twoFactorService from previous setup is now replaced by mfaLogicService via AuthService
+	// var twoFactorService *service.TwoFactorService // This would be the old one
 
 
 	// Инициализация обработчиков событий
-	// TODO: Ensure eventHandlers are updated if constructor for authService/userService changes significantly for it
 	eventHandlers := kafka.NewEventHandlers(authService, userService, logger)
 	go kafkaConsumer.StartConsuming(eventHandlers.HandleEvent)
 
 	// Инициализация HTTP сервера
-	router := httpHandler.SetupRouter( // Renamed NewRouter to SetupRouter based on router.go content
+	// SetupRouter now takes mfaLogicService directly for AuthHandler
+	// It no longer takes the old tokenService or twoFactorService if AuthHandler is updated
+	router := httpHandler.SetupRouter(
 		authService,
-		userService,
-		roleService,
-		tokenService,         // Old TokenService
-		tokenManagementService, // New TokenManagementService for JWKS
-		sessionService,       // sessionService was not in original SetupRouter params, adding it
+		userService,          // Placeholder
+		roleService,          // Placeholder
+		tokenService,         // Old TokenService, still passed as some handlers might use it directly
+		sessionService,
 		telegramService,
-		twoFactorService,
-		cfg, // cfg was not in original SetupRouter params, but httpHandler.NewRouter took it
+		mfaLogicService,
+		apiKeyService,
+		auditLogService,      // Pass auditLogService to SetupRouter
+		tokenManagementService,
+		cfg,
 		logger,
 	)
 
@@ -221,13 +242,43 @@ func main() {
 	)
 
 	// TODO: Update NewAuthServer if its dependencies (authService, userService, roleService, tokenService) change structure
-	authGRPCServer := grpcHandler.NewAuthServer(authService, userService, roleService, tokenService, logger)
-	authGRPCServer.RegisterServer(grpcServer)
+	// The old authGRPCServer is replaced by the new AuthV1Service
+	// authGRPCServer := grpcHandler.NewAuthServer(authService, userService, roleService, tokenService, logger)
+	// authGRPCServer.RegisterServer(grpcServer)
 
-	// Инициализация и регистрация gRPC Health Check сервера
-	healthServer := grpcHandler.NewHealthServer(logger)
-	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
-	logger.Info("gRPC Health Check service registered")
+	// Инициализация и регистрация нового AuthV1Service (gRPC)
+	authV1GrpcService := grpcHandler.NewAuthV1Service(
+		logger,
+		tokenManagementService,
+		authService, // AuthService provides CheckPermission, GetUserInfo (via UserService)
+		userService, // UserService provides GetUserByID for GetUserInfo
+		// rbacService, // If a separate RBACService was created and used by CheckPermission
+	)
+	// Registering with the generated function. This will only expose methods present in the
+	// currently (potentially incompletely) generated authv1.AuthServiceServer interface.
+	authv1.RegisterAuthServiceServer(grpcServer, authV1GrpcService)
+	logger.Info("AuthV1 gRPC service registered")
+
+
+	// Инициализация и регистрация gRPC Health Check сервера (standard health check)
+	// The custom HealthCheck RPC within AuthService is separate from this standard one.
+	// However, our new AuthV1Service implements HealthCheck itself.
+	// So, we might not need the separate standard healthServer if our AuthService.HealthCheck is sufficient.
+	// For now, let's keep the standard one too, unless it conflicts or is redundant.
+	// The AuthServiceServer_Workaround includes HealthCheck, so authV1GrpcService has it.
+	// The standard grpc_health_v1 is often used for Kubernetes health probes.
+	// If our custom HealthCheck serves the same purpose, we can remove the standard one.
+	// Let's assume for now our custom one is primary. The generated code might still register only
+	// the methods it knows about.
+	// The line below registers the standard health service. If our proto defines HealthCheck,
+	// and it's correctly generated, our authV1GrpcService.HealthCheck will be called.
+	// If protoc is an issue, then only the standard one might work fully.
+
+	standardHealthServer := grpc_health.NewServer() // Using standard health server
+	grpc_health_v1.RegisterHealthServer(grpcServer, standardHealthServer)
+	standardHealthServer.SetServingStatus("auth.v1.AuthService", grpc_health_v1.HealthCheckResponse_SERVING) // Mark main service as serving
+	logger.Info("Standard gRPC Health Check service registered")
+
 
 	// Включение reflection для gRPC (полезно для отладки)
 	if cfg.GRPC.EnableReflection {

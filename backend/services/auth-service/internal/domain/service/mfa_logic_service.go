@@ -3,142 +3,162 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"errors"
+	"errors" // Standard errors
 	"fmt"
-	"math/big"
+	// "math/big" // No longer needed for placeholder backup code generation
 	"time"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
-	"github.com/gameplatform/auth-service/internal/domain/repository"
-	// Placeholder for where EncryptSecret/DecryptSecret would live if not in totp_mock.go
-	// For now, assuming they are accessible, e.g. from a security utility package.
-	// Or, they could be methods on a dedicated encryption service.
-	// For this example, let's assume they are global funcs in security package for simplicity.
-	"github.com/gameplatform/auth-service/internal/infrastructure/security" // For Encrypt/Decrypt/Password Hashing
+	"github.com/google/uuid"
+	"github.com/your-org/auth-service/internal/config" // For MFAConfig
+	"github.com/your-org/auth-service/internal/domain/models"
+	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces" // Corrected path
+	"github.com/your-org/auth-service/internal/infrastructure/security"
+	// Kafka client if events are published directly from here
 )
 
-// MFALogicService defines the interface for Multi-Factor Authentication operations.
+// MFALogicService defines the interface for Multi-Factor Authentication business logic.
 type MFALogicService interface {
-	// Enable2FAInitiate starts the process of enabling 2FA (TOTP) for a user.
-	// Returns base32 secret, QR code data URL for authenticator app.
-	Enable2FAInitiate(ctx context.Context, userID, accountName, issuerName string) (string, string, error)
+	// Enable2FAInitiate starts the process of enabling 2FA for a user.
+	// It generates a new TOTP secret and a URL for QR code generation.
+	// The secret returned is the raw base32 secret.
+	Enable2FAInitiate(ctx context.Context, userID uuid.UUID, accountName string) (mfaSecretID uuid.UUID, secretBase32 string, otpAuthURL string, err error)
 
-	// VerifyAndActivate2FA finalizes 2FA setup by verifying a TOTP code and activating 2FA.
-	// Generates and returns plaintext backup codes if successful.
-	VerifyAndActivate2FA(ctx context.Context, userID, totpCode string) ([]string, error)
+	// VerifyAndActivate2FA verifies the initial TOTP code provided by the user and activates 2FA.
+	// It also generates and returns plain text backup codes.
+	// mfaSecretID is the ID of the mfa_secrets record from the initiate step.
+	VerifyAndActivate2FA(ctx context.Context, userID uuid.UUID, plainTOTPCode string, mfaSecretID uuid.UUID) (backupCodes []string, err error)
 
-	// Verify2FACode validates a TOTP code or a backup code during login or other sensitive operations.
-	// codeType can be "totp" or "backup".
-	Verify2FACode(ctx context.Context, userID, code, codeType string) (bool, error)
+	// Verify2FACode checks a TOTP code or a backup code during login or other sensitive operations.
+	// userID is the ID of the user attempting to verify.
+	// code is the plain code provided by the user.
+	// codeType indicates if it's a "totp" or "backup" code.
+	Verify2FACode(ctx context.Context, userID uuid.UUID, code string, codeType models.MFAType) (isValid bool, err error)
 
 	// Disable2FA disables 2FA for a user after proper verification (e.g., password or current 2FA code).
-	// This example simplifies by not including the verification step for brevity.
-	Disable2FA(ctx context.Context, userID string /*, verificationToken string or password string */) error
+	// verificationToken could be a password or a currently valid 2FA code.
+	// verificationMethod indicates how the user is authorizing this disable action ("password", "totp", "backup").
+	Disable2FA(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) error
 
-	// RegenerateBackupCodes generates new backup codes for a user, invalidating old ones.
-	// Requires verification.
-	RegenerateBackupCodes(ctx context.Context, userID string /*, verification */) ([]string, error)
+	// RegenerateBackupCodes generates a new set of backup codes for the user after proper verification.
+	RegenerateBackupCodes(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) (backupCodes []string, err error)
 }
 
-// mfaLogicServiceImpl implements MFALogicService.
-type mfaLogicServiceImpl struct {
-	userRepo             repository.UserRepository
-	mfaSecretRepo        repository.MFASecretRepository
-	mfaBackupCodeRepo    repository.MFABackupCodeRepository
-	totpService          TOTPService     // Defined in this package
-	passwordService      PasswordService // For hashing backup codes
-	// encryptionKey        string          // Key for encrypting/decrypting TOTP secrets, from config
+// mfaLogicService implements MFALogicService.
+type mfaLogicService struct {
+	cfg                   *config.MFAConfig
+	totpService           TOTPService
+	encryptionService     security.EncryptionService
+	mfaSecretRepo         repoInterfaces.MFASecretRepository
+	mfaBackupCodeRepo     repoInterfaces.MFABackupCodeRepository
+	userRepo              repoInterfaces.UserRepository
+	passwordService       PasswordService
+	// kafkaProducer      *kafka.Client
 }
 
-// MFALogicServiceConfig holds dependencies for MFALogicService.
-type MFALogicServiceConfig struct {
-	UserRepo          repository.UserRepository
-	MFASecretRepo     repository.MFASecretRepository
-	MFABackupCodeRepo repository.MFABackupCodeRepository
-	TOTPService       TOTPService
-	PasswordService   PasswordService
-	// EncryptionKey     string // Passed from main config
-}
 
-// NewMFALogicService creates a new mfaLogicServiceImpl.
-func NewMFALogicService(cfg MFALogicServiceConfig) MFALogicService {
-	return &mfaLogicServiceImpl{
-		userRepo:             cfg.UserRepo,
-		mfaSecretRepo:        cfg.MFASecretRepo,
-		mfaBackupCodeRepo:    cfg.MFABackupCodeRepo,
-		totpService:          cfg.TOTPService,
-		passwordService:      cfg.PasswordService,
-		// encryptionKey:        cfg.EncryptionKey,
+// NewMFALogicService creates a new instance of MFALogicService.
+func NewMFALogicService(
+	cfg *config.MFAConfig,
+	totpService TOTPService,
+	encryptionService security.EncryptionService,
+	mfaSecretRepo repoInterfaces.MFASecretRepository,
+	mfaBackupCodeRepo repoInterfaces.MFABackupCodeRepository,
+	userRepo repoInterfaces.UserRepository,
+	passwordService PasswordService,
+	// kafkaProducer *kafka.Client,
+) MFALogicService {
+	return &mfaLogicService{
+		cfg:                   cfg,
+		totpService:           totpService,
+		encryptionService:     encryptionService,
+		mfaSecretRepo:         mfaSecretRepo,
+		mfaBackupCodeRepo:     mfaBackupCodeRepo,
+		userRepo:              userRepo,
+		passwordService:       passwordService,
+		// kafkaProducer:      kafkaProducer,
 	}
 }
 
 // TempEncryptionKey is a placeholder. In a real app, this comes from secure config.
-const TempEncryptionKey = "a-very-secure-32-byte-key-here" // MUST BE REPLACED
+// const TempEncryptionKey = "a-very-secure-32-byte-key-here" // MUST BE REPLACED // This will be removed
 
-func (s *mfaLogicServiceImpl) Enable2FAInitiate(ctx context.Context, userID, accountName, issuerName string) (string, string, error) {
+func (s *mfaLogicService) Enable2FAInitiate(ctx context.Context, userID uuid.UUID, accountName string) (uuid.UUID, string, string, error) {
 	// 1. Check if 2FA is already enabled and verified
-	existingSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, entity.MFATypeTOTP)
-	if err == nil && existingSecret != nil && existingSecret.Verified {
-		return "", "", errors.New("2FA is already verified and active for this user") // Placeholder: entity.ErrMFAAlreadyActive
-	}
+	existingSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, models.MFATypeTOTP)
+	if err == nil && existingSecret != nil {
+		if existingSecret.Verified {
+			// s.logger.Warn("Attempt to initiate 2FA for user with already verified secret", zap.String("userID", userID.String()))
+			return uuid.Nil, "", "", domainErrors.Err2FAAlreadyEnabled // Use a domain error
+		}
+		// If an unverified secret exists, delete it before creating a new one.
+		// This simplifies logic by not requiring an "upsert" or handling multiple unverified secrets.
+		deleted, delErr := s.mfaSecretRepo.DeleteByUserIDAndTypeIfUnverified(ctx, userID, models.MFATypeTOTP)
+		if delErr != nil {
+			// s.logger.Error("Failed to delete existing unverified MFA secret", zap.Error(delErr), zap.String("userID", userID.String()))
+			return uuid.Nil, "", "", fmt.Errorf("failed to clear previous unverified MFA setup: %w", delErr)
+		}
+		if deleted {
+			// s.logger.Info("Deleted previous unverified MFA secret for user", zap.String("userID", userID.String()))
+		}
+	} else if !errors.Is(err, domainErrors.ErrNotFound) {
+        // Handle other errors from FindByUserIDAndType, except NotFound which is fine
+        // s.logger.Error("Failed to check for existing MFA secret", zap.Error(err), zap.String("userID", userID.String()))
+        return uuid.Nil, "", "", fmt.Errorf("error checking existing MFA secret: %w", err)
+    }
+
 
 	// 2. Generate new TOTP secret and QR code
 	// If issuerName is not provided, TOTPService might use a default from its own config
-	secretB32, qrCodeDataURL, err := s.totpService.GenerateSecret(accountName, issuerName)
+	secretBase32, otpAuthURL, err := s.totpService.GenerateSecret(accountName, s.cfg.TOTPIssuerName)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to generate TOTP secret: %w", err)
+		return uuid.Nil, "", "", fmt.Errorf("failed to generate TOTP secret: %w", err)
 	}
 
 	// 3. Encrypt the secret before storing
-	encryptedSecret, err := security.EncryptSecret(secretB32, TempEncryptionKey) // Using placeholder
+	encryptedSecret, err := s.encryptionService.Encrypt(secretBase32, s.cfg.TOTPSecretEncryptionKey)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to encrypt TOTP secret: %w", err)
+		return uuid.Nil, "", "", fmt.Errorf("failed to encrypt TOTP secret: %w", err)
 	}
 
-	// 4. Store/update the pending (unverified) MFA secret
-	now := time.Now()
-	if existingSecret != nil { // Update existing pending secret
-		existingSecret.SecretKeyEncrypted = encryptedSecret
-		existingSecret.Verified = false // Reset verification status
-		existingSecret.UpdatedAt = &now
-		err = s.mfaSecretRepo.Update(ctx, existingSecret)
-	} else { // Create new secret
-		newSecret := &entity.MFASecret{
-			ID:                 uuid.NewString(),
-			UserID:             userID,
-			Type:               entity.MFATypeTOTP,
-			SecretKeyEncrypted: encryptedSecret,
-			Verified:           false,
-			CreatedAt:          now,
-			UpdatedAt:          &now,
-		}
-		err = s.mfaSecretRepo.Create(ctx, newSecret)
+	mfaSecretID := uuid.New()
+	// 4. Create the new secret (previous unverified one, if any, is now deleted)
+	mfaSecretIDToStore := uuid.New()
+	newSecret := &models.MFASecret{
+		ID:                 mfaSecretIDToStore,
+		UserID:             userID,
+		Type:               models.MFATypeTOTP,
+		SecretKeyEncrypted: encryptedSecret,
+		Verified:           false,
+	}
+	if err = s.mfaSecretRepo.Create(ctx, newSecret); err != nil {
+		return uuid.Nil, "", "", fmt.Errorf("failed to store new MFA secret: %w", err)
 	}
 
-	if err != nil {
-		return "", "", fmt.Errorf("failed to store MFA secret: %w", err)
-	}
-
-	// The plaintext secretB32 and qrCodeDataURL are returned to the user for setup.
-	return secretB32, qrCodeDataURL, nil
+	return mfaSecretIDToStore, secretBase32, otpAuthURL, nil
 }
 
-func (s *mfaLogicServiceImpl) VerifyAndActivate2FA(ctx context.Context, userID, totpCode string) ([]string, error) {
-	// 1. Retrieve the pending MFA secret
-	mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, entity.MFATypeTOTP)
+func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.UUID, plainTOTPCode string, mfaSecretID uuid.UUID) ([]string, error) {
+	// 1. Retrieve the pending MFA secret by its ID
+	mfaSecret, err := s.mfaSecretRepo.FindByID(ctx, mfaSecretID)
 	if err != nil {
-		if errors.Is(err, errors.New("MFA secret not found")) { // Placeholder for repo error
-			return nil, errors.New("2FA setup not initiated or secret not found") // Placeholder entity.ErrMFASetupNotInitiated
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			return nil, domainErrors.ErrNotFound // Or specific "MFA setup intent not found"
 		}
-		return nil, fmt.Errorf("failed to retrieve MFA secret: %w", err)
+		return nil, fmt.Errorf("failed to retrieve MFA secret %s: %w", mfaSecretID, err)
 	}
 
 	if mfaSecret.Verified {
-		return nil, errors.New("2FA is already verified for this user") // Placeholder entity.ErrMFAAlreadyVerified
+		return nil, domainErrors.Err2FAAlreadyEnabled
+	}
+	if mfaSecret.UserID != userID {
+		return nil, domainErrors.ErrForbidden // Secret does not belong to user
+	}
+	if mfaSecret.Type != models.MFATypeTOTP {
+		return nil, errors.New("invalid MFA secret type for TOTP verification")
 	}
 
 	// 2. Decrypt the secret
-	decryptedSecret, err := security.DecryptSecret(mfaSecret.SecretKeyEncrypted, TempEncryptionKey) // Using placeholder
+	decryptedSecret, err := s.encryptionService.Decrypt(mfaSecret.SecretKeyEncrypted, s.cfg.TOTPSecretEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt TOTP secret: %w", err)
 	}
@@ -149,68 +169,65 @@ func (s *mfaLogicServiceImpl) VerifyAndActivate2FA(ctx context.Context, userID, 
 		return nil, fmt.Errorf("error validating TOTP code: %w", err)
 	}
 	if !isValid {
-		return nil, errors.New("invalid TOTP code") // Placeholder entity.ErrInvalidTOTPCode
+		return nil, domainErrors.ErrInvalid2FACode
 	}
 
 	// 4. Mark MFA as verified and active
-	now := time.Now()
 	mfaSecret.Verified = true
-	mfaSecret.UpdatedAt = &now
 	if err := s.mfaSecretRepo.Update(ctx, mfaSecret); err != nil {
 		return nil, fmt.Errorf("failed to mark MFA secret as verified: %w", err)
 	}
 
-	// (Optional: Update user entity if it has an mfa_enabled flag directly)
-	// user, err := s.userRepo.FindByID(ctx, userID) ... user.MFAEnabled = true; s.userRepo.Update(ctx, user)
-
 	// 5. Generate and store backup codes
-	// Delete any old ones first
-	if err := s.mfaBackupCodeRepo.DeleteByUserID(ctx, userID); err != nil {
-		// Log error but proceed, as generating new codes is more critical
+	if _, err := s.mfaBackupCodeRepo.DeleteByUserID(ctx, userID); err != nil {
+		// s.logger.Error("Failed to delete old backup codes during 2FA activation", zap.Error(err), zap.String("userID", userID.String()))
 	}
 
-	numBackupCodes := 10 // Should be configurable
-	backupCodesPlain := make([]string, numBackupCodes)
-	backupCodesHashed := make([]*entity.MFABackupCode, numBackupCodes)
+	plainBackupCodes := make([]string, s.cfg.TOTPBackupCodeCount)
+	backupCodesToStore := make([]*models.MFABackupCode, s.cfg.TOTPBackupCodeCount)
 
-	for i := 0; i < numBackupCodes; i++ {
-		// Generate a simple random code (e.g., 8 digits) - placeholder
-		// In a real app, use a crypto-secure random string/number generator
-		n, _ := rand.Int(rand.Reader, big.NewInt(90000000)) 
-		codeStr := fmt.Sprintf("%08d", n.Int64()+10000000) // Ensure 8 digits
-		backupCodesPlain[i] = codeStr
-
-		hashedCode, err := s.passwordService.HashPassword(codeStr) // Use PasswordService for hashing
-		if err != nil {
-			return nil, fmt.Errorf("failed to hash backup code %d: %w", i+1, err)
+	for i := 0; i < s.cfg.TOTPBackupCodeCount; i++ {
+		codeStr, errGen := security.GenerateSecureToken(6)
+		if errGen != nil {
+			return nil, fmt.Errorf("failed to generate backup code string: %w", errGen)
 		}
-		backupCodesHashed[i] = &entity.MFABackupCode{
-			ID:        uuid.NewString(),
+		plainBackupCodes[i] = codeStr
+
+		hashedCode, errHash := s.passwordService.HashPassword(codeStr)
+		if errHash != nil {
+			return nil, fmt.Errorf("failed to hash backup code %d: %w", i+1, errHash)
+		}
+		backupCodesToStore[i] = &models.MFABackupCode{
+			ID:        uuid.New(),
 			UserID:    userID,
 			CodeHash:  hashedCode,
-			CreatedAt: now,
 		}
 	}
 
-	if err := s.mfaBackupCodeRepo.CreateMultiple(ctx, backupCodesHashed); err != nil {
-		// This is a problem: 2FA is active, but backup codes failed to save.
-		// May need complex rollback or retry. For now, return error.
+	if err := s.mfaBackupCodeRepo.CreateMultiple(ctx, backupCodesToStore); err != nil {
 		return nil, fmt.Errorf("2FA activated, but failed to store backup codes: %w", err)
 	}
 
-	return backupCodesPlain, nil
+	// TODO: Publish auth.2fa.enabled Kafka event (UserID, Type: TOTP, ActivatedAt)
+
+	return plainBackupCodes, nil
 }
 
 
-// Verify2FACode: Implementation placeholder
-func (s *mfaLogicServiceImpl) Verify2FACode(ctx context.Context, userID, code, codeType string) (bool, error) {
-	mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, entity.MFATypeTOTP)
-	if err != nil || !mfaSecret.Verified {
-		return false, errors.New("2FA not active or secret not found for user") // Placeholder
-	}
-
-	if codeType == "totp" {
-		decryptedSecret, err := security.DecryptSecret(mfaSecret.SecretKeyEncrypted, TempEncryptionKey)
+// Verify2FACode implements MFALogicService.
+func (s *mfaLogicService) Verify2FACode(ctx context.Context, userID uuid.UUID, code string, codeType models.MFAType) (bool, error) {
+	if codeType == models.MFATypeTOTP {
+		mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, models.MFATypeTOTP)
+		if err != nil {
+			if errors.Is(err, domainErrors.ErrNotFound) {
+				return false, domainErrors.Err2FANotEnabled // No TOTP setup for user
+			}
+			return false, fmt.Errorf("error fetching TOTP secret: %w", err)
+		}
+		if !mfaSecret.Verified {
+			return false, domainErrors.ErrMFANotVerified // TOTP setup not completed/verified
+		}
+		decryptedSecret, err := s.encryptionService.Decrypt(mfaSecret.SecretKeyEncrypted, s.cfg.TOTPSecretEncryptionKey)
 		if err != nil {
 			return false, fmt.Errorf("failed to decrypt TOTP secret: %w", err)
 		}
@@ -220,83 +237,128 @@ func (s *mfaLogicServiceImpl) Verify2FACode(ctx context.Context, userID, code, c
 		}
 		return isValid, nil
 	} else if codeType == "backup" {
-		// Need to iterate through stored hashed backup codes or find by hash directly
-		// This is simplified. A real implementation would fetch the specific code if possible.
-		hashedCodeToCheck, err := s.passwordService.HashPassword(code) // Hash the provided code
+		hashedCode, err := s.passwordService.HashPassword(code)
 		if err != nil {
-			return false, fmt.Errorf("failed to hash provided backup code: %w", err)
+			return false, fmt.Errorf("failed to hash backup code for verification: %w", err)
 		}
-		backupCodeEntity, err := s.mfaBackupCodeRepo.FindByUserIDAndCodeHash(ctx, userID, hashedCodeToCheck)
+		backupCode, err := s.mfaBackupCodeRepo.FindByUserIDAndCodeHash(ctx, userID, hashedCode)
 		if err != nil {
-			// Could be ErrNotFound or other db error
-			return false, errors.New("backup code not found or error retrieving") // Placeholder
+			if errors.Is(err, domainErrors.ErrNotFound) {
+				return false, domainErrors.ErrInvalid2FACode // Backup code not found
+			}
+			return false, fmt.Errorf("error retrieving backup code: %w", err)
 		}
-		if backupCodeEntity.UsedAt != nil {
-			return false, errors.New("backup code already used") // Placeholder
-		}
+		// FindByUserIDAndCodeHash in repo already checks if UsedAt IS NULL
+
 		// Mark as used
-		err = s.mfaBackupCodeRepo.MarkAsUsed(ctx, backupCodeEntity.ID, time.Now())
-		if err != nil {
+		if err := s.mfaBackupCodeRepo.MarkAsUsed(ctx, backupCode.ID, time.Now()); err != nil {
 			return false, fmt.Errorf("failed to mark backup code as used: %w", err)
 		}
+		// TODO: Publish event: auth.2fa.backup_code_used (UserID, BackupCodeID)
 		return true, nil
 	}
-	return false, errors.New("invalid 2FA code type specified")
+	return false, fmt.Errorf("unsupported 2FA code type: %s", codeType)
 }
 
-// Disable2FA: Implementation placeholder
-func (s *mfaLogicServiceImpl) Disable2FA(ctx context.Context, userID string) error {
-	// TODO: Add verification step (password or current 2FA code) before disabling
+// Disable2FA implements MFALogicService.
+func (s *mfaLogicService) Disable2FA(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) error {
+	authorized, err := s.isUserAuthorizedForSensitiveAction(ctx, userID, verificationToken, verificationMethod)
+	if err != nil { return err }
+	if !authorized { return domainErrors.ErrForbidden }
 
-	if err := s.mfaSecretRepo.DeleteByUserIDAndType(ctx, userID, entity.MFATypeTOTP); err != nil {
-		// Log error but proceed if it's "not found"
+
+	deletedSecrets, err := s.mfaSecretRepo.DeleteAllForUser(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete MFA secrets: %w", err)
 	}
-	if err := s.mfaBackupCodeRepo.DeleteByUserID(ctx, userID); err != nil {
-		// Log error
+	deletedBackupCodes, err := s.mfaBackupCodeRepo.DeleteByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete MFA backup codes: %w", err)
 	}
-	// TODO: Update user entity if it has an mfa_enabled flag
+
+	if deletedSecrets > 0 || deletedBackupCodes > 0 {
+		// TODO: Publish auth.2fa.disabled Kafka event (UserID, DisabledAt)
+	} else {
+		// No 2FA was active to disable
+		return domainErrors.Err2FANotEnabled
+	}
 	return nil
 }
 
-// RegenerateBackupCodes: Implementation placeholder
-func (s *mfaLogicServiceImpl) RegenerateBackupCodes(ctx context.Context, userID string) ([]string, error) {
-	// TODO: Add verification step
+// RegenerateBackupCodes implements MFALogicService.
+func (s *mfaLogicService) RegenerateBackupCodes(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) ([]string, error) {
+	authorized, err := s.isUserAuthorizedForSensitiveAction(ctx, userID, verificationToken, verificationMethod)
+	if err != nil { return nil, err }
+	if !authorized { return nil, domainErrors.ErrForbidden }
 
-	// Ensure 2FA is actually enabled and active
-	mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, entity.MFATypeTOTP)
+	// Ensure 2FA (TOTP) is actually enabled and active for the user
+	mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, models.MFATypeTOTP)
 	if err != nil || !mfaSecret.Verified {
 		return nil, errors.New("2FA not active or secret not found for user")
 	}
 	
 	// Same logic as in VerifyAndActivate2FA for generating/storing backup codes
-	if err := s.mfaBackupCodeRepo.DeleteByUserID(ctx, userID); err != nil {
-		// Log error but proceed
+	if _, errDel := s.mfaBackupCodeRepo.DeleteByUserID(ctx, userID); errDel != nil {
+		// s.logger.Error("Failed to delete old backup codes for regeneration", zap.Error(errDel), zap.String("userID", userID.String()))
+		return nil, fmt.Errorf("could not delete old backup codes: %w", errDel)
 	}
 
-	numBackupCodes := 10 // Should be configurable
-	backupCodesPlain := make([]string, numBackupCodes)
-	backupCodesHashed := make([]*entity.MFABackupCode, numBackupCodes)
-	now := time.Now()
+	plainBackupCodes := make([]string, s.cfg.TOTPBackupCodeCount)
+	backupCodesToStore := make([]*models.MFABackupCode, s.cfg.TOTPBackupCodeCount)
 
-	for i := 0; i < numBackupCodes; i++ {
-		n, _ := rand.Int(rand.Reader, big.NewInt(90000000))
-		codeStr := fmt.Sprintf("%08d", n.Int64()+10000000)
-		backupCodesPlain[i] = codeStr
+	for i := 0; i < s.cfg.TOTPBackupCodeCount; i++ {
+		codeStr, errGen := security.GenerateSecureToken(6)
+		if errGen != nil {
+			return nil, fmt.Errorf("failed to generate backup code string: %w", errGen)
+		}
+		plainBackupCodes[i] = codeStr
+
 		hashedCode, errHash := s.passwordService.HashPassword(codeStr)
 		if errHash != nil {
 			return nil, fmt.Errorf("failed to hash backup code %d: %w", i+1, errHash)
 		}
-		backupCodesHashed[i] = &entity.MFABackupCode{
-			ID:        uuid.NewString(),
-			UserID:    userID,
-			CodeHash:  hashedCode,
-			CreatedAt: now,
+		backupCodesToStore[i] = &models.MFABackupCode{
+			ID:       uuid.New(),
+			UserID:   userID,
+			CodeHash: hashedCode,
 		}
 	}
-	if err := s.mfaBackupCodeRepo.CreateMultiple(ctx, backupCodesHashed); err != nil {
-		return nil, fmt.Errorf("failed to store new backup codes: %w", err)
+
+	if errCreate := s.mfaBackupCodeRepo.CreateMultiple(ctx, backupCodesToStore); errCreate != nil {
+		return nil, fmt.Errorf("failed to store regenerated backup codes: %w", errCreate)
 	}
-	return backupCodesPlain, nil
+
+	// TODO: Publish event: auth.2fa.backup_codes_regenerated (UserID, Count)
+
+	return plainBackupCodes, nil
 }
 
-var _ MFALogicService = (*mfaLogicServiceImpl)(nil)
+// isUserAuthorizedForSensitiveAction checks if the user is authorized via password or a current 2FA code.
+func (s *mfaLogicService) isUserAuthorizedForSensitiveAction(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) (bool, error) {
+	switch verificationMethod {
+	case "password":
+		user, err := s.userRepo.FindByID(ctx, userID)
+		if err != nil {
+			return false, domainErrors.ErrUserNotFound
+		}
+		match, err := s.passwordService.CheckPasswordHash(verificationToken, user.PasswordHash)
+		if err != nil {
+			return false, fmt.Errorf("error checking password for sensitive action: %w", err)
+		}
+		return match, nil
+	case "totp":
+		return s.Verify2FACode(ctx, userID, verificationToken, models.MFATypeTOTP)
+	case "backup":
+		// Note: Verify2FACode for backup codes marks them as used.
+		// This means a backup code can only authorize one sensitive action.
+		// If multiple actions are needed in a short timeframe, this could be an issue.
+		// Consider if a "peek" validation is needed for authorization without consuming the code.
+		return s.Verify2FACode(ctx, userID, verificationToken, "backup") // Assuming "backup" is handled as MFAType by Verify2FACode
+	default:
+		return false, fmt.Errorf("invalid verification method for sensitive action: %s", verificationMethod)
+	}
+}
+
+
+// Ensure mfaLogicService implements MFALogicService (compile-time check).
+var _ MFALogicService = (*mfaLogicService)(nil)

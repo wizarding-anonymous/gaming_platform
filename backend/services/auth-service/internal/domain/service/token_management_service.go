@@ -39,4 +39,17 @@ type TokenManagementService interface {
 	// GetJWKS returns the JSON Web Key Set (JWKS) for exposing public keys.
 	// This typically includes the public key(s) used to sign the access tokens.
 	GetJWKS() (map[string]interface{}, error) // JWKS is a JSON object, map[string]interface{} is a common representation
+
+	// Generate2FAChallengeToken creates a short-lived token after successful primary authentication
+	// to proceed with 2FA verification.
+	Generate2FAChallengeToken(userID string) (string, error)
+
+	// Validate2FAChallengeToken validates the challenge token and returns the userID.
+	Validate2FAChallengeToken(tokenString string) (userID string, err error)
+}
+
+// ChallengeClaims represents the JWT claims for 2FA challenge tokens.
+type ChallengeClaims struct {
+	UserID string `json:"user_id"`
+	jwt.RegisteredClaims
 }

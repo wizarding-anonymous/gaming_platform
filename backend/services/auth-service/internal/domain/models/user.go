@@ -55,13 +55,38 @@ type CreateUserRequest struct {
 // UpdateUserRequest represents data for updating a user.
 // Typically used in service layer.
 type UpdateUserRequest struct {
-	Username            *string     `json:"username,omitempty"`
-	Email               *string     `json:"email,omitempty"`
-	Status              *UserStatus `json:"status,omitempty"`
-	EmailVerifiedAt     *time.Time  `json:"email_verified_at,omitempty"` // Explicitly set verification
-	FailedLoginAttempts *int        `json:"failed_login_attempts,omitempty"`
-	LockoutUntil        *time.Time  `json:"lockout_until,omitempty"`     // To lock or unlock account
+	Username            *string     `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
+	Email               *string     `json:"email,omitempty" validate:"omitempty,email"`
+	// Status field update might be a separate admin endpoint or handled by specific actions like email verification.
 }
+
+// ChangePasswordRequest represents the DTO for a user changing their own password.
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8,max=100"`
+}
+
+// VerifyEmailRequest DTO for email verification.
+type VerifyEmailRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+// ResendVerificationRequest DTO for resending email verification.
+type ResendVerificationRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ForgotPasswordRequest DTO for initiating password reset.
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ResetPasswordRequest DTO for resetting password with a token.
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8,max=100"`
+}
+
 
 // UserResponse structures the user data returned by API endpoints.
 type UserResponse struct {

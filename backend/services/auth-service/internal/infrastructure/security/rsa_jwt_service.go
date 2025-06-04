@@ -172,3 +172,66 @@ func (s *rsaTokenManagementService) GetJWKS() (map[string]interface{}, error) {
 
 // Ensure rsaTokenManagementService implements service.TokenManagementService.
 var _ service.TokenManagementService = (*rsaTokenManagementService)(nil)
+
+const challengeTokenTTL = 5 * time.Minute // Short TTL for challenge token
+
+// Generate2FAChallengeToken creates a short-lived JWT for 2FA continuation.
+func (s *rsaTokenManagementService) Generate2FAChallengeToken(userID string) (string, error) {
+	if s.privateKey == nil {
+		return "", errors.New("private key not configured for signing challenge tokens")
+	}
+
+	now := time.Now()
+	claims := &service.ChallengeClaims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uuid.NewString(), // JTI
+			Issuer:    s.cfg.Issuer,
+			Audience:  jwt.ClaimStrings{s.cfg.Audience}, // Can use same audience or a specific one for challenges
+			ExpiresAt: jwt.NewNumericDate(now.Add(challengeTokenTTL)),
+			NotBefore: jwt.NewNumericDate(now),
+			IssuedAt:  jwt.NewNumericDate(now),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	if s.cfg.JWKSKeyID != "" { // Include kid for consistency, though not strictly needed for internal token
+		token.Header["kid"] = s.cfg.JWKSKeyID
+	}
+
+	signedToken, err := token.SignedString(s.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign 2FA challenge token: %w", err)
+	}
+	return signedToken, nil
+}
+
+// Validate2FAChallengeToken validates the challenge token.
+func (s *rsaTokenManagementService) Validate2FAChallengeToken(tokenString string) (string, error) {
+	if s.publicKey == nil {
+		return "", errors.New("public key not configured for validating challenge tokens")
+	}
+
+	token, err := jwt.ParseWithClaims(tokenString, &service.ChallengeClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method for challenge token: %v", token.Header["alg"])
+		}
+		// Key ID check if present
+		if kid, ok := token.Header["kid"].(string); ok {
+			if kid != s.cfg.JWKSKeyID {
+				return nil, fmt.Errorf("challenge token 'kid' %s does not match expected %s", kid, s.cfg.JWKSKeyID)
+			}
+		}
+		return s.publicKey, nil
+	}, jwt.WithAudience(s.cfg.Audience), jwt.WithIssuer(s.cfg.Issuer))
+
+
+	if err != nil {
+		return "", fmt.Errorf("challenge token validation failed: %w", err)
+	}
+
+	if claims, ok := token.Claims.(*service.ChallengeClaims); ok && token.Valid {
+		return claims.UserID, nil
+	}
+	return "", errors.New("invalid challenge token or claims type")
+}
