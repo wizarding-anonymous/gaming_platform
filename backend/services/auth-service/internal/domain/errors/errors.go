@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/errors/errors.go
 package errors
 
 import (

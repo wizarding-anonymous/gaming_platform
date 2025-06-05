@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/validation.go
 package models
 
 import (

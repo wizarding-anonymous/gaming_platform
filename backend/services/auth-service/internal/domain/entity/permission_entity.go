@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/entity/permission_entity.go
 package entity
 
 import (

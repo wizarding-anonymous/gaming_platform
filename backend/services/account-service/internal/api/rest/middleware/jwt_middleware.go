@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/api/rest/middleware/jwt_middleware.go
 // account-service/internal/api/rest/middleware/jwt_middleware.go
 
 package middleware

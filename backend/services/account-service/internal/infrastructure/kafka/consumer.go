@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/infrastructure/kafka/consumer.go
 // account-service\internal\infrastructure\kafka\consumer.go
 package kafka
 

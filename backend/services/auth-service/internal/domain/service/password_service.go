@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/password_service.go
 package service
 
 // PasswordService defines the interface for password hashing and verification.

@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/handler/grpc/health_handler.go
 package grpc
 
 import (

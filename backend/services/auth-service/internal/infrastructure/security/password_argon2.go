@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/infrastructure/security/password_argon2.go
 package security
 
 import (

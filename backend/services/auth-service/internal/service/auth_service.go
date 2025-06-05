@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/service/auth_service.go
 // Package service contains the core business logic for the authentication service.
 // It orchestrates operations between repositories, external services (like token generation, password hashing),
 // and other domain services to fulfill application use cases such as user registration, login,

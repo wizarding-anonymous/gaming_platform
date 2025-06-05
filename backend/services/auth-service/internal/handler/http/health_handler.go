@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/handler/http/health_handler.go
 package http
 
 import (

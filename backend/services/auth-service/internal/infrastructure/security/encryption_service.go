@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/infrastructure/security/encryption_service.go
 // Package security provides implementations for security-related functionalities
 // such as password hashing, token generation and validation, data encryption,
 // and TOTP management. These services are typically used by higher-level

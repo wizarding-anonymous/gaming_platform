@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/repository/interfaces/role_repository.go
 package interfaces
 
 import (

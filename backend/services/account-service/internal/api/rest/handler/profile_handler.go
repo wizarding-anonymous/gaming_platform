@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/api/rest/handler/profile_handler.go
 // account-service\internal\api\rest\handler\profile_handler.go
 
 package handler

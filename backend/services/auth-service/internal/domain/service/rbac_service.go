@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/rbac_service.go
 package service
 
 import (

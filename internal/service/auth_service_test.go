@@ -1,3 +1,4 @@
+// File: internal/service/auth_service_test.go
 package service
 
 import (

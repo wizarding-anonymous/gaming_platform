@@ -1,3 +1,4 @@
+// File: internal/domain/service/rbac_service_test.go
 package service
 
 import (

@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/infrastructure/client/s3/s3_client.go
 // account-service/internal/infrastructure/client/s3/s3_client.go
 package s3
 

@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/infrastructure/security/telegram_verifier.go
 package security
 
 import (

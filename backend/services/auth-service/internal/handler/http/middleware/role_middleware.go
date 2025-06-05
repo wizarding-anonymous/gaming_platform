@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/handler/http/middleware/role_middleware.go
 package middleware
 
 import (

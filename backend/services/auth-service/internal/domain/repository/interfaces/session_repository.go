@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/repository/interfaces/session_repository.go
 // Package interfaces defines the interfaces for repository implementations.
 // (Assuming this package comment is already present from user_repository.go or another file in this package)
 package interfaces

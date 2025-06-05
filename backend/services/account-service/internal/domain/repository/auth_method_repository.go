@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/domain/repository/auth_method_repository.go
 // account-service/internal/domain/repository/auth_method_repository.go
 package repository
 

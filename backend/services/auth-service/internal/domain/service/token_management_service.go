@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/token_management_service.go
 // Package service defines interfaces for core domain services.
 // These services encapsulate business logic that is independent of specific
 // infrastructure concerns (like database types or HTTP transport).

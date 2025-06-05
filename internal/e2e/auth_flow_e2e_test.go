@@ -1,3 +1,4 @@
+// File: internal/e2e/auth_flow_e2e_test.go
 package e2e
 
 import (

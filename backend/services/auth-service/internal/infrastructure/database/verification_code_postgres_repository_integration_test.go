@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/infrastructure/database/verification_code_postgres_repository_integration_test.go
 package database
 
 import (

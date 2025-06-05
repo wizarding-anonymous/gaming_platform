@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/repository/verification_code_repository.go
 // Package repository defines the interfaces for data persistence operations
 // within the domain layer. These interfaces abstract the underlying data storage
 // mechanisms (e.g., PostgreSQL, Redis) and allow for a decoupled architecture

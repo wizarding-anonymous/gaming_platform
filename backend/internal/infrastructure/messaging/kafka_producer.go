@@ -1,3 +1,4 @@
+// File: backend/internal/infrastructure/messaging/kafka_producer.go
 package messaging
 
 import (

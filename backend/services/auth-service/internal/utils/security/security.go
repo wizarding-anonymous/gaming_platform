@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/utils/security/security.go
 package security
 
 import (

@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/infrastructure/database/mfa_secret_postgres_repository_integration_test.go
 package database
 
 import (

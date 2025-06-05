@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/refresh_token.go
 package models
 
 import (

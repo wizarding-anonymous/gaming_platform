@@ -1,3 +1,4 @@
+// File: backend/services/account-service/pkg/logger/logger.go
 // account-service\pkg\logger\logger.go
 
 package logger

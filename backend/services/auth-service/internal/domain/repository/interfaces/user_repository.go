@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/repository/interfaces/user_repository.go
 // Package interfaces defines the interfaces for repository implementations.
 // These interfaces provide an abstraction layer between the domain logic and data storage,
 // allowing for different storage backends to be used and facilitating testing.

@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/handler/http/middleware/middleware.go
 package middleware
 
 import (

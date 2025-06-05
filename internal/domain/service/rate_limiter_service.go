@@ -1,3 +1,4 @@
+// File: internal/domain/service/rate_limiter_service.go
 package service // Or potentially domain_service, matching other interfaces
 
 import (

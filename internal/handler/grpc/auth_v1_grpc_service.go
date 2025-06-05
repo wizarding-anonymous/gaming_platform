@@ -1,3 +1,4 @@
+// File: internal/handler/grpc/auth_v1_grpc_service.go
 package grpc
 
 import (

@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/telegram_verifier_service.go
 package service
 
 import (

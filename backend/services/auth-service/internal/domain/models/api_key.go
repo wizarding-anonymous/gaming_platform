@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/api_key.go
 package models
 
 import (

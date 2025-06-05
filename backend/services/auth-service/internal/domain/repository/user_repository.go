@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/repository/user_repository.go
 package repository
 
 import (

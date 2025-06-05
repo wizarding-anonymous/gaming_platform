@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/utils/telemetry/telemetry.go
 package telemetry
 
 import (

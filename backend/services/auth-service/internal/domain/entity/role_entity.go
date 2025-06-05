@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/entity/role_entity.go
 package entity
 
 import (

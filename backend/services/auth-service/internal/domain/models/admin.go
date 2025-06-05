@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/admin.go
 package models
 
 import "github.com/google/uuid"
