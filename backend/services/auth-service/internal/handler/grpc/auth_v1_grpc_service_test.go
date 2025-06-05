@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/handler/grpc/auth_v1_grpc_service_test.go
 package grpc
 
 import (

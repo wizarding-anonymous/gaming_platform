@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/infrastructure/client/auth/auth_client.go
 // account-service/internal/infrastructure/client/auth/auth_client.go
 package auth
 

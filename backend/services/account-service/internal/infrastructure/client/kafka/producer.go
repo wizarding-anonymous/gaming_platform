@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/infrastructure/client/kafka/producer.go
 // account-service/internal/infrastructure/kafka/producer.go
 package kafka
 

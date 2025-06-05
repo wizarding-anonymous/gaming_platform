@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/utils/logger/logger.go
 package logger
 
 import (

@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/utils/kafka/kafka.go
 package kafka
 
 import (

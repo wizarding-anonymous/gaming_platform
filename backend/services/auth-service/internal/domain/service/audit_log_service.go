@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/audit_log_service.go
 package service
 
 import (

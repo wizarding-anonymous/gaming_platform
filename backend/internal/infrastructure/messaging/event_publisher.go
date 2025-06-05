@@ -1,3 +1,4 @@
+// File: backend/internal/infrastructure/messaging/event_publisher.go
 package messaging
 
 import (

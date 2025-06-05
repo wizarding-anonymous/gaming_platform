@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/handler/http/jwks_handler.go
 package http
 
 import (

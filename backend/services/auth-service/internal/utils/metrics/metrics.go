@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/utils/metrics/metrics.go
 package utils
 
 import (

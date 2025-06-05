@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/permission.go
 package models
 
 import (

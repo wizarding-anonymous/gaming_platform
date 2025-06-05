@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/totp_service.go
 package service
 
 // TOTPService defines the interface for Time-based One-Time Password generation and validation.

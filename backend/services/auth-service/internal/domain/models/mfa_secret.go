@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/mfa_secret.go
 package models
 
 import (

@@ -1,3 +1,4 @@
+// File: internal/handler/grpc/auth_v1_server_interface_workaround.go
 package grpc // Assuming this file is in the same package as your gRPC service implementation.
 
 import (

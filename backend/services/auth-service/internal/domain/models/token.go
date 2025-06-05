@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/token.go
 package models
 
 import (

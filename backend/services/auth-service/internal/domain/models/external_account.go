@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/external_account.go
 package models
 
 import (

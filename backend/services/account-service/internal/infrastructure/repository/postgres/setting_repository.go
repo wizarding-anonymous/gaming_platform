@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/infrastructure/repository/postgres/setting_repository.go
 // account-service/internal/infrastructure/repository/postgres/setting_repository.go
 package postgres
 

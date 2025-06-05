@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/external_auth.go
 package models
 
 // TelegramLoginRequest DTO for Telegram Login widget data.

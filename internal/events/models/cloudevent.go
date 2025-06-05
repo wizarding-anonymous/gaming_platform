@@ -1,3 +1,4 @@
+// File: internal/events/models/cloudevent.go
 package models
 
 import (

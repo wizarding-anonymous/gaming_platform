@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/infrastructure/database/audit_log_postgres_repository_integration_test.go
 package database
 
 import (

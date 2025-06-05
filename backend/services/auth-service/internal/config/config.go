@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/config/config.go
 package config
 
 import (

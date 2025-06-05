@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/handler/http/me_handler_test.go
 package http
 
 import (

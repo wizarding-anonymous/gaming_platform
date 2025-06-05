@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/audit_log.go
 package models
 
 import (

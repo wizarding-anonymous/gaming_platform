@@ -1,3 +1,4 @@
+// File: internal/events/handlers/admin_events_handler.go
 package handlers
 
 import (

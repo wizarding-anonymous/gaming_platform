@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/mfa_backup_code.go
 package models
 
 import (

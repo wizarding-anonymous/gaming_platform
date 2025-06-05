@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/infrastructure/repository/postgres/auth_method_repository.go
 // account-service/internal/infrastructure/repository/postgres/auth_method_repository.go
 package postgres
 

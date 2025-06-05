@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/cmd/auth-service/main.go
 package main
 
 import (

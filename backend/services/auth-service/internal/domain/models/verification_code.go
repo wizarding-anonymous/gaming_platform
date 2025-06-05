@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/models/verification_code.go
 package models
 
 import (

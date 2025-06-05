@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/entity/audit_log_entity.go
 package entity
 
 import (

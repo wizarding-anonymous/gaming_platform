@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/api_key_service.go
 package service
 
 import (

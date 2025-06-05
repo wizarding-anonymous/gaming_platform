@@ -1,3 +1,4 @@
+// File: backend/services/account-service/pkg/metrics/metrics.go
 // account-service\pkg\metrics\metrics.go
 
 package metrics

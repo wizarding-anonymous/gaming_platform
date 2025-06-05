@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/handler/http/external_auth_handler.go
 package http
 
 import (

@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/repository/postgres/role_repository.go
 package postgres
 
 import (
