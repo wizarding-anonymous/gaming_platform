@@ -25,7 +25,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/telemetry"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/pkg/pb/auth/v1" // For gRPC server registration
+	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1" // For gRPC server registration
 
 	"github.com/Shopify/sarama" // Added for Sarama config
 	"github.com/golang-migrate/migrate/v4"
@@ -39,6 +39,7 @@ import (
 	// healthcheckUtils "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/healthcheck"
 	// No, the interfaces are used by the grpc service, not directly by main. Main provides concrete types.
 	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Path to your kafka producer/consumer wrappers
+	infraCaptcha "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/captcha" // Added for StubCaptchaService
 )
 
 // KafkaProducerHealthChecker adapts kafka.Producer for health checks.
@@ -201,6 +202,12 @@ func main() {
 	// Инициализация EncryptionService
 	encryptionService := security.NewAESGCMEncryptionService()
 
+	// Инициализация HIBPClient (using existing 'security' alias for infrastructure/security)
+	hibpClient := security.NewHIBPClient(cfg.HIBP, logger)
+
+	// Инициализация StubCaptchaService
+	stubCaptchaService := infraCaptcha.NewStubCaptchaService(cfg.Captcha, logger)
+
 	// Инициализация MFALogicService
 	mfaLogicService := service.NewMFALogicService(
 		cfg, // Changed to global cfg
@@ -265,6 +272,8 @@ func main() {
 		telegramService,      // Added missing parameter (as telegramVerifier)
 		auditLogService,      // Added for audit logging
 		rateLimiter,          // Added rateLimiter
+		hibpClient,           // Added HIBPService
+		stubCaptchaService,   // Added CaptchaService
 	)
 
 	// Assuming UserService and RoleService need specific repositories now

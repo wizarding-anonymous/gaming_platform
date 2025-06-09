@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http/middleware" // Added for GinContextUserIDKey
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/validator"
 	"go.uber.org/zap"
@@ -104,7 +105,25 @@ func (h *RoleHandler) CreateRole(c *gin.Context) {
 	}
 
 	// Создание роли
-	role, err := h.roleService.CreateRole(c.Request.Context(), req)
+	adminUserIDRaw, exists := c.Get(middleware.GinContextUserIDKey)
+	var adminIDPtr *uuid.UUID
+	if exists {
+		if adminUUID, ok := adminUserIDRaw.(uuid.UUID); ok {
+			adminIDPtr = &adminUUID
+		} else if adminIDStr, ok := adminUserIDRaw.(string); ok {
+			if parsedID, pErr := uuid.Parse(adminIDStr); pErr == nil {
+				adminIDPtr = &parsedID
+			} else {
+				h.logger.Warn("Failed to parse admin user ID from context for CreateRole", zap.String("raw_admin_id", adminIDStr), zap.Error(pErr))
+			}
+		} else if adminUserIDRaw != nil { // only log if it exists but is of a wrong type
+			h.logger.Warn("Admin user ID in context has unexpected type for CreateRole", zap.Any("raw_admin_id", adminUserIDRaw))
+		}
+	} else {
+		h.logger.Warn("Admin user ID not found in context for CreateRole")
+	}
+
+	role, err := h.roleService.CreateRole(c.Request.Context(), req, adminIDPtr)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -154,7 +173,25 @@ func (h *RoleHandler) UpdateRole(c *gin.Context) {
 	}
 
 	// Обновление роли
-	role, err := h.roleService.UpdateRole(c.Request.Context(), roleID, req) // roleID is now string
+	adminUserIDRaw, exists := c.Get(middleware.GinContextUserIDKey)
+	var adminIDPtr *uuid.UUID
+	if exists {
+		if adminUUID, ok := adminUserIDRaw.(uuid.UUID); ok {
+			adminIDPtr = &adminUUID
+		} else if adminIDStr, ok := adminUserIDRaw.(string); ok {
+			if parsedID, pErr := uuid.Parse(adminIDStr); pErr == nil {
+				adminIDPtr = &parsedID
+			} else {
+				h.logger.Warn("Failed to parse admin user ID from context for UpdateRole", zap.String("raw_admin_id", adminIDStr), zap.Error(pErr))
+			}
+		} else if adminUserIDRaw != nil {
+			h.logger.Warn("Admin user ID in context has unexpected type for UpdateRole", zap.Any("raw_admin_id", adminUserIDRaw))
+		}
+	} else {
+		h.logger.Warn("Admin user ID not found in context for UpdateRole")
+	}
+
+	role, err := h.roleService.UpdateRole(c.Request.Context(), roleID, req, adminIDPtr) // roleID is now string
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -185,7 +222,25 @@ func (h *RoleHandler) DeleteRole(c *gin.Context) {
 	roleID := roleIDStr // Changed: roleID is now string
 
 	// Удаление роли
-	err = h.roleService.DeleteRole(c.Request.Context(), roleID) // roleID is now string
+	adminUserIDRaw, exists := c.Get(middleware.GinContextUserIDKey)
+	var adminIDPtr *uuid.UUID
+	if exists {
+		if adminUUID, ok := adminUserIDRaw.(uuid.UUID); ok {
+			adminIDPtr = &adminUUID
+		} else if adminIDStr, ok := adminUserIDRaw.(string); ok {
+			if parsedID, pErr := uuid.Parse(adminIDStr); pErr == nil {
+				adminIDPtr = &parsedID
+			} else {
+				h.logger.Warn("Failed to parse admin user ID from context for DeleteRole", zap.String("raw_admin_id", adminIDStr), zap.Error(pErr))
+			}
+		} else if adminUserIDRaw != nil {
+			h.logger.Warn("Admin user ID in context has unexpected type for DeleteRole", zap.Any("raw_admin_id", adminUserIDRaw))
+		}
+	} else {
+		h.logger.Warn("Admin user ID not found in context for DeleteRole")
+	}
+
+	err = h.roleService.DeleteRole(c.Request.Context(), roleID, adminIDPtr) // roleID is now string
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -219,7 +274,25 @@ func (h *RoleHandler) AssignRoleToUser(c *gin.Context) {
 	}
 
 	// Назначение роли пользователю
-	err := h.roleService.AssignRoleToUser(c.Request.Context(), req.UserID, req.RoleID)
+	adminUserIDRaw, exists := c.Get(middleware.GinContextUserIDKey)
+	var adminIDPtr *uuid.UUID
+	if exists {
+		if adminUUID, ok := adminUserIDRaw.(uuid.UUID); ok {
+			adminIDPtr = &adminUUID
+		} else if adminIDStr, ok := adminUserIDRaw.(string); ok {
+			if parsedID, pErr := uuid.Parse(adminIDStr); pErr == nil {
+				adminIDPtr = &parsedID
+			} else {
+				h.logger.Warn("Failed to parse admin user ID from context for AssignRoleToUser", zap.String("raw_admin_id", adminIDStr), zap.Error(pErr))
+			}
+		} else if adminUserIDRaw != nil {
+			h.logger.Warn("Admin user ID in context has unexpected type for AssignRoleToUser", zap.Any("raw_admin_id", adminUserIDRaw))
+		}
+	} else {
+		h.logger.Warn("Admin user ID not found in context for AssignRoleToUser")
+	}
+
+	err := h.roleService.AssignRoleToUser(c.Request.Context(), req.UserID, req.RoleID, adminIDPtr)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -253,7 +326,25 @@ func (h *RoleHandler) RemoveRoleFromUser(c *gin.Context) {
 	}
 
 	// Удаление роли у пользователя
-	err := h.roleService.RemoveRoleFromUser(c.Request.Context(), req.UserID, req.RoleID)
+	adminUserIDRaw, exists := c.Get(middleware.GinContextUserIDKey)
+	var adminIDPtr *uuid.UUID
+	if exists {
+		if adminUUID, ok := adminUserIDRaw.(uuid.UUID); ok {
+			adminIDPtr = &adminUUID
+		} else if adminIDStr, ok := adminUserIDRaw.(string); ok {
+			if parsedID, pErr := uuid.Parse(adminIDStr); pErr == nil {
+				adminIDPtr = &parsedID
+			} else {
+				h.logger.Warn("Failed to parse admin user ID from context for RemoveRoleFromUser", zap.String("raw_admin_id", adminIDStr), zap.Error(pErr))
+			}
+		} else if adminUserIDRaw != nil {
+			h.logger.Warn("Admin user ID in context has unexpected type for RemoveRoleFromUser", zap.Any("raw_admin_id", adminUserIDRaw))
+		}
+	} else {
+		h.logger.Warn("Admin user ID not found in context for RemoveRoleFromUser")
+	}
+
+	err := h.roleService.RemoveRoleFromUser(c.Request.Context(), req.UserID, req.RoleID, adminIDPtr)
 	if err != nil {
 		h.handleError(c, err)
 		return

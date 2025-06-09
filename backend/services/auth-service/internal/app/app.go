@@ -21,7 +21,7 @@ import (
 	// For logger, using an alias for clarity if needed, or direct path.
 	// e.g., logutil "github.com/gameplatform/auth-service/internal/utils/logger"
 	// For generated proto:
-	authv1 "github.com/gameplatform/auth-service/gen/go/auth/v1"
+	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1"
 	// For new handlers:
 	httphandler "github.com/gameplatform/auth-service/internal/handler/http"
 	grpchandler "github.com/gameplatform/auth-service/internal/handler/grpc"

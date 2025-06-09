@@ -109,8 +109,14 @@ db-migrate-create:
 .PHONY: gen-proto
 gen-proto:
 	@echo "$(GREEN)Генерация кода из Proto файлов...$(NC)"
-	protoc --proto_path=api/proto \
-		--go_out=. --go-grpc_out=. \
+	# Удаляем старые сгенерированные файлы в новой директории, если есть
+	rm -f internal/gen/auth/v1/*.pb.go
+	# Создаем директорию, если она не существует
+	mkdir -p internal/gen/auth/v1
+	# Генерируем новые
+	protoc --proto_path=api/proto/v1 \
+		--go_out=internal/gen/auth/v1 --go_opt=paths=source_relative \
+		--go-grpc_out=internal/gen/auth/v1 --go-grpc_opt=paths=source_relative \
 		auth.proto
 
 .PHONY: gen-swagger

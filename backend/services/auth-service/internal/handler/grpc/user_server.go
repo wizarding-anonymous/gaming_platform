@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
-	pb "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/pkg/api/proto"
+	pb "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

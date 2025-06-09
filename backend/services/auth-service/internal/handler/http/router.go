@@ -43,6 +43,7 @@ func SetupRouter(
 	adminHandler := NewAdminHandler(logger, userService, roleService, auditLogService) // Instantiate AdminHandler
 	validationHandler := NewValidationHandler(logger, tokenManagementService, authService) // Updated NewValidationHandler call
 	meHandler := NewMeHandler(logger, authService, userService, mfaLogicSvc, apiKeyService, sessionService) // Instantiate MeHandler, added sessionService
+	oauthHandler := NewOAuthHandler(authService, logger, cfg) // Инициализация OAuthHandler
 
 
 	// Настройка маршрутов для метрик и проверки работоспособности
@@ -77,8 +78,8 @@ func SetupRouter(
 			auth.POST("/login/2fa/verify", authHandler.VerifyLogin2FA)
 
 			// OAuth and other external provider routes
-			auth.GET("/oauth/:provider", authHandler.OAuthLogin)                // Redirect to provider
-			auth.GET("/oauth/:provider/callback", authHandler.OAuthCallback)    // Callback from provider
+			auth.GET("/oauth/:provider", oauthHandler.InitiateOAuthHandler)     // Redirect to provider
+			auth.GET("/oauth/:provider/callback", oauthHandler.OAuthCallbackHandler) // Callback from provider
 			// TelegramLogin route auth.POST("/telegram-login", authHandler.TelegramLogin) is already present
 		}
 
