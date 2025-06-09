@@ -164,6 +164,11 @@ release: check build docker-build docker-push k8s-deploy
 .PHONY: dev
 dev: deps fmt vet run
 
+.PHONY: test
+test:
+	@echo "$(GREEN)Запуск тестов...$(NC)"
+	go test -v -cover ./...
+
 # Помощь
 .PHONY: help
 help:
@@ -194,6 +199,7 @@ help:
 	@echo "  make check            - Запуск всех проверок"
 	@echo "  make release          - Полная сборка и отправка"
 	@echo "  make dev              - Локальная разработка"
+	@echo "  make test             - Запуск всех тестов"
 	@echo "  make help             - Показать эту справку"
 
 # По умолчанию
