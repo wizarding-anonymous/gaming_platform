@@ -30,7 +30,7 @@ kafka:
 
 jwt:
   access_token_ttl: "15m"
-  refresh_token_ttl: "168h"
+  refresh_token_ttl: "720h" # Изменено с "168h"
   email_verification_token:
     expires_in: "24h"
   password_reset_token:
