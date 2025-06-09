@@ -17,6 +17,7 @@ import (
 	// and AuditLogStatus constants.
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For EventType, Payloads, Audit statuses
 	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Assuming this is the Sarama producer path
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics"      // Added metrics import
 	"github.com/gameplatform/auth-service/internal/domain/repository"
 	"github.com/google/uuid"
 )
@@ -284,6 +285,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		auditDetails["error_reason"] = err.Error()
 		auditDetails["provided_key_snippet"] = truncateKey(rawAPIKey, 10) // Use helper
 		s.auditLogRecorder.RecordEvent(ctx, nil, "apikey_auth_failure", models.AuditLogStatusFailure, nil, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
+		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc()
 		return "", nil, "", err
 	}
 	parsedPrefix := rawAPIKey[:lastUnderscore]
@@ -295,6 +297,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		auditDetails["error_reason"] = err.Error()
 		auditDetails["provided_prefix"] = parsedPrefixForAudit
 		s.auditLogRecorder.RecordEvent(ctx, nil, "apikey_auth_failure", models.AuditLogStatusFailure, nil, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
+		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc()
 		return "", nil, "", err
 	}
 	
@@ -306,6 +309,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		auditDetails["provided_prefix"] = parsedPrefixForAudit
 		auditDetails["db_error_details"] = err.Error()
 		s.auditLogRecorder.RecordEvent(ctx, nil, "apikey_auth_failure", models.AuditLogStatusFailure, nil, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
+		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc()
 		return "", nil, "", finalErr
 	}
 
@@ -320,6 +324,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		auditDetails["error_reason"] = err.Error()
 		auditDetails["key_id"] = apiKeyEntity.ID
 		s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_failure", models.AuditLogStatusFailure, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
+		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_revoked").Inc()
 		return "", nil, "", err
 	}
 	if apiKeyEntity.ExpiresAt != nil && apiKeyEntity.ExpiresAt.Before(time.Now()) {
@@ -328,6 +333,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		auditDetails["key_id"] = apiKeyEntity.ID
 		auditDetails["expires_at"] = apiKeyEntity.ExpiresAt.String()
 		s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_failure", models.AuditLogStatusFailure, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
+		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_expired").Inc()
 		return "", nil, "", err
 	}
 
@@ -338,6 +344,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		auditDetails["key_id"] = apiKeyEntity.ID
 		auditDetails["internal_error_details"] = err.Error() // Original error
 		s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_failure", models.AuditLogStatusFailure, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
+		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc() // Error during hash check implies invalid key/secret
 		return "", nil, "", finalErr
 	}
 	if !match {
@@ -345,6 +352,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		auditDetails["error_reason"] = err.Error()
 		auditDetails["key_id"] = apiKeyEntity.ID
 		s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_failure", models.AuditLogStatusFailure, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
+		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc()
 		return "", nil, "", err
 	}
 
@@ -363,12 +371,24 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 			// Decide if this is a hard failure for the auth itself. If perms are critical, it might be.
 			// For now, logging success as auth itself (key valid) passed.
 			s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_success", models.AuditLogStatusSuccess, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusSuccess
+			// If permissions are essential for the key to be considered "valid" for a request, this might be a "failure_no_permission" case.
+			// However, the current logic returns the key as valid but with potentially empty permissions.
+			// For now, let's assume a key is valid if the secret matches, and permission checks happen later.
+			// If unmarshalling permissions fails, it's more of a data integrity issue for that key's permissions.
+			// This doesn't fit neatly into the requested metric labels without more context on how permissions affect "validity".
+			// Sticking to "success" for the key authentication itself.
+			metrics.APIKeyValidationAttemptsTotal.WithLabelValues("success").Inc()
 			return apiKeyEntity.UserID, []string{}, apiKeyEntity.ID, fmt.Errorf("failed to unmarshal key permissions: %w", errUnmarshal)
 		}
 	}
+	// TODO: Add actual permission check logic here if AuthenticateByAPIKey should also validate scopes/permissions.
+	// If it should, and permissions are insufficient:
+	// metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_no_permission").Inc()
+	// return "", nil, apiKeyEntity.ID, errors.New("insufficient permissions for API key")
 
 	auditDetails["permissions_granted_count"] = len(perms) // Example of adding success detail
 	s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_success", models.AuditLogStatusSuccess, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusSuccess
+	metrics.APIKeyValidationAttemptsTotal.WithLabelValues("success").Inc()
 	return apiKeyEntity.UserID, perms, apiKeyEntity.ID, nil
 }
 

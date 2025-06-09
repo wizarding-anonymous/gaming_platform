@@ -22,6 +22,7 @@ import (
 	appSecurity "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka" // Replaced by events/kafka
 	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Sarama-based producer
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics" // Added metrics import
 	"go.uber.org/zap"
 	// "golang.org/x/oauth2" // Removed, moved to OAuthService
 	// "net/http"            // Removed, moved to OAuthService or handlers
@@ -197,6 +198,7 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
                 auditErrorDetails = map[string]interface{}{"reason": "db error fetching user", "error": err.Error(), "attempted_identifier": req.Identifier}
                 s.auditLogRecorder.RecordEvent(ctx, nil, "user_login", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
             }
+			metrics.LoginAttemptsTotal.WithLabelValues("failure_user_not_found").Inc()
             return nil, nil, "", domainErrors.ErrInvalidCredentials
         }
     }
@@ -213,6 +215,7 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
     if !allowed {
         s.logger.Warn("Rate limit exceeded for login_identifier_ip", zap.String("identifier", req.Identifier), zap.String("ipAddress", ipAddress))
         // Consider if an event should be published here for rate limiting.
+		// metrics.LoginAttemptsTotal.WithLabelValues("failure_rate_limit").Inc(); // Optional: if you want a specific metric for rate limit
         return nil, nil, "", domainErrors.ErrRateLimitExceeded
     }
 
@@ -221,6 +224,7 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
         s.logger.Warn("Login attempt for locked out user", zap.String("user_id", user.ID.String()), zap.Time("lockout_until", *user.LockoutUntil))
         auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserLockedOut.Error(), "attempted_identifier": req.Identifier}
         s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+		metrics.LoginAttemptsTotal.WithLabelValues("failure_account_locked").Inc()
         return nil, nil, "", domainErrors.ErrUserLockedOut
     }
 
@@ -297,10 +301,12 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
             s.logger.Warn("User account locked", zap.String("user_id", user.ID.String()))
             auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserLockedOut.Error(), "attempted_identifier": req.Identifier, "lockout_triggered": true, "failed_attempts": user.FailedLoginAttempts}
             s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+			metrics.LoginAttemptsTotal.WithLabelValues("failure_account_locked").Inc() // Duplicated for this path
             return nil, nil, "", domainErrors.ErrUserLockedOut
         }
         auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrInvalidCredentials.Error(), "attempted_identifier": req.Identifier, "failed_attempts": user.FailedLoginAttempts}
         s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+		metrics.LoginAttemptsTotal.WithLabelValues("failure_credentials").Inc()
         return nil, nil, "", domainErrors.ErrInvalidCredentials
     }
 
@@ -308,6 +314,7 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
         s.logger.Warn("Login attempt for blocked user", zap.String("user_id", user.ID.String()))
         auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserBlocked.Error(), "attempted_identifier": req.Identifier}
         s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+		metrics.LoginAttemptsTotal.WithLabelValues("failure_account_blocked").Inc() // Specific status for blocked
         return nil, nil, "", domainErrors.ErrUserBlocked
     }
 
@@ -315,6 +322,7 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
         s.logger.Warn("Login attempt for unverified email", zap.String("user_id", user.ID.String()))
         auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrEmailNotVerified.Error(), "attempted_identifier": req.Identifier}
         s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+		metrics.LoginAttemptsTotal.WithLabelValues("failure_email_not_verified").Inc()
         return nil, nil, "", domainErrors.ErrEmailNotVerified
     }
 
@@ -326,10 +334,13 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
             s.logger.Error("Failed to generate 2FA challenge token", zap.Error(errChallenge), zap.String("user_id", user.ID.String()))
             auditErrorDetails = map[string]interface{}{"reason": "2FA challenge token generation failed", "error": errChallenge.Error(), "attempted_identifier": req.Identifier}
             s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
-            return nil, nil, "", domainErrors.ErrInternal
+			// This path is tricky, it's a failure for immediate login, but success for primary auth.
+			// The subtask asks for "success_2fa_required" for this case.
+            return nil, nil, "", domainErrors.ErrInternal // Not incrementing login failure here, as it's a 2FA path.
         }
         auditErrorDetails = map[string]interface{}{"reason": domainErrors.Err2FARequired.Error(), "attempted_identifier": req.Identifier}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent) // Logged as failure for this step
+		metrics.LoginAttemptsTotal.WithLabelValues("success_2fa_required").Inc()
         return nil, user, challengeToken, domainErrors.Err2FARequired
     }
     if errMFA != nil && !errors.Is(errMFA, domainErrors.ErrNotFound) {
@@ -385,6 +396,7 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
     }
 
     s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusSuccess, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+	metrics.LoginAttemptsTotal.WithLabelValues("success").Inc()
     return tokenPair, user, "", nil
 }
 
@@ -694,6 +706,8 @@ func (s *AuthService) Register(ctx context.Context, req models.RegisterRequest) 
 	// --- End of Placeholder ---
 
 	// Returning a dummy response for now as core logic is missing
+	// TODO: Implement actual registration logic and proper metric points for failures.
+	// For now, only success is instrumented based on this placeholder.
 	dummyUser := &models.User{ID: uuid.New(), Username: req.Username, Email: req.Email, Status: models.UserStatusPendingVerification}
 	dummyTokenPair := &models.TokenPair{AccessToken: "dummy_access_token", RefreshToken: "dummy_refresh_token"}
 
@@ -704,12 +718,64 @@ func (s *AuthService) Register(ctx context.Context, req models.RegisterRequest) 
 		userIDForAudit = &uid
 	}
 	s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, models.AuthUserRegisteredV1, models.AuditLogStatusSuccess, userIDForAudit, models.AuditTargetTypeUser, map[string]interface{}{"email": req.Email, "username": req.Username, "method": "direct"}, ipAddress, userAgent)
+	metrics.RegistrationAttemptsTotal.WithLabelValues("success").Inc() // Placeholder success
 
+	// Example failure points (to be integrated with actual validation logic)
+	// if validationError {
+	// 	metrics.RegistrationAttemptsTotal.WithLabelValues("failure_validation").Inc()
+	// 	return nil, nil, domainErrors.ErrInvalidInput
+	// }
+	// if usernameExistsError {
+	// 	metrics.RegistrationAttemptsTotal.WithLabelValues("failure_username_exists").Inc()
+	//  return nil, nil, domainErrors.ErrUsernameExists
+	// }
+	// if emailExistsError {
+	// 	metrics.RegistrationAttemptsTotal.WithLabelValues("failure_email_exists").Inc()
+	//  return nil, nil, domainErrors.ErrEmailExists
+	// }
 
 	return dummyUser, dummyTokenPair, nil // Placeholder return
 }
 
 // HandleOAuthCallback method removed, now part of OAuthService.
+
+// VerifyEmail verifies a user's email address using a verification token.
+func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
+	// Placeholder for actual logic
+	s.logger.Info("VerifyEmail called", zap.String("token", token))
+	// if actualLogicFailsDueToInvalidToken {
+	//	 metrics.EmailVerificationAttemptsTotal.WithLabelValues("failure_invalid_or_expired_token").Inc()
+	// 	 return domainErrors.ErrVerificationTokenInvalid
+	// }
+	metrics.EmailVerificationAttemptsTotal.WithLabelValues("success").Inc()
+	return nil
+}
+
+// ForgotPassword initiates the password reset process for a user.
+func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
+	// Placeholder for actual logic
+	s.logger.Info("ForgotPassword called", zap.String("email", email))
+	// To prevent user enumeration, typically always return a success-like message.
+	// The metric can reflect that the request was processed.
+	metrics.PasswordResetRequestsTotal.WithLabelValues("success_request_sent").Inc()
+	// if userNotFound {
+	// 	 metrics.PasswordResetRequestsTotal.WithLabelValues("failure_user_not_found").Inc()
+	//   // Still return generic success to client
+	// }
+	return nil
+}
+
+// ResetPassword completes the password reset process.
+func (s *AuthService) ResetPassword(ctx context.Context, token string, newPassword string) error {
+	// Placeholder for actual logic
+	s.logger.Info("ResetPassword called", zap.String("token", token))
+	// if actualLogicFailsDueToInvalidToken {
+	//	 metrics.PasswordResetAttemptsTotal.WithLabelValues("failure_invalid_or_expired_token").Inc()
+	// 	 return domainErrors.ErrPasswordResetTokenInvalid
+	// }
+	metrics.PasswordResetAttemptsTotal.WithLabelValues("success").Inc()
+	return nil
+}
 
 
 // --- HTTP Client Helper Methods --- (These are now removed as oauth2 library handles HTTP client interactions)

@@ -373,6 +373,7 @@ func main() {
 		tokenManagementService,
 		cfg,
 		logger,
+		rateLimiter, // Added rateLimiter
 	)
 
 	httpServer := &http.Server{

@@ -4,8 +4,10 @@ package http
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // Added for config.RateLimitRule
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http/middleware"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Added for domainService.RateLimiter
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/telemetry"
 	"go.uber.org/zap"
 )
@@ -25,6 +27,7 @@ func SetupRouter(
 	tokenManagementService domainService.TokenManagementService,
 	cfg *config.Config,
 	logger *zap.Logger,
+	rateLimiter middleware.RateLimiterInterface, // Added RateLimiterInterface
 ) *gin.Engine {
 	// Создание роутера
 	router := gin.New()
@@ -66,9 +69,17 @@ func SetupRouter(
 	{
 		// Маршруты аутентификации (публичные)
 		auth := api.Group("/auth")
+		// Apply general rate limit for public auth endpoints
+		// Assuming cfg.Security.RateLimiting.GeneralPublic is defined in config.
+		// If not, this will need adjustment when config is updated.
+		// For now, let's assume a placeholder or a specific one like Login if GeneralPublic isn't defined yet.
+		// Using cfg.Security.RateLimiting.Login for now as an example if GeneralPublic doesn't exist.
+		// This should be reviewed once config.go is updated.
+		// For the subtask, let's assume a 'GeneralAuth' field exists or will be added to RateLimitConfig
+		auth.Use(middleware.RateLimitMiddleware(rateLimiter, cfg.Security.RateLimiting.GeneralAuth, logger))
 		{
-			auth.POST("/register", authHandler.RegisterUser) // Corrected name
-			auth.POST("/login", authHandler.LoginUser)       // Corrected name
+			auth.POST("/register", authHandler.RegisterUser)
+			auth.POST("/login", authHandler.LoginUser)
 			auth.POST("/telegram-login", authHandler.TelegramLogin)
 			auth.POST("/refresh-token", authHandler.RefreshToken)
 			auth.POST("/verify-email", authHandler.VerifyEmail)

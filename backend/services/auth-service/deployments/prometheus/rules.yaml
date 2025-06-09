@@ -110,3 +110,53 @@ groups:
       summary: "Auth Service has too many pending tokens"
       description: "Auth Service has more than 10,000 pending tokens for more than 15 minutes (current value: {{ $value }})."
       runbook_url: "https://wiki.gaiming.ru/runbooks/auth-service-too-many-pending-tokens"
+
+  - alert: AuthServiceGrpcHighErrorRate
+    expr: sum(rate(auth_service_grpc_responses_total{job="auth-service", grpc_code!~"OK|ALREADY_EXISTS|NOT_FOUND"}[5m])) / sum(rate(auth_service_grpc_requests_total{job="auth-service"}[5m])) > 0.05
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Auth Service has high gRPC error rate"
+      description: "Auth Service gRPC error rate (excluding OK, AlreadyExists, NotFound) is above 5% for more than 5 minutes (current value: {{ $value | humanizePercentage }})."
+      runbook_url: "https://wiki.gaiming.ru/runbooks/auth-service-grpc-high-error-rate"
+
+  - alert: AuthServiceGrpcHighLatency
+    expr: histogram_quantile(0.95, sum(rate(auth_service_grpc_request_duration_seconds_bucket{job="auth-service"}[5m])) by (le)) > 0.5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Auth Service has high gRPC latency"
+      description: "Auth Service 95th percentile gRPC latency is above 500ms for more than 5 minutes (current value: {{ $value | humanizeDuration }})."
+      runbook_url: "https://wiki.gaiming.ru/runbooks/auth-service-grpc-high-latency"
+
+  - alert: AuthServiceHigh2FAFailureRate
+    expr: sum(rate(auth_service_2fa_verification_attempts_total{job="auth-service", status=~"failure_login_invalid_code|failure_activation_invalid_code"}[5m])) / sum(rate(auth_service_2fa_verification_attempts_total{job="auth-service"}[5m])) > 0.2
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Auth Service has high 2FA failure rate"
+      description: "Auth Service 2FA failure rate is above 20% for more than 10 minutes (current value: {{ $value | humanizePercentage }})."
+      runbook_url: "https://wiki.gaiming.ru/runbooks/auth-service-high-2fa-failure-rate"
+
+  - alert: AuthServiceHighDetailedLoginFailureRate
+    expr: sum(rate(auth_service_login_attempts_total{job="auth-service", status=~"failure_credentials|failure_user_not_found"}[5m])) / sum(rate(auth_service_login_attempts_total{job="auth-service"}[5m])) > 0.3
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Auth Service has high detailed login failure rate (credentials/user_not_found)"
+      description: "Auth Service login failure rate for bad credentials or user not found is above 30% for more than 15 minutes (current value: {{ $value | humanizePercentage }})."
+      runbook_url: "https://wiki.gaiming.ru/runbooks/auth-service-high-login-failure-rate"
+
+  - alert: AuthServiceHighAccountLockoutRate
+    expr: sum(rate(auth_service_login_attempts_total{job="auth-service", status="failure_account_locked"}[10m])) > 1
+    for: 5m # Alert if more than 1 lockout per minute on average over 10 mins
+    labels:
+      severity: critical
+    annotations:
+      summary: "Auth Service has a high rate of account lockouts"
+      description: "Auth Service is locking out more than 1 account per minute on average over the last 10 minutes (current rate: {{ $value }} lockouts/min)."
+      runbook_url: "https://wiki.gaiming.ru/runbooks/auth-service-high-account-lockout-rate"

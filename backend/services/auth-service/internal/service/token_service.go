@@ -9,21 +9,19 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // Not directly used by TokenService, but by TokenManagementService
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis"
-	"go.uber.org/zap"
-)
-
-	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis" // Used by TokenService for blacklist
 	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces" // For new repo dependencies
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"     // For TokenManagementService
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"      // For HashToken
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics"                   // Added metrics import
 	"go.uber.org/zap"
 )
+
+// This removes the duplicated import block that was causing confusion in previous diffs.
+// The first block of imports is considered the canonical one for this file.
 
 // TokenService представляет сервис для работы с токенами
 type TokenService struct {
@@ -153,21 +151,35 @@ func (s *TokenService) RefreshTokens(ctx context.Context, plainOpaqueRefreshToke
 	storedRefreshToken, err := s.refreshTokenRepo.FindByTokenHash(ctx, hashedIncomingRefreshToken)
 	if err != nil {
 		if errors.Is(err, domainErrors.ErrNotFound) {
+			// This could be an invalid token, or one that was revoked and then deleted, or expired and deleted.
+			// For simplicity, label as "failure_invalid_token" as it's not found.
+			metrics.TokenRefreshTotal.WithLabelValues("failure_invalid_token").Inc()
 			return models.TokenPair{}, domainErrors.ErrInvalidRefreshToken
 		}
 		s.logger.Error("Error finding refresh token by hash", zap.Error(err))
+		metrics.TokenRefreshTotal.WithLabelValues("failure_db_error").Inc() // Generic DB error
 		return models.TokenPair{}, err
 	}
 
-	// FindByTokenHash in repo already checks if active (not revoked, not expired)
+	// Explicitly check for revoked status or expiration if not handled by FindByTokenHash
+	if storedRefreshToken.RevokedAt != nil {
+		metrics.TokenRefreshTotal.WithLabelValues("failure_revoked_token").Inc()
+		return models.TokenPair{}, domainErrors.ErrRevokedToken
+	}
+	if time.Now().After(storedRefreshToken.ExpiresAt) {
+		metrics.TokenRefreshTotal.WithLabelValues("failure_expired_token").Inc()
+		return models.TokenPair{}, domainErrors.ErrExpiredToken
+	}
 
 	// Fetch associated user
 	user, err := s.userRepo.FindByID(ctx, storedRefreshToken.UserID)
 	if err != nil {
 		s.logger.Error("User not found for refresh token", zap.String("user_id", storedRefreshToken.UserID.String()), zap.Error(err))
+		metrics.TokenRefreshTotal.WithLabelValues("failure_user_not_found").Inc()
 		return models.TokenPair{}, domainErrors.ErrUserNotFound
 	}
 	if user.Status == models.UserStatusBlocked || user.Status == models.UserStatusDeleted {
+		metrics.TokenRefreshTotal.WithLabelValues("failure_user_blocked").Inc()
 		return models.TokenPair{}, domainErrors.ErrUserBlocked
 	}
 
@@ -175,6 +187,7 @@ func (s *TokenService) RefreshTokens(ctx context.Context, plainOpaqueRefreshToke
 	_, err = s.sessionRepo.FindByID(ctx, storedRefreshToken.SessionID)
 	if err != nil {
 		s.logger.Error("Session not found for refresh token", zap.String("session_id", storedRefreshToken.SessionID.String()), zap.Error(err))
+		metrics.TokenRefreshTotal.WithLabelValues("failure_session_not_found").Inc()
 		return models.TokenPair{}, domainErrors.ErrSessionNotFound // Or ErrInvalidRefreshToken
 	}
 	// TODO: Add check here if session.IsActive or similar if sessions can be revoked separately.
@@ -217,9 +230,11 @@ func (s *TokenService) RefreshTokens(ctx context.Context, plainOpaqueRefreshToke
 		ExpiresAt: newRefreshTokenExpiry,
 	}
 	if err := s.refreshTokenRepo.Create(ctx, newRefreshToken); err != nil {
+		metrics.TokenRefreshTotal.WithLabelValues("failure_storage_error").Inc()
 		return models.TokenPair{}, fmt.Errorf("failed to store new refresh token: %w", err)
 	}
 
+	metrics.TokenRefreshTotal.WithLabelValues("success").Inc()
 	return models.TokenPair{
 		AccessToken:  newAccessTokenString,
 		RefreshToken: newOpaqueRefreshTokenValue,

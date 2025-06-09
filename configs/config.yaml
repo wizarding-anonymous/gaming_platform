@@ -72,6 +72,10 @@ security:
       enabled: true
       limit: 5
       window: "15m"
+    general_auth: # For general public auth endpoints like /register, /login, /forgot-password etc.
+      enabled: true
+      limit: 20 # Example: 20 requests
+      window: "1m" # Example: per minute
 
 mfa:
   enabled: true

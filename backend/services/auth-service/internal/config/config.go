@@ -129,6 +129,7 @@ type RateLimitConfig struct {
 	LoginEmailIP             RateLimitRule `mapstructure:"login_email_ip"` // Added for login by email and IP
 	ResendVerificationEmail  RateLimitRule `mapstructure:"resend_verification_email"` // Added for resend verification email
 	ResetPasswordIP          RateLimitRule `mapstructure:"reset_password_ip"` // Added for reset password by IP
+	GeneralAuth              RateLimitRule `mapstructure:"general_auth"`    // For general public auth endpoints
 }
 
 type SecurityConfig struct {

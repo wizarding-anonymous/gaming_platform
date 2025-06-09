@@ -18,6 +18,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/crypto"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics" // Added metrics import
 	"go.uber.org/zap"
 )
 
@@ -161,6 +162,7 @@ func (s *TwoFactorService) VerifyAndActivateTwoFactor(ctx context.Context, userI
 	valid := totp.Validate(totpCode, decryptedSecretBase32)
 	if !valid {
 		s.logger.Warn("Invalid TOTP code during 2FA activation", zap.String("user_id", userID.String()))
+		metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_activation_invalid_code").Inc()
 		return nil, models.ErrInvalidTOTPCode
 	}
 
@@ -195,6 +197,7 @@ func (s *TwoFactorService) VerifyAndActivateTwoFactor(ctx context.Context, userI
 		s.logger.Error("Failed to publish 2FA enabled event", zap.Error(err), zap.String("user_id", userID.String()))
 	}
 
+	metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("success_activation").Inc()
 	return recoveryCodes, nil
 }
 
@@ -226,6 +229,7 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID uuid.UUI
 	// TODO: Добавить проверку кодов восстановления
 	if !valid {
 		s.logger.Warn("Invalid TOTP code during 2FA disabling", zap.String("user_id", userID.String()))
+		metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_disable_invalid_code").Inc()
 		return models.ErrInvalidTOTPCode
 	}
 
@@ -253,6 +257,7 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID uuid.UUI
 		s.logger.Error("Failed to publish 2FA disabled event", zap.Error(err), zap.String("user_id", userID.String()))
 	}
 
+	metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("success_disable").Inc()
 	return nil
 }
 
@@ -261,11 +266,13 @@ func (s *TwoFactorService) VerifyTOTP(ctx context.Context, userID uuid.UUID, cod
 	mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, models.MFATypeTOTP)
 	if err != nil {
 		s.logger.Info("MFA secret not found for user during TOTP verification", zap.Error(err), zap.String("user_id", userID.String()))
+		metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_not_enabled").Inc()
 		return false, models.ErrTwoFactorNotEnabled // Or ErrMFASecretNotFound
 	}
 
 	if !mfaSecret.Verified {
 		s.logger.Warn("Attempt to verify TOTP with unverified MFA secret", zap.String("user_id", userID.String()))
+		metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_not_enabled").Inc() // Or a more specific "not_verified" status
 		return false, models.ErrMFANotVerified
 	}
 
@@ -285,7 +292,10 @@ func (s *TwoFactorService) VerifyTOTP(ctx context.Context, userID uuid.UUID, cod
 	valid := totp.Validate(code, decryptedSecretBase32)
 	if !valid {
 		s.logger.Warn("Invalid TOTP code during verification", zap.String("user_id", userID.String()))
+		metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_login_invalid_code").Inc()
 		// Не возвращаем ошибку, просто valid = false
+	} else {
+		metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("success_login").Inc()
 	}
 	return valid, nil
 }
