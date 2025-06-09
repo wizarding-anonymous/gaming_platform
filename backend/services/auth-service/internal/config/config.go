@@ -183,37 +183,3 @@ type OAuthProviderConfig struct {
 type TelegramConfig struct {
 	BotToken string `mapstructure:"bot_token"`
 }
-
-
-func LoadConfig() (*Config, error) {
-	if err := godotenv.Load(); err != nil {
-		if !os.IsNotExist(err) {
-			fmt.Printf("Warning: Could not load .env file: %v\n", err)
-		}
-	}
-
-	var cfg Config
-	err := cleanenv.ReadEnv(&cfg)
-	if err == nil {
-		fmt.Println("Configuration loaded from environment variables.")
-		return &cfg, nil
-	}
-	fmt.Printf("Could not load config from environment: %v. Trying YAML file.\n", err)
-
-	configPath := os.Getenv("CONFIG_PATH")
-	if configPath == "" {
-		configPath = "configs/config.yaml"
-	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("configuration file not found at %s and env vars not fully set: %w", configPath, err)
-	}
-
-	err = cleanenv.ReadConfig(configPath, &cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config from %s: %w", configPath, err)
-	}
-	fmt.Printf("Configuration loaded from %s.\n", configPath)
-
-	return &cfg, nil
-}
