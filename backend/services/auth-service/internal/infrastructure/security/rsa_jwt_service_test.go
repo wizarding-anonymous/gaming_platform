@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appConfig "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
-	"github.comcom/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Alias for domain service
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Alias for domain service
 	appSecurity "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
 )
 
