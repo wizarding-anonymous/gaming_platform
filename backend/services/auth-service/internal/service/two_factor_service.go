@@ -11,9 +11,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/repository/interfaces"
-	"github.com/your-org/auth-service/internal/utils/kafka"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka"
 	"go.uber.org/zap"
 )
 

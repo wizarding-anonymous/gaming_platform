@@ -11,14 +11,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces"
-	domainService "github.com/your-org/auth-service/internal/domain/service"
-	// eventMocks "github.com/your-org/auth-service/internal/events/mocks" // Assuming a kafka mock might exist or be needed
-	eventskafka "github.com/your-org/auth-service/internal/events/kafka" // For eventskafka.EventType
-	mockproducer "github.com/your-org/auth-service/internal/events/mocks" // Mock producer
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	// eventMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Assuming a kafka mock might exist or be needed
+	eventskafka "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // For eventskafka.EventType
+	mockproducer "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Mock producer
 	"go.uber.org/zap"
 )
 
@@ -731,7 +731,7 @@ func (s *AuthServiceTestSuite) TestRegister_RateLimitExceeded_IP_Corrected() {
 // This allows testing of unexported methods if necessary, though typically not recommended.
 // For this subtask, we are testing exported methods.
 // The eventMocks.MockProducer should be correctly imported or defined.
-// Assuming `eventMocks "github.com/your-org/auth-service/internal/events/mocks"` exists
+// Assuming `eventMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks"` exists
 // and provides a `MockProducer`. If not, it would need to be created.
 // For the audit log targetType, when it's nil for user, it should be an empty models.AuditTargetType("")
 // or whatever the RecordEvent method expects for a nil/non-applicable target type.

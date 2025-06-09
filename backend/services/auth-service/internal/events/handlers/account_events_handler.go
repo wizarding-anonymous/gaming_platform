@@ -9,13 +9,13 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	domainService "github.com/your-org/auth-service/internal/domain/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	// Import for kafka.CloudEvent (Sarama consumer path)
-	"github.com/your-org/auth-service/internal/events/kafka"
-	// domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Already imported
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
+	// domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // Already imported
 )
 
 // AccountEventsHandler handles events originating from the Account Service.

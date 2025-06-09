@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/your-org/auth-service/internal/domain/models"
-	repoPostgres "github.com/your-org/auth-service/internal/domain/repository/postgres"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	repoPostgres "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/postgres"
 	// argon2Service and testDB are global from user_postgres_repository_integration_test.go's TestMain
 )
 

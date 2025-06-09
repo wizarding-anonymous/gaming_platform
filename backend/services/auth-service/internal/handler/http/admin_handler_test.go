@@ -16,12 +16,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	// "github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	domainService "github.com/your-org/auth-service/internal/domain/service"
-	// "github.com/your-org/auth-service/internal/service" // For concrete service types if needed
-	"github.com/your-org/auth-service/internal/utils/middleware"
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service" // For concrete service types if needed
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/middleware"
 	"go.uber.org/zap"
 )
 

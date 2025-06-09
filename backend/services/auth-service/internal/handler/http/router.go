@@ -4,9 +4,9 @@ package http
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/your-org/auth-service/internal/handler/http/middleware"
-	"github.com/your-org/auth-service/internal/service"
-	"github.com/your-org/auth-service/internal/utils/telemetry"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http/middleware"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/telemetry"
 	"go.uber.org/zap"
 )
 

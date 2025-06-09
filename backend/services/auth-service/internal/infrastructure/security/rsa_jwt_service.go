@@ -13,8 +13,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid" // For JTI
 
-	appConfig "github.com/your-org/auth-service/internal/config" // Alias for clarity
-	"github.com/your-org/auth-service/internal/domain/service"
+	appConfig "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // Alias for clarity
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 )
 
 // rsaTokenManagementService implements the service.TokenManagementService using RS256.

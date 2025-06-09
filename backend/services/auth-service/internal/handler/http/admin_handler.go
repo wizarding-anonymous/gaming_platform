@@ -14,11 +14,11 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	domainService "github.com/your-org/auth-service/internal/domain/service"
-	appService "github.com/your-org/auth-service/internal/service" // For concrete services
-	"github.com/your-org/auth-service/internal/domain/repository" // For ListAuditLogParams
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	appService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service" // For concrete services
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository" // For ListAuditLogParams
 )
 
 // AdminHandler handles HTTP requests for administrative actions.

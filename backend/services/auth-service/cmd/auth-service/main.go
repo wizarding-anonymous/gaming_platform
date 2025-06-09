@@ -11,21 +11,21 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/events/handlers" // For event handlers
-	"github.com/your-org/auth-service/internal/events/kafka"
-	"github.com/your-org/auth-service/internal/domain/models" // For EventType constants and CloudEventSource
-	grpcHandler "github.com/your-org/auth-service/internal/handler/grpc"
-	httpHandler "github.com/your-org/auth-service/internal/handler/http"
-	infraDbPostgres "github.com/your-org/auth-service/internal/infrastructure/database/postgres" // For NewDBPool
-	repoPostgres "github.com/your-org/auth-service/internal/domain/repository/postgres"      // For specific repo constructors
-	"github.com/your-org/auth-service/internal/repository/redis"
-	domainService "github.com/your-org/auth-service/internal/domain/service" // For PasswordService interface
-	"github.com/your-org/auth-service/internal/infrastructure/security"   // For NewArgon2idPasswordService
-	"github.com/your-org/auth-service/internal/service"
-	"github.com/your-org/auth-service/internal/utils/telemetry"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/handlers" // For event handlers
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For EventType constants and CloudEventSource
+	grpcHandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/grpc"
+	httpHandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http"
+	infraDbPostgres "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/database/postgres" // For NewDBPool
+	repoPostgres "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/postgres"      // For specific repo constructors
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // For PasswordService interface
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"   // For NewArgon2idPasswordService
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/telemetry"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	authv1 "github.com/your-org/auth-service/pkg/pb/auth/v1" // For gRPC server registration
+	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/pkg/pb/auth/v1" // For gRPC server registration
 
 	"github.com/Shopify/sarama" // Added for Sarama config
 	"github.com/golang-migrate/migrate/v4"

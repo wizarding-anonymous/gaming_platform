@@ -14,10 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/your-org/auth-service/internal/config" // Assuming this is the correct config path
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/domain/repository" // For ListUsersParams if it's there, or use models.
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // Assuming this is the correct config path
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository" // For ListUsersParams if it's there, or use models.
 )
 
 // UserRepositoryPostgres implements the repository.UserRepository interface using PostgreSQL.
@@ -574,7 +574,7 @@ Here's a summary of what was done and what's next for `UserRepository`:
 
 **Remaining considerations/todos for `UserRepository` or related files:**
 
-1.  **Interface vs. Implementation Path for `ListUsersParams`**: The `UserRepositoryPostgres` currently imports `github.com/your-org/auth-service/internal/domain/repository` for `ListUsersParams`. This might be circular if `ListUsersParams` is defined in `user_repository.go` (the interface file). It's better if `ListUsersParams` is in the `models` package, which it is now. So, the import should be `github.com/your-org/auth-service/internal/domain/models`. I need to ensure this is consistent. *Self-correction: I see I used `models.ListUsersParams` in the implementation, which is correct as I moved it to the models package.*
+1.  **Interface vs. Implementation Path for `ListUsersParams`**: The `UserRepositoryPostgres` currently imports `github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository` for `ListUsersParams`. This might be circular if `ListUsersParams` is defined in `user_repository.go` (the interface file). It's better if `ListUsersParams` is in the `models` package, which it is now. So, the import should be `github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models`. I need to ensure this is consistent. *Self-correction: I see I used `models.ListUsersParams` in the implementation, which is correct as I moved it to the models package.*
 2.  **Role Fetching in `Find` methods**: The original `GetBy...` methods in `postgres/user_repository.go` also fetched user roles. My current refactored `Find...` methods in `UserRepositoryPostgres` do *not* fetch roles to keep the repository focused. This is a design choice: roles can be fetched separately via `UserRolesRepository` or this can be added back with a flag if eager loading is desired. For now, I'll keep it separate.
 3.  **DB Connection Management**: The original `PostgresRepository` had `Close()`, `GetPool()`, `BeginTx()`. These are now removed from `UserRepositoryPostgres` to make it more focused. A shared DB manager should provide the `*pgxpool.Pool` to repositories and handle transaction management. This is a broader refactoring point for the persistence layer.
 4.  **Error handling for unique constraints in `Create` and `Update`**: I've used `strings.Contains(pgErr.ConstraintName, "constraint_name_pattern")`. This is better than direct string equality on the whole error message but still relies on naming conventions for constraints. If constraint names are very stable and known, this is okay. The most robust way is if the DB driver or an ORM provides specific error types for these, but `pgx` typically requires checking `pgErr.Code` and then potentially `pgErr.ConstraintName`.

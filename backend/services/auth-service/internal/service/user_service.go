@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainService "github.com/your-org/auth-service/internal/domain/service" // Ensure this is imported
-	"github.com/your-org/auth-service/internal/repository/interfaces"
-	// "github.com/your-org/auth-service/internal/utils/kafka" // To be replaced
-	eventskafka "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
-	"github.com/your-org/auth-service/internal/utils/security"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Ensure this is imported
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka" // To be replaced
+	eventskafka "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Sarama-based producer
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/security"
 	"go.uber.org/zap"
 )
 

@@ -16,8 +16,8 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/utils/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/logger"
 )
 
 // Manager представляет менеджер миграций базы данных

@@ -5,7 +5,7 @@ import (
 	"context"
 
 	// "github.com/google/uuid" // IDs are now string for Role and Permission
-	"github.com/your-org/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 )
 
 // RoleRepository defines the interface for interacting with role data

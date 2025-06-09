@@ -6,7 +6,7 @@ import (
 	// "slices" // Available in Go 1.21+ for checking if slice contains element
 
 	"github.com/gin-gonic/gin"
-	// httpHandler "github.com/your-org/auth-service/internal/handler/http" // For ErrorResponse
+	// httpHandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http" // For ErrorResponse
 	"go.uber.org/zap"
 )
 

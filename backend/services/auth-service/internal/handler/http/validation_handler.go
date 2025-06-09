@@ -10,10 +10,10 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/your-org/auth-service/internal/domain/models" // For DTOs (already here)
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	domainService "github.com/your-org/auth-service/internal/domain/service"
-	"github.com/your-org/auth-service/internal/service" // For concrete AuthService
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For DTOs (already here)
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service" // For concrete AuthService
 )
 
 // ValidationHandler handles requests for token validation and permission checks.

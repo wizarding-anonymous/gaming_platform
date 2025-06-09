@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Ensure this import is present
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // Ensure this import is present
 )
 
 // RefreshTokenRepository defines the interface for interacting with refresh token data.
@@ -48,5 +48,5 @@ type RefreshTokenRepository interface {
 	// Pass a zero duration for olderThanRevokedPeriod to delete all revoked tokens irrespective of when they were revoked.
 	DeleteExpiredAndRevoked(ctx context.Context, olderThanRevokedPeriod time.Duration) (int64, error)
 }
-// Note: Using "github.com/your-org/auth-service/internal/domain/models" for models.
+// Note: Using "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" for models.
 // Ensure domainErrors.ErrNotFound or a specific ErrRefreshTokenNotFound is available.

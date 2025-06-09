@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 
 	// "github.com/gameplatform/auth-service/internal/domain/entity" // Using models now
-	"github.com/your-org/auth-service/internal/domain/models"    // For models.AuditLog, models.AuditLogStatus
-	"github.com/your-org/auth-service/internal/domain/repository" // For repository.ListAuditLogParams
-	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces" // For AuditLogRepository dep
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"    // For models.AuditLog, models.AuditLogStatus
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository" // For repository.ListAuditLogParams
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces" // For AuditLogRepository dep
 )
 
 // AuditLogRecorder defines the interface for recording audit trail events.

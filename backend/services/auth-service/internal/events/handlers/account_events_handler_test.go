@@ -12,14 +12,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/domain/models"
-	// eventModels "github.com/your-org/auth-service/internal/events/models" // To be removed
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces"
-	domainService "github.com/your-org/auth-service/internal/domain/service"
-	// kafkaMocks "github.com/your-org/auth-service/internal/events/mocks" // Not used if handlers don't publish
-	"github.com/your-org/auth-service/internal/events/kafka" // For kafka.CloudEvent
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	// eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/models" // To be removed
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	// kafkaMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Not used if handlers don't publish
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // For kafka.CloudEvent
 	"go.uber.org/zap"
 )
 

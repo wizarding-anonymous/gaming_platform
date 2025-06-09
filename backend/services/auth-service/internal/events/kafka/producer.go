@@ -10,8 +10,8 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/google/uuid"
-	// "github.com/your-org/auth-service/internal/events/models" // For CloudEvent and EventType constants
-	"github.com/your-org/auth-service/internal/utils/logger" // Assuming logger interface is here
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/models" // For CloudEvent and EventType constants
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/logger" // Assuming logger interface is here
 )
 
 // CloudEvent defines the structure for CloudEvents v1.0.

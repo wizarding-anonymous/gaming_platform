@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/your-org/auth-service/internal/domain/service" // For TokenManagementService
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // For TokenManagementService
 	"go.uber.org/zap"
 )
 
