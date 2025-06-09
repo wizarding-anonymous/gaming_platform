@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/auth_logic_service.go
 package service
 
 import (

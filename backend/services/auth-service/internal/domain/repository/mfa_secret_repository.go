@@ -1,38 +1,43 @@
+// File: backend/services/auth-service/internal/domain/repository/mfa_secret_repository.go
 package repository
 
 import (
 	"context"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
+	"github.com/google/uuid"
+	"github.com/your-org/auth-service/internal/domain/models"
+	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Ensure this import is present
 )
 
 // MFASecretRepository defines the interface for interacting with MFA secret data (e.g., TOTP secrets).
 type MFASecretRepository interface {
 	// Create persists a new MFA secret to the database.
-	Create(ctx context.Context, secret *entity.MFASecret) error
+	Create(ctx context.Context, secret *models.MFASecret) error
 
-	// FindByUserID retrieves the active MFA secret for a given user ID.
-	// It's common to assume only one active MFA secret of a particular type (e.g., TOTP) per user.
-	// Returns entity.ErrMFASecretNotFound if no secret is found.
-	FindByUserID(ctx context.Context, userID string) (*entity.MFASecret, error)
+	// FindByID retrieves an MFA secret by its primary ID.
+	// Returns domainErrors.ErrNotFound if not found.
+	FindByID(ctx context.Context, id uuid.UUID) (*models.MFASecret, error)
 
 	// FindByUserIDAndType retrieves an MFA secret for a specific user and MFA type.
-	// Returns entity.ErrMFASecretNotFound if not found.
-	FindByUserIDAndType(ctx context.Context, userID string, mfaType entity.MFAType) (*entity.MFASecret, error)
+	// Returns domainErrors.ErrNotFound (or specific error) if not found.
+	FindByUserIDAndType(ctx context.Context, userID uuid.UUID, mfaType models.MFAType) (*models.MFASecret, error)
 
 	// Update modifies an existing MFA secret (e.g., to mark it as verified or update the secret key).
-	Update(ctx context.Context, secret *entity.MFASecret) error
+	// The ID of the secret must be set in the models.MFASecret object.
+	Update(ctx context.Context, secret *models.MFASecret) error
 
-	// DeleteByUserID removes all MFA secrets for a given user ID.
-	DeleteByUserID(ctx context.Context, userID string) error
-	
 	// DeleteByUserIDAndType removes a specific type of MFA secret for a user.
-	DeleteByUserIDAndType(ctx context.Context, userID string, mfaType entity.MFAType) error
+	DeleteByUserIDAndType(ctx context.Context, userID uuid.UUID, mfaType models.MFAType) error
+
+	// DeleteAllForUser removes all MFA secrets for a given user ID.
+	// This might be used when a user wants to reset all their MFA configurations.
+	DeleteAllForUser(ctx context.Context, userID uuid.UUID) (int64, error) // Returns number of secrets deleted
+
+	// DeleteByUserIDAndTypeIfUnverified removes a specific type of MFA secret for a user ONLY if it's not verified.
+	// Returns true if a record was deleted, false otherwise.
+	DeleteByUserIDAndTypeIfUnverified(ctx context.Context, userID uuid.UUID, mfaType models.MFAType) (bool, error)
 }
 
-// Note: entity.ErrMFASecretNotFound would be a custom error.
-// Define in an appropriate error definitions file.
-// Example:
-// package entity
-// import "errors"
-// var ErrMFASecretNotFound = errors.New("mfa secret not found")
+// Note: domainErrors.ErrNotFound or a specific ErrMFASecretNotFound should be used.
+// The original FindByUserID(userID string) was potentially ambiguous if multiple types were allowed.
+// FindByUserIDAndType is more explicit.

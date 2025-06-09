@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/api/websocket/notification_handler.go
 // account-service/internal/api/websocket/notification_handler.go
 
 package websocket

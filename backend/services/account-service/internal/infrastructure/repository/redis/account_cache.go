@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/infrastructure/repository/redis/account_cache.go
 // account-service\internal\infrastructure\repository\redis\account_cache.go
 
 package redis

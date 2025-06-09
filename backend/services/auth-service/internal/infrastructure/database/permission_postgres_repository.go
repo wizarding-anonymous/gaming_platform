@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/infrastructure/database/permission_postgres_repository.go
 package database
 
 import (

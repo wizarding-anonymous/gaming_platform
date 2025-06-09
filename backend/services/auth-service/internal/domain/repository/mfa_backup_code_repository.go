@@ -1,43 +1,41 @@
+// File: backend/services/auth-service/internal/domain/repository/mfa_backup_code_repository.go
 package repository
 
 import (
 	"context"
 	"time"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
+	"github.com/google/uuid"
+	"github.com/your-org/auth-service/internal/domain/models"
+	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Ensure this import
 )
 
 // MFABackupCodeRepository defines the interface for interacting with MFA backup code data.
 type MFABackupCodeRepository interface {
 	// Create persists a new MFA backup code to the database.
-	Create(ctx context.Context, code *entity.MFABackupCode) error
+	Create(ctx context.Context, code *models.MFABackupCode) error
 
 	// CreateMultiple persists a batch of new MFA backup codes to the database,
 	// typically within a transaction.
-	CreateMultiple(ctx context.Context, codes []*entity.MFABackupCode) error
+	CreateMultiple(ctx context.Context, codes []*models.MFABackupCode) error
 
-	// FindByUserIDAndCodeHash retrieves an MFA backup code by the user's ID and the hashed code.
-	// This is used to validate a backup code provided by a user.
-	// Returns entity.ErrMFABackupCodeNotFound if not found.
-	FindByUserIDAndCodeHash(ctx context.Context, userID string, codeHash string) (*entity.MFABackupCode, error)
+	// FindByUserIDAndCodeHash retrieves an unused MFA backup code by the user's ID and the hashed code.
+	// Returns domainErrors.ErrNotFound if not found or already used.
+	FindByUserIDAndCodeHash(ctx context.Context, userID uuid.UUID, codeHash string) (*models.MFABackupCode, error)
 
-	// MarkAsUsed marks a specific backup code (by its ID or by UserID and CodeHash) as used.
-	MarkAsUsed(ctx context.Context, id string, usedAt time.Time) error
-	// Alternatively, or additionally:
-	// MarkAsUsedByCodeHash(ctx context.Context, userID string, codeHash string, usedAt time.Time) error
+	// MarkAsUsed marks a specific backup code (by its primary ID) as used.
+	MarkAsUsed(ctx context.Context, id uuid.UUID, usedAt time.Time) error
 
+	// MarkAsUsedByCodeHash marks a specific backup code (by UserID and CodeHash) as used.
+	// This might be more convenient if the ID is not readily available post-lookup.
+	MarkAsUsedByCodeHash(ctx context.Context, userID uuid.UUID, codeHash string, usedAt time.Time) error
 
 	// DeleteByUserID removes all backup codes for a given user ID.
-	// This is typically done when MFA is disabled or when new codes are generated.
-	DeleteByUserID(ctx context.Context, userID string) error
+	// Returns the number of codes deleted.
+	DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
 
 	// CountActiveByUserID counts the number of unused backup codes for a user.
-	CountActiveByUserID(ctx context.Context, userID string) (int, error)
+	CountActiveByUserID(ctx context.Context, userID uuid.UUID) (int, error)
 }
 
-// Note: entity.ErrMFABackupCodeNotFound would be a custom error.
-// Define in an appropriate error definitions file.
-// Example:
-// package entity
-// import "errors"
-// var ErrMFABackupCodeNotFound = errors.New("mfa backup code not found")
+// Note: domainErrors.ErrNotFound or a specific ErrMFABackupCodeNotFound should be used.

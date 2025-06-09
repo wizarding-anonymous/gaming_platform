@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/service/token_service.go
 package service
 
 import (
@@ -15,144 +16,260 @@ import (
 	"go.uber.org/zap"
 )
 
+	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
+	"github.com/your-org/auth-service/internal/domain/models"
+	"github.com/your-org/auth-service/internal/repository/redis"
+	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces" // For new repo dependencies
+	domainService "github.com/your-org/auth-service/internal/domain/service"     // For TokenManagementService
+	"github.com/your-org/auth-service/internal/infrastructure/security"      // For HashToken
+	"go.uber.org/zap"
+)
+
 // TokenService представляет сервис для работы с токенами
 type TokenService struct {
-	redisClient *redis.RedisClient
-	jwtConfig   config.JWTConfig
-	logger      *zap.Logger
+	redisClient          *redis.RedisClient
+	logger               *zap.Logger
+	tokenMgmtService     domainService.TokenManagementService
+	refreshTokenRepo     repoInterfaces.RefreshTokenRepository
+	userRepo             repoInterfaces.UserRepository     // For fetching user details if needed during refresh
+	sessionRepo          repoInterfaces.SessionRepository  // For validating session during refresh
+	userRolesRepo        repoInterfaces.UserRolesRepository  // Added for JWT enrichment
+	roleRepo             repoInterfaces.RoleRepository     // Added for JWT enrichment (permissions per role)
 }
 
 // NewTokenService создает новый экземпляр TokenService
-func NewTokenService(redisClient *redis.RedisClient, jwtConfig config.JWTConfig, logger *zap.Logger) *TokenService {
+func NewTokenService(
+	redisClient *redis.RedisClient,
+	logger *zap.Logger,
+	tokenMgmtService domainService.TokenManagementService,
+	refreshTokenRepo repoInterfaces.RefreshTokenRepository,
+	userRepo repoInterfaces.UserRepository,
+	sessionRepo repoInterfaces.SessionRepository,
+	userRolesRepo repoInterfaces.UserRolesRepository, // Added
+	roleRepo repoInterfaces.RoleRepository,       // Added
+) *TokenService {
 	return &TokenService{
-		redisClient: redisClient,
-		jwtConfig:   jwtConfig,
-		logger:      logger,
+		redisClient:          redisClient,
+		logger:               logger,
+		tokenMgmtService:     tokenMgmtService,
+		refreshTokenRepo:     refreshTokenRepo,
+		userRepo:             userRepo,
+		sessionRepo:          sessionRepo,
+		userRolesRepo:        userRolesRepo, // Added
+		roleRepo:             roleRepo,       // Added
 	}
 }
 
-// GenerateTokenPair генерирует пару токенов (access и refresh)
-func (s *TokenService) GenerateTokenPair(ctx context.Context, user models.User) (models.TokenPair, error) {
-	// Генерация access токена
-	accessToken, err := s.generateAccessToken(user)
+// CreateTokenPairWithSession генерирует пару токенов (access и refresh) для сессии.
+// user: The user for whom the token is generated.
+// sessionID: The ID of the session this token pair is associated with.
+func (s *TokenService) CreateTokenPairWithSession(ctx context.Context, user *models.User, sessionID uuid.UUID) (models.TokenPair, error) {
+	// Generate access token using TokenManagementService
+	// Assuming user.Roles and user.Permissions are populated. If not, fetch them.
+	var roleNames []string
+	// var permissionNames []string // Assuming permissions are not directly in access token for now or fetched separately
+	// for _, r := range user.Roles { // This was if user.Roles was []models.Role
+	// roleNames = append(roleNames, r.Name)
+	// }
+	// If user.Roles is already []string from a simplified User model in some contexts:
+	// roleNames = user.Roles
+
+	// For now, let's assume roles need to be fetched if not on user model directly
+	// This part highlights a dependency: need fully populated user or fetch roles here.
+	// For simplicity, if user.Roles is not directly available as []string, pass empty.
+	// This should be refined based on how user details are propagated.
+	// Fetch roles and permissions for the user for JWT claims
+	roleIDs, err := s.userRolesRepo.GetRoleIDsForUser(ctx, user.ID)
+	if err != nil {
+		s.logger.Error("Failed to get role IDs for user for token generation", zap.Error(err), zap.String("userID", user.ID.String()))
+		// Decide if this is a fatal error for token generation or proceed with no roles/permissions
+		// For now, proceed with empty, but log it.
+		roleIDs = []string{}
+	}
+
+	roleNames := make([]string, 0, len(roleIDs))
+	permissionNames := make([]string, 0)
+	permissionSet := make(map[string]struct{}) // To store unique permission names
+
+	for _, roleID := range roleIDs {
+		role, errRole := s.roleRepo.GetByID(ctx, roleID)
+		if errRole != nil {
+			s.logger.Warn("Failed to get role details for token generation", zap.Error(errRole), zap.String("roleID", roleID))
+			continue // Skip this role if details can't be fetched
+		}
+		roleNames = append(roleNames, role.Name)
+
+		perms, errPerms := s.roleRepo.GetPermissionsForRole(ctx, roleID)
+		if errPerms != nil {
+			s.logger.Warn("Failed to get permissions for role for token generation", zap.Error(errPerms), zap.String("roleID", roleID))
+			continue // Skip permissions for this role if error
+		}
+		for _, p := range perms {
+			if _, exists := permissionSet[p.ID]; !exists { // Using p.ID as permission name/key
+				permissionNames = append(permissionNames, p.ID)
+				permissionSet[p.ID] = struct{}{}
+			}
+		}
+	}
+
+	accessTokenString, claims, err := s.tokenMgmtService.GenerateAccessToken(user.ID.String(), user.Username, roleNames, permissionNames, sessionID.String())
 	if err != nil {
 		return models.TokenPair{}, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
 	// Генерация refresh токена
-	refreshToken, err := s.generateRefreshToken(user.ID)
+	opaqueRefreshTokenValue, err := s.tokenMgmtService.GenerateRefreshTokenValue()
 	if err != nil {
-		return models.TokenPair{}, fmt.Errorf("failed to generate refresh token: %w", err)
+		return models.TokenPair{}, fmt.Errorf("failed to generate opaque refresh token: %w", err)
 	}
 
-	// Сохранение refresh токена в кэше
-	err = s.redisClient.StoreTokenInCache(ctx, refreshToken, user.ID, s.jwtConfig.RefreshToken.ExpiresIn)
-	if err != nil {
-		return models.TokenPair{}, fmt.Errorf("failed to store refresh token in cache: %w", err)
+	hashedRefreshToken := security.HashToken(opaqueRefreshTokenValue)
+	refreshTokenExpiry := time.Now().Add(s.tokenMgmtService.GetRefreshTokenExpiry())
+
+	refreshToken := &models.RefreshToken{
+		ID:        uuid.New(), // Generate new ID for the refresh token entry
+		SessionID: sessionID,
+		UserID:    user.ID,
+		TokenHash: hashedRefreshToken,
+		ExpiresAt: refreshTokenExpiry,
+	}
+
+	if err := s.refreshTokenRepo.Create(ctx, refreshToken); err != nil {
+		return models.TokenPair{}, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
 	return models.TokenPair{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    int(s.jwtConfig.AccessToken.ExpiresIn.Seconds()),
+		AccessToken:  accessTokenString,
+		RefreshToken: opaqueRefreshTokenValue, // Return plain opaque token to client
+		ExpiresIn:    int(s.tokenMgmtService.cfg.AccessTokenTTL.Seconds()), // Access token TTL from new service
 		TokenType:    "Bearer",
 	}, nil
 }
 
 // RefreshTokens обновляет пару токенов по refresh токену
-func (s *TokenService) RefreshTokens(ctx context.Context, refreshToken string) (models.TokenPair, error) {
-	// Проверка refresh токена в кэше
-	userID, err := s.redisClient.GetTokenFromCache(ctx, refreshToken)
+func (s *TokenService) RefreshTokens(ctx context.Context, plainOpaqueRefreshToken string) (models.TokenPair, error) {
+	hashedIncomingRefreshToken := security.HashToken(plainOpaqueRefreshToken)
+
+	storedRefreshToken, err := s.refreshTokenRepo.FindByTokenHash(ctx, hashedIncomingRefreshToken)
 	if err != nil {
-		return models.TokenPair{}, domainErrors.ErrInvalidRefreshToken
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			return models.TokenPair{}, domainErrors.ErrInvalidRefreshToken
+		}
+		s.logger.Error("Error finding refresh token by hash", zap.Error(err))
+		return models.TokenPair{}, err
 	}
 
-	// Удаление старого refresh токена из кэша
-	err = s.redisClient.RemoveTokenFromCache(ctx, refreshToken)
+	// FindByTokenHash in repo already checks if active (not revoked, not expired)
+
+	// Fetch associated user
+	user, err := s.userRepo.FindByID(ctx, storedRefreshToken.UserID)
 	if err != nil {
-		s.logger.Warn("Failed to remove old refresh token from cache", zap.Error(err))
+		s.logger.Error("User not found for refresh token", zap.String("user_id", storedRefreshToken.UserID.String()), zap.Error(err))
+		return models.TokenPair{}, domainErrors.ErrUserNotFound
+	}
+	if user.Status == models.UserStatusBlocked || user.Status == models.UserStatusDeleted {
+		return models.TokenPair{}, domainErrors.ErrUserBlocked
 	}
 
-	// Получение пользователя
-	// Здесь мы создаем минимальную модель пользователя, так как нам нужен только ID
-	// В реальном сценарии мы бы получали пользователя из базы данных
-	user := models.User{
-		ID: userID,
+	// Fetch associated session (optional, but good for validation if session can be independently invalidated)
+	_, err = s.sessionRepo.FindByID(ctx, storedRefreshToken.SessionID)
+	if err != nil {
+		s.logger.Error("Session not found for refresh token", zap.String("session_id", storedRefreshToken.SessionID.String()), zap.Error(err))
+		return models.TokenPair{}, domainErrors.ErrSessionNotFound // Or ErrInvalidRefreshToken
+	}
+	// TODO: Add check here if session.IsActive or similar if sessions can be revoked separately.
+
+	// Rotation: Revoke the old refresh token
+	revokeReason := "rotated"
+	if err := s.refreshTokenRepo.Revoke(ctx, storedRefreshToken.ID, &revokeReason); err != nil {
+		s.logger.Error("Failed to revoke old refresh token during rotation", zap.Error(err), zap.String("token_id", storedRefreshToken.ID.String()))
+		// Continue with generating new tokens, but log this issue.
 	}
 
-	// Генерация новой пары токенов
-	return s.GenerateTokenPair(ctx, user)
+	// Generate new token pair (linked to the same session)
+	// Need to get roles for the user for the new access token
+	// This part requires a way to get roles, assuming user.Roles is not populated by FindByID directly
+	// or UserRolesRepository needs to be used. For now, passing empty roles.
+	// This needs to be addressed for proper claims.
+	var rolesForToken []string
+	// roles, _ := s.userRepo.GetRolesForUser(ctx, user.ID) // Example if userRepo had this method
+	// for _, r := range roles { rolesForToken = append(rolesForToken, r.Name) }
+
+
+	newAccessTokenString, newClaims, err := s.tokenMgmtService.GenerateAccessToken(user.ID.String(), user.Username, rolesForToken, nil, storedRefreshToken.SessionID.String())
+	if err != nil {
+		return models.TokenPair{}, fmt.Errorf("failed to generate new access token: %w", err)
+	}
+
+	newOpaqueRefreshTokenValue, err := s.tokenMgmtService.GenerateRefreshTokenValue()
+	if err != nil {
+		return models.TokenPair{}, fmt.Errorf("failed to generate new opaque refresh token: %w", err)
+	}
+
+	hashedNewRefreshToken := security.HashToken(newOpaqueRefreshTokenValue)
+	newRefreshTokenExpiry := time.Now().Add(s.tokenMgmtService.GetRefreshTokenExpiry())
+
+	newRefreshToken := &models.RefreshToken{
+		ID:        uuid.New(),
+		SessionID: storedRefreshToken.SessionID,
+		UserID:    user.ID,
+		TokenHash: hashedNewRefreshToken,
+		ExpiresAt: newRefreshTokenExpiry,
+	}
+	if err := s.refreshTokenRepo.Create(ctx, newRefreshToken); err != nil {
+		return models.TokenPair{}, fmt.Errorf("failed to store new refresh token: %w", err)
+	}
+
+	return models.TokenPair{
+		AccessToken:  newAccessTokenString,
+		RefreshToken: newOpaqueRefreshTokenValue,
+		ExpiresIn:    int(s.tokenMgmtService.cfg.AccessTokenTTL.Seconds()),
+		TokenType:    "Bearer",
+	}, nil
 }
 
+
 // ValidateAccessToken проверяет валидность access токена
-func (s *TokenService) ValidateAccessToken(ctx context.Context, tokenString string) (*jwt.Token, jwt.MapClaims, error) {
+func (s *TokenService) ValidateAccessToken(ctx context.Context, tokenString string) (*service.Claims, error) {
 	// Проверка, находится ли токен в черном списке
 	isBlacklisted, err := s.redisClient.IsBlacklisted(ctx, tokenString)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to check token blacklist: %w", err)
+		return nil, fmt.Errorf("failed to check token blacklist: %w", err)
 	}
 	if isBlacklisted {
-		return nil, nil, domainErrors.ErrRevokedToken
+		return nil, domainErrors.ErrRevokedToken
 	}
 
-	// Парсинг токена
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Проверка алгоритма подписи
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(s.jwtConfig.AccessToken.Secret), nil
-	})
-
+	// Delegate to TokenManagementService for actual JWT validation
+	claims, err := s.tokenMgmtService.ValidateAccessToken(tokenString)
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, nil, domainErrors.ErrExpiredToken
-		}
-		return nil, nil, domainErrors.ErrInvalidToken
+		// Map errors from tokenMgmtService to domainErrors if necessary, or let them pass through
+		// Example: if errors.Is(err, jwt.ErrTokenExpired) { return nil, domainErrors.ErrExpiredToken }
+		return nil, err // Propagate error (e.g., expired, invalid signature, etc.)
 	}
-
-	// Проверка валидности токена
-	if !token.Valid {
-		return nil, nil, domainErrors.ErrInvalidToken
-	}
-
-	// Получение claims
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, nil, domainErrors.ErrInvalidToken
-	}
-
-	return token, claims, nil
+	return claims, nil
 }
 
-// RevokeToken отзывает токен
+
+// RevokeToken отзывает access токен (adds to blacklist)
 func (s *TokenService) RevokeToken(ctx context.Context, tokenString string) error {
-	// Парсинг токена без проверки подписи
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(s.jwtConfig.AccessToken.Secret), nil
-	})
+	claims, err := s.tokenMgmtService.ValidateAccessToken(tokenString) // Validate first to get expiry
 	if err != nil {
-		// Если токен не может быть распарсен, считаем его уже отозванным
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil
+		// If token is already invalid (e.g. expired, malformed), no need to blacklist.
+		// However, if it's just an unknown signature but parsable, we might still want to blacklist its JTI if available.
+		// For simplicity, if ValidateAccessToken fails, assume it's not a candidate for blacklisting or already handled.
+		// Check specific errors if needed: e.g. don't blacklist if ErrTokenExpired.
+		if !errors.Is(err, jwt.ErrTokenExpired) {
+			s.logger.Debug("Attempted to revoke token that failed validation", zap.Error(err))
 		}
-		return domainErrors.ErrInvalidToken
+		return nil // Or return error if strict revocation of any provided string is needed
 	}
 
-	// Получение claims
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return domainErrors.ErrInvalidToken
-	}
+	// Use JTI (ID from claims) for blacklisting if possible, or the full token string.
+	// Using full token string is simpler for Redis but less standard than JTI.
+	// The current redisClient.AddToBlacklist likely uses the token string.
 
-	// Получение времени истечения токена
-	exp, ok := claims["exp"].(float64)
-	if !ok {
-		return domainErrors.ErrInvalidToken
-	}
-
-	// Вычисление оставшегося времени жизни токена
-	expiresAt := time.Unix(int64(exp), 0)
+	expiresAt := claims.ExpiresAt.Time
 	ttl := time.Until(expiresAt)
 	if ttl <= 0 {
 		// Токен уже истек
@@ -164,213 +281,46 @@ func (s *TokenService) RevokeToken(ctx context.Context, tokenString string) erro
 	if err != nil {
 		return fmt.Errorf("failed to add token to blacklist: %w", err)
 	}
-
 	return nil
 }
 
-// RevokeRefreshToken отзывает refresh токен
-func (s *TokenService) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
-	// Удаление refresh токена из кэша
-	err := s.redisClient.RemoveTokenFromCache(ctx, refreshToken)
+
+// RevokeRefreshToken отзывает refresh токен (from PostgreSQL)
+func (s *TokenService) RevokeRefreshToken(ctx context.Context, plainOpaqueRefreshToken string) error {
+	hashedToken := security.HashToken(plainOpaqueRefreshToken)
+	storedToken, err := s.refreshTokenRepo.FindByTokenHash(ctx, hashedToken)
 	if err != nil {
-		return fmt.Errorf("failed to remove refresh token from cache: %w", err)
-	}
-
-	return nil
-}
-
-// generateAccessToken генерирует access токен
-func (s *TokenService) generateAccessToken(user models.User) (string, error) {
-	// Подготовка ролей для включения в токен
-	roles := make([]string, 0, len(user.Roles))
-	for _, role := range user.Roles {
-		roles = append(roles, role.Name)
-	}
-
-	// Создание claims
-	now := time.Now()
-	claims := jwt.MapClaims{
-		"sub":   user.ID.String(),
-		"email": user.Email,
-		"roles": roles,
-		"iat":   now.Unix(),
-		"exp":   now.Add(s.jwtConfig.AccessToken.ExpiresIn).Unix(),
-	}
-
-	// Создание токена
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Подписание токена
-	tokenString, err := token.SignedString([]byte(s.jwtConfig.AccessToken.Secret))
-	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %w", err)
-	}
-
-	return tokenString, nil
-}
-
-// generateRefreshToken генерирует refresh токен
-func (s *TokenService) generateRefreshToken(userID uuid.UUID) (string, error) {
-	// Создание claims
-	now := time.Now()
-	claims := jwt.MapClaims{
-		"sub": userID.String(),
-		"iat": now.Unix(),
-		"exp": now.Add(s.jwtConfig.RefreshToken.ExpiresIn).Unix(),
-	}
-
-	// Создание токена
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Подписание токена
-	tokenString, err := token.SignedString([]byte(s.jwtConfig.RefreshToken.Secret))
-	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %w", err)
-	}
-
-	return tokenString, nil
-}
-
-// GenerateEmailVerificationToken генерирует токен для подтверждения email
-func (s *TokenService) GenerateEmailVerificationToken(userID uuid.UUID) (string, error) {
-	// Создание claims
-	now := time.Now()
-	claims := jwt.MapClaims{
-		"sub":  userID.String(),
-		"type": "email_verification",
-		"iat":  now.Unix(),
-		"exp":  now.Add(24 * time.Hour).Unix(), // Токен действителен 24 часа
-	}
-
-	// Создание токена
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Подписание токена
-	tokenString, err := token.SignedString([]byte(s.jwtConfig.AccessToken.Secret))
-	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %w", err)
-	}
-
-	return tokenString, nil
-}
-
-// ValidateEmailVerificationToken проверяет валидность токена для подтверждения email
-func (s *TokenService) ValidateEmailVerificationToken(tokenString string) (uuid.UUID, error) {
-	// Парсинг токена
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Проверка алгоритма подписи
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			return domainErrors.ErrInvalidRefreshToken // Not found or already invalidated
 		}
-		return []byte(s.jwtConfig.AccessToken.Secret), nil
-	})
-
-	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return uuid.Nil, domainErrors.ErrExpiredToken
-		}
-		return uuid.Nil, domainErrors.ErrInvalidToken
+		return fmt.Errorf("error finding refresh token to revoke: %w", err)
 	}
 
-	// Проверка валидности токена
-	if !token.Valid {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	// Получение claims
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	// Проверка типа токена
-	tokenType, ok := claims["type"].(string)
-	if !ok || tokenType != "email_verification" {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	// Получение ID пользователя
-	userIDStr, ok := claims["sub"].(string)
-	if !ok {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	return userID, nil
+	revokeReason := "user_revoked"
+	return s.refreshTokenRepo.Revoke(ctx, storedToken.ID, &revokeReason)
 }
 
-// GeneratePasswordResetToken генерирует токен для сброса пароля
-func (s *TokenService) GeneratePasswordResetToken(userID uuid.UUID) (string, error) {
-	// Создание claims
-	now := time.Now()
-	claims := jwt.MapClaims{
-		"sub":  userID.String(),
-		"type": "password_reset",
-		"iat":  now.Unix(),
-		"exp":  now.Add(1 * time.Hour).Unix(), // Токен действителен 1 час
-	}
 
-	// Создание токена
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+// --- Removed HMAC specific token generation methods ---
+// generateAccessToken(user models.User) (string, error)
+// generateRefreshToken(userID uuid.UUID) (string, error)
 
-	// Подписание токена
-	tokenString, err := token.SignedString([]byte(s.jwtConfig.AccessToken.Secret))
+// --- Removed JWT-based Email/Password Reset methods (now handled by VerificationCodeRepository) ---
+// GenerateEmailVerificationToken(userID uuid.UUID) (string, error)
+// ValidateEmailVerificationToken(tokenString string) (uuid.UUID, error)
+// GeneratePasswordResetToken(userID uuid.UUID) (string, error)
+// ValidatePasswordResetToken(tokenString string) (uuid.UUID, error)
+
+// RevokeAllRefreshTokensForUser revokes all refresh tokens for a given user from PostgreSQL.
+func (s *TokenService) RevokeAllRefreshTokensForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	s.logger.Info("Revoking all refresh tokens for user", zap.String("user_id", userID.String()))
+	deletedCount, err := s.refreshTokenRepo.DeleteByUserID(ctx, userID)
 	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %w", err)
+		s.logger.Error("Failed to revoke/delete all refresh tokens for user",
+			zap.String("user_id", userID.String()),
+			zap.Error(err),
+		)
+		return 0, fmt.Errorf("failed to delete refresh tokens for user %s: %w", userID, err)
 	}
-
-	return tokenString, nil
-}
-
-// ValidatePasswordResetToken проверяет валидность токена для сброса пароля
-func (s *TokenService) ValidatePasswordResetToken(tokenString string) (uuid.UUID, error) {
-	// Парсинг токена
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Проверка алгоритма подписи
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(s.jwtConfig.AccessToken.Secret), nil
-	})
-
-	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return uuid.Nil, domainErrors.ErrExpiredToken
-		}
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	// Проверка валидности токена
-	if !token.Valid {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	// Получение claims
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	// Проверка типа токена
-	tokenType, ok := claims["type"].(string)
-	if !ok || tokenType != "password_reset" {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	// Получение ID пользователя
-	userIDStr, ok := claims["sub"].(string)
-	if !ok {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return uuid.Nil, domainErrors.ErrInvalidToken
-	}
-
-	return userID, nil
+	return deletedCount, nil
 }

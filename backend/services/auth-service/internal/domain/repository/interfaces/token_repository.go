@@ -1,3 +1,6 @@
+// File: backend/services/auth-service/internal/domain/repository/interfaces/token_repository.go
+// Package interfaces defines the interfaces for repository implementations.
+// (Assuming this package comment is already present from user_repository.go or another file in this package)
 package interfaces
 
 import (
@@ -6,46 +9,61 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/your-org/auth-service/internal/domain/models"
+	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
 )
 
-// TokenRepository определяет интерфейс для работы с токенами в хранилище
-type TokenRepository interface {
-	// Create создает новый токен
-	Create(ctx context.Context, token models.Token) (models.Token, error)
+// RefreshTokenRepository defines the interface for interacting with refresh token data.
+// While named TokenRepository in the file, its usage in the auth service primarily pertains to refresh tokens.
+// It handles storage, retrieval, and revocation of these tokens.
+// The actual token value is expected to be hashed before being stored (`TokenHash` field in `models.RefreshToken`).
+type RefreshTokenRepository interface { // Renamed from TokenRepository for clarity in this context
+	// Create persists a new refresh token to the database.
+	// The `models.RefreshToken` should have `SessionID`, `TokenHash`, and `ExpiresAt` populated.
+	Create(ctx context.Context, token *models.RefreshToken) error // Changed to pointer and error return
+
+	// FindByID retrieves a refresh token by its unique ID.
+	// Returns domainErrors.ErrNotFound if no token is found.
+	FindByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error) // Renamed, changed to pointer
 	
-	// GetByID получает токен по ID
-	GetByID(ctx context.Context, id uuid.UUID) (models.Token, error)
+	// FindByTokenHash retrieves a refresh token by its hashed value.
+	// This is used to validate an incoming opaque refresh token.
+	// IMPORTANT: This method should only return non-revoked and non-expired tokens.
+	// Returns domainErrors.ErrNotFound if no matching, valid token is found.
+	FindByTokenHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error) // Renamed
 	
-	// GetByValue получает токен по значению
-	GetByValue(ctx context.Context, tokenValue string) (models.Token, error)
+	// GetByUserAndType was likely for a more generic token system. For refresh tokens, FindByUserID might be more appropriate.
+	// FindByUserID retrieves all valid (non-revoked, non-expired) refresh tokens for a given user.
+	// This might involve joining with the sessions table.
+	// GetByUserAndType(ctx context.Context, userID uuid.UUID, tokenType string) ([]*models.RefreshToken, error) // Assuming RefreshToken model
 	
-	// GetByUserAndType получает токены пользователя определенного типа
-	GetByUserAndType(ctx context.Context, userID uuid.UUID, tokenType string) ([]models.Token, error)
+	// Update is generally not used for refresh tokens as they are typically immutable once created.
+	// Revocation or re-issuance is preferred. This method might be for other token types.
+	// Update(ctx context.Context, token *models.RefreshToken) error
 	
-	// Update обновляет информацию о токене
-	Update(ctx context.Context, token models.Token) error
-	
-	// Delete удаляет токен
+	// Delete removes a refresh token by its ID. This is a hard delete.
+	// Prefer Revoke for marking tokens as invalid but keeping a record.
 	Delete(ctx context.Context, id uuid.UUID) error
 	
-	// Revoke отзывает токен
+	// Revoke marks a specific refresh token as revoked by setting its `RevokedAt` timestamp.
+	// Returns domainErrors.ErrNotFound if the token to revoke is not found.
 	Revoke(ctx context.Context, id uuid.UUID) error
 	
-	// RevokeAllUserTokens отзывает все токены пользователя
-	RevokeAllUserTokens(ctx context.Context, userID uuid.UUID, exceptTokenID *uuid.UUID) error
+	// RevokeAllByUserID marks all refresh tokens associated with a given user (via sessions) as revoked.
+	// An optional `exceptTokenID` can be provided to exclude a specific token from revocation (e.g., the current one during a "logout all others" operation).
+	// Returns the number of tokens revoked.
+	RevokeAllByUserID(ctx context.Context, userID uuid.UUID) (int64, error) // Simplified, exceptTokenID logic might be service layer
 	
-	// RevokeExpiredTokens отзывает все истекшие токены
-	RevokeExpiredTokens(ctx context.Context) error
+	// DeleteExpired removes all refresh tokens (and potentially their sessions if cascaded or handled by service)
+	// where `expires_at` is in the past. This is a cleanup task.
+	// Returns the number of tokens deleted.
+	DeleteExpired(ctx context.Context) (int64, error) // Renamed
 	
-	// IsTokenRevoked проверяет, отозван ли токен
-	IsTokenRevoked(ctx context.Context, tokenValue string) (bool, error)
+	// IsTokenRevoked checks if a token (by its ID or hash) is marked as revoked.
+	// This might be redundant if FindByTokenHash already filters out revoked tokens.
+	// IsTokenRevoked(ctx context.Context, tokenID uuid.UUID) (bool, error)
 	
-	// StoreTokenInCache сохраняет токен в кэше
-	StoreTokenInCache(ctx context.Context, tokenValue string, userID uuid.UUID, expiresIn time.Duration) error
-	
-	// GetTokenFromCache получает информацию о токене из кэша
-	GetTokenFromCache(ctx context.Context, tokenValue string) (uuid.UUID, error)
-	
-	// RemoveTokenFromCache удаляет токен из кэша
-	RemoveTokenFromCache(ctx context.Context, tokenValue string) error
+	// Caching methods are optional and might be implemented by a decorator.
+	// StoreTokenInCache(ctx context.Context, tokenHash string, sessionID uuid.UUID, expiresIn time.Duration) error
+	// GetSessionIDFromCache(ctx context.Context, tokenHash string) (uuid.UUID, error)
+	// RemoveTokenFromCache(ctx context.Context, tokenHash string) error
 }

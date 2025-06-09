@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/cmd/auth-service/main.go
 package main
 
 import (
@@ -11,14 +12,22 @@ import (
 	"time"
 
 	"github.com/your-org/auth-service/internal/config"
+	"github.com/your-org/auth-service/internal/events/handlers" // For event handlers
 	"github.com/your-org/auth-service/internal/events/kafka"
+	"github.com/your-org/auth-service/internal/domain/models" // For EventType constants and CloudEventSource
 	grpcHandler "github.com/your-org/auth-service/internal/handler/grpc"
 	httpHandler "github.com/your-org/auth-service/internal/handler/http"
-	"github.com/your-org/auth-service/internal/repository/postgres"
+	infraDbPostgres "github.com/your-org/auth-service/internal/infrastructure/database/postgres" // For NewDBPool
+	repoPostgres "github.com/your-org/auth-service/internal/domain/repository/postgres"      // For specific repo constructors
 	"github.com/your-org/auth-service/internal/repository/redis"
+	domainService "github.com/your-org/auth-service/internal/domain/service" // For PasswordService interface
+	"github.com/your-org/auth-service/internal/infrastructure/security"   // For NewArgon2idPasswordService
 	"github.com/your-org/auth-service/internal/service"
 	"github.com/your-org/auth-service/internal/utils/telemetry"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	authv1 "github.com/your-org/auth-service/pkg/pb/auth/v1" // For gRPC server registration
 
+	"github.com/Shopify/sarama" // Added for Sarama config
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -71,11 +80,24 @@ func main() {
 	}
 
 	// Инициализация подключения к PostgreSQL
-	pgRepo, err := postgres.NewPostgresRepository(cfg.Database)
+	dbPool, err := infraDbPostgres.NewDBPool(cfg.Database) // Use new package
 	if err != nil {
-		logger.Fatal("Failed to initialize PostgreSQL repository", zap.Error(err))
+		logger.Fatal("Failed to initialize PostgreSQL connection pool", zap.Error(err))
 	}
-	defer pgRepo.Close()
+	defer dbPool.Close()
+
+	// Инициализация репозиториев
+	userRepo := repoPostgres.NewUserRepositoryPostgres(dbPool)
+	refreshTokenRepo := repoPostgres.NewRefreshTokenRepositoryPostgres(dbPool)
+	sessionRepo := repoPostgres.NewSessionRepositoryPostgres(dbPool)
+	verificationCodeRepo := repoPostgres.NewVerificationCodeRepositoryPostgres(dbPool)
+	mfaSecretRepo := repoPostgres.NewMFASecretRepositoryPostgres(dbPool)
+	mfaBackupCodeRepo := repoPostgres.NewMFABackupCodeRepositoryPostgres(dbPool)
+	apiKeyRepo := repoPostgres.NewAPIKeyRepositoryPostgres(dbPool)
+	auditLogRepo := repoPostgres.NewAuditLogRepositoryPostgres(dbPool)
+	userRolesRepo := repoPostgres.NewUserRolesRepositoryPostgres(dbPool) // Added
+	roleRepo := repoPostgres.NewRoleRepositoryPostgres(dbPool) // Added (needed for RoleService)
+	// TODO: Initialize PermissionRepository for RoleService if RoleService needs it directly for more complex ops
 
 	// Инициализация подключения к Redis
 	redisClient, err := redis.NewRedisClient(cfg.Redis)
@@ -84,42 +106,226 @@ func main() {
 	}
 	defer redisClient.Close()
 
+	// Инициализация RateLimiter
+	rateLimiter := redis.NewRedisRateLimiter(redisClient, cfg.RateLimit, logger)
+	logger.Info("Redis Rate Limiter initialized")
+
 	// Инициализация Kafka Producer
-	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers, cfg.Kafka.Producer.Topic)
+	// Note: NewProducer signature changed: NewProducer(brokers []string, logger logger.Logger, cloudEventSource string)
+	// Assuming the logger (*zap.Logger) from telemetry.NewLogger satisfies the logger.Logger interface expected by NewProducer.
+	// The CloudEventSource constant is from internal/events/models/cloudevent.go
+	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers, logger, models.CloudEventSource)
 	if err != nil {
 		logger.Fatal("Failed to initialize Kafka producer", zap.Error(err))
 	}
 	defer kafkaProducer.Close()
 
-	// Инициализация Kafka Consumer
-	kafkaConsumer, err := kafka.NewConsumer(cfg.Kafka.Brokers, cfg.Kafka.Consumer.Topics, cfg.Kafka.Consumer.GroupID)
-	if err != nil {
-		logger.Fatal("Failed to initialize Kafka consumer", zap.Error(err))
+	// Инициализация Kafka Consumer (Sarama-based ConsumerGroup)
+	saramaCfg := sarama.NewConfig()
+	saramaCfg.Version = sarama.V2_8_0_0 // Example: Use your Kafka version
+	saramaCfg.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
+	saramaCfg.Consumer.Offsets.Initial = sarama.OffsetOldest // Or from config
+	saramaCfg.Consumer.Return.Errors = true                  // Important for logging consumer errors
+
+	consumerGroupCfg := kafka.NewConsumerGroupConfig{
+		Brokers:       cfg.Kafka.Brokers,
+		Topics:        cfg.Kafka.Consumer.Topics,
+		GroupID:       cfg.Kafka.Consumer.GroupID,
+		SaramaConfig:  saramaCfg,
+		Logger:        logger, // Pass the main application logger
+		InitialOffset: sarama.OffsetOldest, // Or from cfg.Kafka.Consumer.InitialOffset if defined
 	}
-	defer kafkaConsumer.Close()
+	kafkaConsumer, err := kafka.NewConsumerGroup(consumerGroupCfg)
+	if err != nil {
+		logger.Fatal("Failed to initialize Kafka consumer group", zap.Error(err))
+	}
+	defer kafkaConsumer.Close() // This will call the new ConsumerGroup.Close()
+
+	// Инициализация PasswordService
+	argon2Params := security.Argon2idParams{
+		Memory:      cfg.Security.PasswordHash.Memory,
+		Iterations:  cfg.Security.PasswordHash.Iterations,
+		Parallelism: cfg.Security.PasswordHash.Parallelism,
+		SaltLength:  cfg.Security.PasswordHash.SaltLength,
+		KeyLength:   cfg.Security.PasswordHash.KeyLength,
+	}
+	passwordService, err := security.NewArgon2idPasswordService(argon2Params)
+	if err != nil {
+		logger.Fatal("Failed to initialize password service", zap.Error(err))
+	}
+
+	// Инициализация нового TokenManagementService (RS256)
+	tokenManagementService, err := security.NewRSATokenManagementService(cfg.JWT)
+	if err != nil {
+		logger.Fatal("Failed to initialize RSA Token Management Service", zap.Error(err))
+	}
+
+	// Инициализация TOTPService
+	totpService := security.NewPquernaTOTPService(cfg.MFA.TOTPIssuerName)
+
+	// Инициализация EncryptionService
+	encryptionService := security.NewAESGCMEncryptionService()
+
+	// Инициализация MFALogicService
+	mfaLogicService := service.NewMFALogicService(
+		cfg, // Changed to global cfg
+		totpService,
+		encryptionService,
+		mfaSecretRepo,
+		mfaBackupCodeRepo,
+		userRepo,
+		passwordService,
+		auditLogService,
+		kafkaProducer, // Added kafkaProducer
+		rateLimiter,   // Added rateLimiter
+	)
+
+	// Инициализация AuditLogService
+	auditLogService := service.NewAuditLogService(auditLogRepo, logger) // Moved up to ensure it's available for services below
+
+	// Инициализация APIKeyService
+	apiKeyServiceConfig := domainService.APIKeyServiceConfig{ // Changed: Use domainService.APIKeyServiceConfig
+		APIKeyRepo:      apiKeyRepo,
+		PasswordService: passwordService,
+		AuditLogRecorder: auditLogService, // Added
+		KafkaProducer:   kafkaProducer,    // Added Sarama-based kafkaProducer
+	}
+	apiKeyService := domainService.NewAPIKeyService(apiKeyServiceConfig) // Changed: Use domainService.NewAPIKeyService
+
 
 	// Инициализация сервисов
-	tokenService := service.NewTokenService(redisClient, cfg.JWT, logger)
-	authService := service.NewAuthService(pgRepo, redisClient, tokenService, kafkaProducer, cfg, logger)
-	userService := service.NewUserService(pgRepo, kafkaProducer, logger)
-	roleService := service.NewRoleService(pgRepo, logger)
-	sessionService := service.NewSessionService(pgRepo, redisClient, logger)
-	telegramService := service.NewTelegramService(cfg.Telegram, logger)
-	twoFactorService := service.NewTwoFactorService(pgRepo, redisClient, logger)
+	// Old TokenService is being refactored. NewTokenService will take new dependencies.
+	tokenService := service.NewTokenService(
+		redisClient,
+		logger,
+		tokenManagementService,
+		refreshTokenRepo,
+		userRepo,
+		sessionRepo,
+	)
 
-	// Инициализация обработчиков событий
-	eventHandlers := kafka.NewEventHandlers(authService, userService, logger)
-	go kafkaConsumer.StartConsuming(eventHandlers.HandleEvent)
+	sessionService := service.NewSessionService(
+		sessionRepo,
+		userRepo,
+		kafkaProducer,
+		logger,
+		tokenManagementService, // Inject new dependency
+	)
 
-	// Инициализация HTTP сервера
-	router := httpHandler.NewRouter(
-		authService,
-		userService,
-		roleService,
+	authService := service.NewAuthService(
+		userRepo,
+		verificationCodeRepo,
 		tokenService,
 		sessionService,
+		kafkaProducer,
+		cfg,
+		logger,
+		passwordService,
+		tokenManagementService,
+		mfaSecretRepo,
+		mfaLogicService,
+		userRolesRepo,
+		roleService,          // Added missing parameter
+		externalAccountRepo,  // Added missing parameter
+		telegramService,      // Added missing parameter (as telegramVerifier)
+		auditLogService,      // Added for audit logging
+		rateLimiter,          // Added rateLimiter
+	)
+
+	// Assuming UserService and RoleService need specific repositories now
+	roleService := service.NewRoleService(
+		roleRepo,
+		userRepo,
+		userRolesRepo,
+		kafkaProducer,
+		logger,
+		auditLogService, // Added
+	)
+	// var userService *service.UserService // Placeholder - needs proper initialization with specific repos
+	userService := service.NewUserService(
+		userRepo,
+		// roleRepo, // user_service.go's NewUserService takes roleRepo
+		userRolesRepo, // Corrected: user_service.go's NewUserService takes userRolesRepo instead of just roleRepo based on recent file reads. Let me double check.
+		              // Reading user_service.go again: NewUserService(userRepo, roleRepo, kafkaClient, logger, auditLogRecorder) -> it does take roleRepo.
+		roleRepo,     // Correcting based on actual signature from user_service.go
+		kafkaProducer,
+		logger,
+		auditLogService, // Added
+	)
+
+	telegramService := service.NewTelegramService(
+		userRepo,       // Added missing userRepo
+		tokenService,   // Added missing tokenService
+		kafkaProducer,  // Pass Sarama-based kafkaProducer
+		logger,
+		cfg.Telegram.BotToken, // Pass BotToken from config
+	)
+	// twoFactorService from previous setup is now replaced by mfaLogicService via AuthService
+	// var twoFactorService *service.TwoFactorService // This would be the old one
+
+
+	// Инициализация обработчиков событий
+	// Instantiate new event handlers
+	accountHandler := handlers.NewAccountEventsHandler( // Changed alias from eventHandlers to handlers
+		logger,
+		cfg,
+		userRepo,
+		verificationCodeRepo,
+		authService, // authService itself is AuthLogicService
+		// kafkaProducer, // AccountEventsHandler does not take kafkaProducer
+		sessionRepo,
+		refreshTokenRepo,
+		mfaSecretRepo,
+		mfaBackupCodeRepo,
+		apiKeyRepo,
+		externalAccountRepo,
+		auditLogService,
+	)
+	adminHandler := handlers.NewAdminEventsHandler( // Changed alias from eventHandlers to handlers
+		logger,
+		cfg,
+		userRepo,
+		authService, // authService itself is AuthLogicService
+		// kafkaProducer, // AdminEventsHandler does not take kafkaProducer
+		auditLogService,
+	)
+
+	// Register handlers with the consumer
+	// Assuming event type constants are defined in models package e.g. models.AccountUserProfileUpdatedV1Type
+	kafkaConsumer.RegisterHandler(string(models.AccountUserProfileUpdatedV1), accountHandler.HandleAccountUserProfileUpdated)
+	kafkaConsumer.RegisterHandler(string(models.AccountUserDeletedV1), accountHandler.HandleAccountUserDeleted)
+	kafkaConsumer.RegisterHandler(string(models.AdminUserForceLogoutV1), adminHandler.HandleAdminUserForceLogout)
+	kafkaConsumer.RegisterHandler(string(models.AdminUserBlockV1), adminHandler.HandleAdminUserBlock)
+	kafkaConsumer.RegisterHandler(string(models.AdminUserUnblockV1), adminHandler.HandleAdminUserUnblock)
+
+	// Start the consumer
+	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+	// Ensure consumerCancel is called to stop the consumer when main exits
+	// This defer should be after other defers that might panic or exit early,
+	// or more robustly, called explicitly before other cleanup.
+	// For now, simple defer is okay.
+	defer consumerCancel()
+
+	go func() {
+		logger.Info("Starting Kafka consumer group consuming...")
+		kafkaConsumer.StartConsuming(consumerCtx)
+		logger.Info("Kafka consumer group has stopped consuming.")
+	}()
+
+	// Инициализация HTTP сервера
+	// SetupRouter now takes mfaLogicService directly for AuthHandler
+	// It no longer takes the old tokenService or twoFactorService if AuthHandler is updated
+	router := httpHandler.SetupRouter(
+		authService,
+		userService,          // Placeholder
+		roleService,          // Placeholder
+		tokenService,         // Old TokenService, still passed as some handlers might use it directly
+		sessionService,
 		telegramService,
-		twoFactorService,
+		mfaLogicService,
+		apiKeyService,
+		auditLogService,      // Pass auditLogService to SetupRouter
+		tokenManagementService,
 		cfg,
 		logger,
 	)
@@ -141,8 +347,44 @@ func main() {
 		),
 	)
 
-	authGRPCServer := grpcHandler.NewAuthServer(authService, userService, roleService, tokenService, logger)
-	authGRPCServer.RegisterServer(grpcServer)
+	// TODO: Update NewAuthServer if its dependencies (authService, userService, roleService, tokenService) change structure
+	// The old authGRPCServer is replaced by the new AuthV1Service
+	// authGRPCServer := grpcHandler.NewAuthServer(authService, userService, roleService, tokenService, logger)
+	// authGRPCServer.RegisterServer(grpcServer)
+
+	// Инициализация и регистрация нового AuthV1Service (gRPC)
+	authV1GrpcService := grpcHandler.NewAuthV1Service(
+		logger,
+		tokenManagementService,
+		authService, // AuthService provides CheckPermission, GetUserInfo (via UserService)
+		userService, // UserService provides GetUserByID for GetUserInfo
+		// rbacService, // If a separate RBACService was created and used by CheckPermission
+	)
+	// Registering with the generated function. This will only expose methods present in the
+	// currently (potentially incompletely) generated authv1.AuthServiceServer interface.
+	authv1.RegisterAuthServiceServer(grpcServer, authV1GrpcService)
+	logger.Info("AuthV1 gRPC service registered")
+
+
+	// Инициализация и регистрация gRPC Health Check сервера (standard health check)
+	// The custom HealthCheck RPC within AuthService is separate from this standard one.
+	// However, our new AuthV1Service implements HealthCheck itself.
+	// So, we might not need the separate standard healthServer if our AuthService.HealthCheck is sufficient.
+	// For now, let's keep the standard one too, unless it conflicts or is redundant.
+	// The AuthServiceServer_Workaround includes HealthCheck, so authV1GrpcService has it.
+	// The standard grpc_health_v1 is often used for Kubernetes health probes.
+	// If our custom HealthCheck serves the same purpose, we can remove the standard one.
+	// Let's assume for now our custom one is primary. The generated code might still register only
+	// the methods it knows about.
+	// The line below registers the standard health service. If our proto defines HealthCheck,
+	// and it's correctly generated, our authV1GrpcService.HealthCheck will be called.
+	// If protoc is an issue, then only the standard one might work fully.
+
+	standardHealthServer := grpc_health.NewServer() // Using standard health server
+	grpc_health_v1.RegisterHealthServer(grpcServer, standardHealthServer)
+	standardHealthServer.SetServingStatus("auth.v1.AuthService", grpc_health_v1.HealthCheckResponse_SERVING) // Mark main service as serving
+	logger.Info("Standard gRPC Health Check service registered")
+
 
 	// Включение reflection для gRPC (полезно для отладки)
 	if cfg.GRPC.EnableReflection {

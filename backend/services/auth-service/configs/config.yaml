@@ -1,156 +1,135 @@
-// File: configs/config.yaml
-
-# Конфигурация микросервиса Auth Service
-
-# Общие настройки приложения
-app:
-  name: "auth-service"
-  version: "1.0.0"
-  environment: "production" # production, development, testing
-  debug: false
-  log_level: "info" # debug, info, warn, error
-  log_format: "json" # json, text
-  shutdown_timeout: 30s
-
-# Настройки HTTP сервера
-http:
-  host: "0.0.0.0"
+server:
   port: 8080
-  read_timeout: 10s
-  write_timeout: 10s
-  idle_timeout: 60s
-  max_header_bytes: 1048576 # 1MB
-  cors:
-    allowed_origins: ["*"]
-    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allowed_headers: ["Content-Type", "Authorization", "X-Requested-With"]
-    allow_credentials: true
-    max_age: 86400 # 24 часа
+  read_timeout: "10s"
+  write_timeout: "10s"
+  idle_timeout: "60s"
+  shutdown_timeout: "30s"
 
-# Настройки gRPC сервера
-grpc:
-  host: "0.0.0.0"
-  port: 9090
-  max_connection_idle: 60s
-  max_connection_age: 300s
-  max_connection_age_grace: 30s
-  time: 10s
-  timeout: 30s
-
-# Настройки базы данных PostgreSQL
 database:
-  driver: "postgres"
-  host: "postgres"
+  host: "localhost"
   port: 5432
-  username: "postgres"
-  password: "postgres"
-  database: "auth_service"
-  ssl_mode: "disable"
-  max_open_conns: 25
-  max_idle_conns: 25
-  conn_max_lifetime: 300s
-  migrations_dir: "migrations"
+  user: "auth_user"
+  password: "auth_password"
+  dbname: "auth_db"
+  sslmode: "disable"
   auto_migrate: true
 
-# Настройки Redis
 redis:
-  host: "redis"
+  host: "localhost"
   port: 6379
   password: ""
   db: 0
-  pool_size: 10
-  min_idle_conns: 5
-  dial_timeout: 5s
-  read_timeout: 3s
-  write_timeout: 3s
-  pool_timeout: 5s
-  idle_timeout: 60s
-  max_retries: 3
-  min_retry_backoff: 8ms
-  max_retry_backoff: 512ms
 
-# Настройки Kafka
 kafka:
-  brokers: ["kafka:9092"]
-  group_id: "auth-service"
-  auto_offset_reset: "earliest"
-  enable_auto_commit: true
-  auto_commit_interval: 5s
-  session_timeout: 30s
-  heartbeat_interval: 3s
-  max_poll_interval: 300s
-  topics:
-    user_events: "user-events"
-    token_events: "token-events"
-    session_events: "session-events"
+  brokers: ["localhost:9092"]
+  producer:
+    topic: "auth-events"
+  consumer:
+    topics: ["account-events", "admin-events"]
+    group_id: "auth_service_consumer_group"
 
-# Настройки JWT
 jwt:
-  access_token:
-    secret: "your-access-token-secret-key-here"
-    expires_in: 15m
-  refresh_token:
-    secret: "your-refresh-token-secret-key-here"
-    expires_in: 720h # 30 дней
+  access_token_ttl: "15m"
+  refresh_token_ttl: "168h"
   email_verification_token:
-    secret: "your-email-verification-token-secret-key-here"
-    expires_in: 48h # 2 дня
+    expires_in: "24h"
   password_reset_token:
-    secret: "your-password-reset-token-secret-key-here"
-    expires_in: 24h # 1 день
-  issuer: "auth-service"
-  audience: "russian-steam-platform"
+    expires_in: "1h"
+  rsa_private_key_path: "configs/keys/dev_private_key.pem"
+  rsa_public_key_path: "configs/keys/dev_public_key.pem"
+  jwks_key_id: "auth-service-main-key"
+  issuer: "yourplatform.com/auth"
+  audience: "yourplatform.com/api"
+  refresh_token_byte_length: 32
+  hmac_secret_key: "a_secure_hmac_secret_for_internal_tokens_like_state_or_challenge"
+  oauth_state_cookie_ttl: "10m"
+  oauth_state_secret: "another_different_secure_hmac_secret_for_oauth_state_tokens"
+  mfa_challenge_token_ttl: "5m"
 
-# Настройки Telegram
-telegram:
-  bot_token: "your-telegram-bot-token-here"
-  webhook_url: "https://your-domain.com/api/v1/auth/telegram/webhook"
-
-# Настройки двухфакторной аутентификации
-two_factor:
-  issuer: "Russian Steam Platform"
-  recovery_codes_count: 10
-
-# Настройки Prometheus
-prometheus:
-  enabled: true
-  host: "0.0.0.0"
-  port: 9180
-  path: "/metrics"
-
-# Настройки Jaeger
-jaeger:
-  enabled: true
-  service_name: "auth-service"
-  agent_host: "jaeger"
-  agent_port: 6831
-  sampler_type: "const"
-  sampler_param: 1
-  log_spans: true
-
-# Настройки Health Check
-health_check:
-  enabled: true
-  host: "0.0.0.0"
-  port: 8081
-  path: "/health"
-  check_interval: 10s
-  timeout: 5s
-
-# Настройки безопасности
 security:
+  lockout:
+    max_failed_attempts: 5
+    lockout_duration: "15m"
   password_hash:
-    algorithm: "argon2id"
     memory: 65536
-    iterations: 3
+    iterations: 1
     parallelism: 2
     salt_length: 16
     key_length: 32
-  rate_limit:
+  rate_limiting:
     enabled: true
-    requests: 100
-    duration: 1m
-  ip_whitelist:
-    enabled: false
-    ips: []
-  cors_enabled: true
+    password_reset_per_email: # Renamed from forgot_password_email in previous thoughts to match config struct
+      enabled: true
+      limit: 5
+      window: "1h"
+    password_reset_per_ip:    # Renamed from forgot_password_ip
+      enabled: true
+      limit: 10
+      window: "1h"
+    two_fa_verification_per_user:
+      enabled: true
+      limit: 5
+      window: "15m"
+    register_ip:               # Added
+      enabled: true
+      limit: 10
+      window: "1h"
+    login_email_ip:            # Added
+      enabled: true
+      limit: 20 # Higher limit for login attempts
+      window: "1h"
+    resend_verification_email: # Added
+      enabled: true
+      limit: 3
+      window: "24h"
+    reset_password_ip:         # Added (distinct from password_reset_per_ip for the reset action itself vs request)
+      enabled: true
+      limit: 5
+      window: "1h"
+
+mfa:
+  enabled: true
+  totp_issuer_name: "YourPlatform"
+  totp_secret_encryption_key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" # 64 hex chars for 32 bytes
+  totp_backup_code_count: 10
+
+logging:
+  level: "debug"
+  format: "json"
+
+telemetry:
+  service_name: "auth-service"
+  tracing:
+    enabled: true
+    jaeger:
+      agent_host: "localhost"
+      agent_port: "6831"
+  metrics:
+    enabled: true
+    port: 9090
+
+oauth_providers:
+  vk:
+    client_id: "YOUR_VK_APP_ID"
+    client_secret: "YOUR_VK_APP_SECRET"
+    redirect_url: "http://localhost:8080/api/v1/auth/oauth/vk/callback"
+    auth_url: "https://oauth.vk.com/authorize"
+    token_url: "https://oauth.vk.com/access_token"
+    user_info_url: "https://api.vk.com/method/users.get"
+    scopes: ["email", "offline"]
+    provider_specific:
+      v: "5.199"
+      request_email_scope: "true"
+  odnoklassniki:
+    client_id: "YOUR_OK_APP_ID"
+    client_secret: "YOUR_OK_APP_SECRET_KEY"
+    redirect_url: "http://localhost:8080/api/v1/auth/oauth/ok/callback"
+    auth_url: "https://connect.ok.ru/oauth/authorize"
+    token_url: "https://api.ok.ru/oauth/token.do"
+    user_info_url: "https://api.ok.ru/fb.do"
+    scopes: ["GET_EMAIL", "VALUABLE_ACCESS"]
+    provider_specific:
+      application_public_key: "YOUR_OK_APP_PUBLIC_KEY"
+
+telegram:
+  bot_token: "YOUR_TELEGRAM_BOT_TOKEN"

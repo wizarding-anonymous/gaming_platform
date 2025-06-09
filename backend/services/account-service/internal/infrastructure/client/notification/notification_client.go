@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/infrastructure/client/notification/notification_client.go
 // account-service/internal/infrastructure/client/notification/notification_client.go
 package notification
 

@@ -1,41 +1,55 @@
+// File: backend/services/auth-service/internal/domain/repository/interfaces/role_repository.go
 package interfaces
 
 import (
 	"context"
 
-	"github.com/google/uuid"
+	// "github.com/google/uuid" // IDs are now string for Role and Permission
 	"github.com/your-org/auth-service/internal/domain/models"
 )
 
-// RoleRepository определяет интерфейс для работы с ролями в хранилище
+// RoleRepository defines the interface for interacting with role data
+// and their relationships with permissions.
 type RoleRepository interface {
-	// Create создает новую роль
-	Create(ctx context.Context, role models.Role) (models.Role, error)
+	// Create persists a new role to the database.
+	// The ID for the role (string) should be set on the models.Role object before calling.
+	Create(ctx context.Context, role *models.Role) error
 	
-	// GetByID получает роль по ID
-	GetByID(ctx context.Context, id uuid.UUID) (models.Role, error)
+	// GetByID retrieves a role by its unique ID (string).
+	// Returns domainErrors.ErrRoleNotFound if no role is found.
+	GetByID(ctx context.Context, id string) (*models.Role, error)
 	
-	// GetByName получает роль по имени
-	GetByName(ctx context.Context, name string) (models.Role, error)
+	// GetByName retrieves a role by its unique name.
+	// Returns domainErrors.ErrRoleNotFound if no role is found.
+	GetByName(ctx context.Context, name string) (*models.Role, error)
 	
-	// Update обновляет информацию о роли
-	Update(ctx context.Context, role models.Role) error
+	// Update modifies an existing role's details in the database.
+	Update(ctx context.Context, role *models.Role) error
 	
-	// Delete удаляет роль
-	Delete(ctx context.Context, id uuid.UUID) error
+	// Delete removes a role from the database.
+	// This should be a hard delete as roles table does not have soft-delete columns per spec.
+	Delete(ctx context.Context, id string) error
 	
-	// List получает список ролей
-	List(ctx context.Context) ([]models.Role, error)
+	// List retrieves all roles from the database.
+	// Consider adding pagination/filtering parameters if the number of roles can be large.
+	List(ctx context.Context) ([]*models.Role, error)
 	
-	// GetRolePermissions получает разрешения роли
-	GetRolePermissions(ctx context.Context, roleID uuid.UUID) ([]models.Permission, error)
+	// --- Role-Permission Management ---
+
+	// GetPermissionsForRole retrieves all permissions associated with a specific role ID.
+	GetPermissionsForRole(ctx context.Context, roleID string) ([]*models.Permission, error)
 	
-	// AssignPermission назначает разрешение роли
-	AssignPermission(ctx context.Context, roleID, permissionID uuid.UUID) error
+	// AssignPermissionToRole links a permission to a role via the role_permissions table.
+	AssignPermissionToRole(ctx context.Context, roleID string, permissionID string) error
 	
-	// RemovePermission удаляет разрешение у роли
-	RemovePermission(ctx context.Context, roleID, permissionID uuid.UUID) error
+	// RemovePermissionFromRole unlinks a permission from a role.
+	RemovePermissionFromRole(ctx context.Context, roleID string, permissionID string) error
 	
-	// HasPermission проверяет, имеет ли роль указанное разрешение
-	HasPermission(ctx context.Context, roleID uuid.UUID, permissionName string) (bool, error)
+	// RoleHasPermission checks if a role has a specific permission by permission ID.
+	RoleHasPermission(ctx context.Context, roleID string, permissionID string) (bool, error)
+
+	// RoleHasPermissionByName checks if a role has a specific permission by permission name.
+	// This might be more convenient in some service layer checks.
+	// Implementation would involve joining with permissions table and checking name.
+	// RoleHasPermissionByName(ctx context.Context, roleID string, permissionName string) (bool, error)
 }

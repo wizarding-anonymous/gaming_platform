@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/domain/entity/auth_method.go
 // account-service/internal/domain/entity/auth_method.go
 package entity
 

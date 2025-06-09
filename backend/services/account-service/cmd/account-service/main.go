@@ -1,3 +1,4 @@
+// File: backend/services/account-service/cmd/account-service/main.go
 // account-service\cmd\account-service\main.go
 package main
 

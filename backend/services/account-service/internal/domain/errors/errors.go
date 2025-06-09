@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/domain/errors/errors.go
 // account-service\internal\domain\errors\errors.go
 
 package errors

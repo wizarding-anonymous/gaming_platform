@@ -1,111 +1,60 @@
+// File: backend/services/auth-service/internal/domain/models/permission.go
 package models
 
 import (
 	"time"
-
-	"github.com/google/uuid"
+	// "github.com/google/uuid" // No longer using UUID for Permission ID
 )
 
-// Permission представляет модель разрешения в системе
+// Permission represents the permission entity in the database.
+// ID is VARCHAR(100) as per auth_data_model.md.
 type Permission struct {
-	ID          uuid.UUID `json:"id" db:"id"`
-	Name        string    `json:"name" db:"name"`
+	ID          string    `json:"id" db:"id"`
+	Name        string    `json:"name" db:"name"`               // Human-readable name or unique key
 	Description string    `json:"description" db:"description"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	Resource    *string   `json:"resource,omitempty" db:"resource"` // Optional: resource this permission applies to
+	Action      *string   `json:"action,omitempty" db:"action"`     // Optional: action this permission allows
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`     // Handled by DB default
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`     // Handled by DB trigger
 }
 
-// PermissionType определяет предопределенные разрешения в системе
-type PermissionType string
-
-const (
-	// Разрешения для пользователей
-	PermUserRead       PermissionType = "users.read"
-	PermUserWrite      PermissionType = "users.write"
-	PermUserDelete     PermissionType = "users.delete"
-	
-	// Разрешения для ролей
-	PermRoleRead       PermissionType = "roles.read"
-	PermRoleWrite      PermissionType = "roles.write"
-	PermRoleDelete     PermissionType = "roles.delete"
-	
-	// Разрешения для игр
-	PermGameRead       PermissionType = "games.read"
-	PermGameWrite      PermissionType = "games.write"
-	PermGameDelete     PermissionType = "games.delete"
-	PermGamePublish    PermissionType = "games.publish"
-	
-	// Разрешения для контента
-	PermContentRead    PermissionType = "content.read"
-	PermContentWrite   PermissionType = "content.write"
-	PermContentDelete  PermissionType = "content.delete"
-	PermContentModerate PermissionType = "content.moderate"
-	
-	// Разрешения для платежей
-	PermPaymentRead    PermissionType = "payments.read"
-	PermPaymentWrite   PermissionType = "payments.write"
-	PermPaymentRefund  PermissionType = "payments.refund"
-	
-	// Разрешения для администрирования
-	PermAdminAccess    PermissionType = "admin.access"
-	PermSystemAccess   PermissionType = "system.access"
-)
-
-// CreatePermissionRequest представляет запрос на создание нового разрешения
+// CreatePermissionRequest represents data for creating a new permission.
 type CreatePermissionRequest struct {
-	Name        string `json:"name" validate:"required,min=3,max=50"`
-	Description string `json:"description" validate:"required,max=255"`
+	ID          string  `json:"id" validate:"required,max=100"` // Permission ID is string
+	Name        string  `json:"name" validate:"required,min=3,max=255"`
+	Description string  `json:"description" validate:"max=255"`
+	Resource    *string `json:"resource,omitempty" validate:"omitempty,max=100"`
+	Action      *string `json:"action,omitempty" validate:"omitempty,max=50"`
 }
 
-// UpdatePermissionRequest представляет запрос на обновление разрешения
+// UpdatePermissionRequest represents data for updating a permission.
 type UpdatePermissionRequest struct {
-	Description string `json:"description" validate:"required,max=255"`
+	Name        *string `json:"name,omitempty" validate:"omitempty,min=3,max=255"`
+	Description *string `json:"description,omitempty" validate:"max=255"`
+	Resource    *string `json:"resource,omitempty" validate:"omitempty,max=100"`
+	Action      *string `json:"action,omitempty" validate:"omitempty,max=50"`
 }
 
-// PermissionResponse представляет ответ с информацией о разрешении
+// PermissionResponse structures the permission data returned by API endpoints.
 type PermissionResponse struct {
-	ID          uuid.UUID `json:"id"`
+	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
+	Resource    *string   `json:"resource,omitempty"`
+	Action      *string   `json:"action,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// PermissionListResponse представляет ответ со списком разрешений
-type PermissionListResponse struct {
-	Permissions []PermissionResponse `json:"permissions"`
-	TotalCount  int64               `json:"total_count"`
-}
-
-// NewPermissionFromRequest создает новую модель разрешения из запроса
-func NewPermissionFromRequest(req CreatePermissionRequest) Permission {
-	now := time.Now()
-	return Permission{
-		ID:          uuid.New(),
-		Name:        req.Name,
-		Description: req.Description,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
-}
-
-// ToResponse преобразует модель разрешения в ответ API
-func (p Permission) ToResponse() PermissionResponse {
+// ToResponse converts a Permission model to an API PermissionResponse.
+func (p *Permission) ToResponse() PermissionResponse {
 	return PermissionResponse{
 		ID:          p.ID,
 		Name:        p.Name,
 		Description: p.Description,
+		Resource:    p.Resource,
+		Action:      p.Action,
 		CreatedAt:   p.CreatedAt,
 		UpdatedAt:   p.UpdatedAt,
 	}
-}
-
-// CheckPermissionRequest представляет запрос на проверку наличия разрешения
-type CheckPermissionRequest struct {
-	Permission string `json:"permission" validate:"required"`
-}
-
-// CheckPermissionResponse представляет ответ на проверку наличия разрешения
-type CheckPermissionResponse struct {
-	HasPermission bool `json:"has_permission"`
 }

@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/config/config.go
 // account-service/internal/config/config.go
 package config
 

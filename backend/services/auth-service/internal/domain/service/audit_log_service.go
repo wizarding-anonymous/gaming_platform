@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/domain/service/audit_log_service.go
 package service
 
 import (
@@ -9,55 +10,56 @@ import (
 	"github.com/google/uuid" // For generating AuditLog entry ID if not using BIGSERIAL from DB directly in entity
 	"go.uber.org/zap"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
-	"github.com/gameplatform/auth-service/internal/domain/repository"
+	// "github.com/gameplatform/auth-service/internal/domain/entity" // Using models now
+	"github.com/your-org/auth-service/internal/domain/models"    // For models.AuditLog, models.AuditLogStatus
+	"github.com/your-org/auth-service/internal/domain/repository" // For repository.ListAuditLogParams
+	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces" // For AuditLogRepository dep
 )
 
-// AuditLogService defines the interface for recording audit trail events.
-type AuditLogService interface {
-	RecordAuditEvent(
+// AuditLogRecorder defines the interface for recording audit trail events.
+type AuditLogRecorder interface {
+	RecordEvent(
 		ctx context.Context,
-		userID *string, // User performing the action (nullable for system actions)
-		action string, // A string identifier for the action (e.g., "USER_LOGIN_SUCCESS")
-		targetType *string, // Type of the entity being acted upon (e.g., "user", "session")
-		targetID *string, // ID of the target entity (nullable)
-		ipAddress *string, // IP address of the request originator (nullable)
-		userAgent *string, // User agent of the request originator (nullable)
-		status string, // "success" or "failure"
-		details map[string]interface{}, // Additional relevant information (nullable)
+		actorUserID *string, // User performing the action (can be nil)
+		action string,       // Verb describing the action, e.g., "user_login_success"
+		targetType *string,  // Type of entity being acted upon, e.g., "user", "role"
+		targetID *string,    // ID of the entity being acted upon
+		status models.AuditLogStatus, // "success" or "failure"
+		details map[string]interface{}, // Additional context-specific details
+		ipAddress *string,
+		userAgent *string,
 	) error
+
+	// ListAuditLogs retrieves audit log entries based on specified parameters.
+	// This might belong to a different service/interface if AuditLogRecorder is strictly for recording.
+	// For now, keeping it as per existing file structure.
+	ListAuditLogs(ctx context.Context, params repository.ListAuditLogParams) (logs []*models.AuditLog, totalCount int, err error)
 }
 
-type auditLogServiceImpl struct {
-	auditRepo repository.AuditLogRepository
+type auditLogService struct { // Renamed from auditLogServiceImpl to align with typical Go naming
+	auditRepo repoInterfaces.AuditLogRepository
 	logger    *zap.Logger
 }
 
-// AuditLogServiceConfig holds dependencies for AuditLogService.
-type AuditLogServiceConfig struct {
-	AuditRepo repository.AuditLogRepository
-	Logger    *zap.Logger
-}
-
-// NewAuditLogService creates a new auditLogServiceImpl.
-func NewAuditLogService(cfg AuditLogServiceConfig) AuditLogService {
-	return &auditLogServiceImpl{
-		auditRepo: cfg.AuditRepo,
-		logger:    cfg.Logger.Named("audit_log_service"),
+// NewAuditLogService creates a new auditLogService that implements AuditLogRecorder.
+func NewAuditLogService(auditRepo repoInterfaces.AuditLogRepository, logger *zap.Logger) AuditLogRecorder {
+	return &auditLogService{
+		auditRepo: auditRepo,
+		logger:    logger.Named("audit_log_service"),
 	}
 }
 
-// RecordAuditEvent constructs an AuditLog entity and persists it using the repository.
-func (s *auditLogServiceImpl) RecordAuditEvent(
+// RecordEvent constructs an AuditLog entity and persists it using the repository.
+func (s *auditLogService) RecordEvent(
 	ctx context.Context,
-	userID *string,
+	actorUserID *string,
 	action string,
 	targetType *string,
 	targetID *string,
+	status models.AuditLogStatus, // Now using models.AuditLogStatus directly
+	details map[string]interface{},
 	ipAddress *string,
 	userAgent *string,
-	status string, // Should ideally be entity.AuditLogStatus type
-	details map[string]interface{},
 ) error {
 
 	var detailsJSON json.RawMessage
@@ -76,17 +78,26 @@ func (s *auditLogServiceImpl) RecordAuditEvent(
 		}
 	}
 
-	logEntry := &entity.AuditLog{
-		// ID is BIGSERIAL, will be set by DB. If UUID was used for entity ID: uuid.NewString(),
-		UserID:      userID,
+	var parsedActorUserID *uuid.UUID
+	if actorUserID != nil && *actorUserID != "" {
+		uid, errParse := uuid.Parse(*actorUserID)
+		if errParse == nil {
+			parsedActorUserID = &uid
+		} else {
+			s.logger.Warn("Could not parse actorUserID for audit log", zap.String("rawActorUserID", *actorUserID), zap.Error(errParse))
+		}
+	}
+
+	logEntry := &models.AuditLog{
+		UserID:      parsedActorUserID, // Changed from userID
 		Action:      action,
 		TargetType:  targetType,
 		TargetID:    targetID,
 		IPAddress:   ipAddress,
 		UserAgent:   userAgent,
-		Status:      entity.AuditLogStatus(status), // Cast to defined type
+		Status:      status, // Already models.AuditLogStatus
 		Details:     detailsJSON,
-		CreatedAt:   time.Now().UTC(),
+		// CreatedAt is set by DB default
 	}
 
 	err = s.auditRepo.Create(ctx, logEntry)
@@ -102,39 +113,28 @@ func (s *auditLogServiceImpl) RecordAuditEvent(
 
 	s.logger.Info("Audit event recorded",
 		zap.String("action", action),
-		zap.Stringp("userID", userID),
+		zap.Stringp("actorUserID", actorUserID), // Changed from userID
 		zap.Stringp("targetType", targetType),
 		zap.Stringp("targetID", targetID),
-		zap.String("status", status),
+		zap.String("status", string(status)), // Cast status to string for logging
 	)
 	return nil
 }
 
-var _ AuditLogService = (*auditLogServiceImpl)(nil)
+// ListAuditLogs retrieves audit logs.
+func (s *auditLogService) ListAuditLogs(ctx context.Context, params repository.ListAuditLogParams) ([]*models.AuditLog, int, error) {
+	logs, total, err := s.auditRepo.List(ctx, params)
+	if err != nil {
+		s.logger.Error("Failed to list audit logs from repository", zap.Error(err))
+		return nil, 0, fmt.Errorf("failed to list audit logs: %w", err)
+	}
+	return logs, total, nil
+}
 
-// Note: The entity.AuditLog struct uses int64 for ID (BIGSERIAL).
-// The `uuid.NewString()` import was for a hypothetical scenario where entity ID itself was UUID.
-// It's not needed if the ID field in entity.AuditLog is int64 and auto-generated by the DB.
-// The current entity.AuditLog has ID int64, so uuid import is not directly used for its ID.
-// However, other IDs like UserID, TargetID might be UUIDs represented as strings.
-// Ensuring `entity.AuditLogStatus` is used for the status field.
-// The `zap.Stringp` is used for logging optional string pointers.
-// Need to ensure `messaging` package is imported if used by other services, though not directly here.
-// Also, ensure `entity` package is correctly imported for `entity.AuditLogStatus`.
-// The `details` map is marshalled to JSON; errors during marshalling are logged and a fallback detail is stored.
-// The `status` parameter is cast to `entity.AuditLogStatus`. It's better if the interface also uses this type.
-// For now, keeping it as string in the interface as per subtask, but casting during struct creation.
-// The service method returns an error, allowing calling services to decide how to handle audit logging failures.
-// For critical audit trails, this error might need to propagate or trigger alerts.
-// For less critical, it might just be logged by this service.
-// The current implementation returns the error.
-// If `targetID` or `userID` are actual UUIDs from `github.com/google/uuid`, their `String()` method should be used when passing.
-// The `userID *string` and `targetID *string` assume they are already string representations or nil.
-// The `zap.Any("log_entry_for_debug", logEntry)` should be used with caution as it might log PII.
-// It's better to explicitly list fields for logging if needed for debugging.
-// Removed `uuid.NewString()` import as ID is BIGSERIAL.The `AuditLogService` interface and its implementation `auditLogServiceImpl` have been successfully created in `internal/domain/service/audit_log_service.go`.
-The `RecordAuditEvent` method constructs an `entity.AuditLog` and calls the repository to persist it. It also handles JSON marshalling for the `details` field.
+var _ AuditLogRecorder = (*auditLogService)(nil) // Ensure it implements the new interface name
 
-**Step 4: Integrate Audit Logging into Existing Services (Conceptual Plan for Modification)**
-
-As per the subtask, I will create `backend/services/auth-service/docs/audit_integration_plan.md` to outline where `AuditLogService.RecordAuditEvent` should be called.
+// Note:
+// - Assumes `repoInterfaces.AuditLogRepository` uses `models.AuditLog`.
+// - `models.AuditLog` should have `UserID *uuid.UUID`.
+// - `repository.ListAuditLogParams` should be compatible.
+// - Parsing of `actorUserID` from `*string` to `*uuid.UUID` is included.

@@ -1,22 +1,24 @@
+// File: backend/services/auth-service/internal/domain/models/role.go
 package models
 
 import (
 	"time"
-
-	"github.com/google/uuid"
+	// "github.com/google/uuid" // No longer using UUID for Role ID
 )
 
-// Role представляет модель роли в системе
+// Role represents the role entity in the database.
+// ID is VARCHAR(50) as per auth_data_model.md.
 type Role struct {
-	ID          uuid.UUID  `json:"id" db:"id"`
-	Name        string     `json:"name" db:"name"`
-	Description string     `json:"description" db:"description"`
-	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at" db:"updated_at"`
-	Permissions []Permission `json:"permissions,omitempty" db:"-"`
+	ID          string       `json:"id" db:"id"`
+	Name        string       `json:"name" db:"name"`
+	Description string       `json:"description" db:"description"`
+	CreatedAt   time.Time    `json:"created_at" db:"created_at"` // Handled by DB default
+	UpdatedAt   time.Time    `json:"updated_at" db:"updated_at"` // Handled by DB trigger
+	Permissions []Permission `json:"permissions,omitempty" db:"-"` // Loaded separately
 }
 
-// RoleType определяет предопределенные роли в системе
+// RoleType defines some common predefined role names.
+// These are examples; actual role IDs/names will be strings from the DB.
 type RoleType string
 
 const (
@@ -30,64 +32,42 @@ const (
 	RoleSystemAdmin RoleType = "system_admin"
 )
 
-// CreateRoleRequest представляет запрос на создание новой роли
+// CreateRoleRequest represents the data needed to create a new role.
 type CreateRoleRequest struct {
-	Name        string   `json:"name" validate:"required,min=3,max=50"`
-	Description string   `json:"description" validate:"required,max=255"`
-	Permissions []string `json:"permissions" validate:"required,min=1"`
+	ID          string   `json:"id" validate:"required,max=50"` // Role ID is string
+	Name        string   `json:"name" validate:"required,min=3,max=255"`
+	Description string   `json:"description" validate:"max=255"`
+	Permissions []string `json:"permissions,omitempty"` // Permission IDs (strings)
 }
 
-// UpdateRoleRequest представляет запрос на обновление роли
+// UpdateRoleRequest represents data for updating a role.
 type UpdateRoleRequest struct {
-	Description string   `json:"description" validate:"omitempty,max=255"`
-	Permissions []string `json:"permissions" validate:"omitempty"`
+	Name        *string  `json:"name,omitempty" validate:"omitempty,min=3,max=255"`
+	Description *string  `json:"description,omitempty" validate:"max=255"`
+	Permissions []string `json:"permissions,omitempty"` // Permission IDs (strings) for full replacement
 }
 
-// AssignRoleRequest представляет запрос на назначение роли пользователю
-type AssignRoleRequest struct {
-	RoleID string `json:"role_id" validate:"required,uuid"`
-}
-
-// RoleResponse представляет ответ с информацией о роли
+// RoleResponse structures the role data returned by API endpoints.
 type RoleResponse struct {
-	ID          uuid.UUID   `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Permissions []string    `json:"permissions,omitempty"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Permissions []string `json:"permissions,omitempty"` // Permission names or IDs
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// RoleListResponse представляет ответ со списком ролей
-type RoleListResponse struct {
-	Roles      []RoleResponse `json:"roles"`
-	TotalCount int64          `json:"total_count"`
-}
-
-// NewRoleFromRequest создает новую модель роли из запроса
-func NewRoleFromRequest(req CreateRoleRequest) Role {
-	now := time.Now()
-	return Role{
-		ID:          uuid.New(),
-		Name:        req.Name,
-		Description: req.Description,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+// ToResponse converts a Role model to an API RoleResponse.
+func (r *Role) ToResponse() RoleResponse {
+	permissionNames := make([]string, len(r.Permissions))
+	for i, p := range r.Permissions {
+		permissionNames[i] = p.Name // Assuming Permission struct has a Name field
 	}
-}
-
-// ToResponse преобразует модель роли в ответ API
-func (r Role) ToResponse() RoleResponse {
-	permissions := make([]string, 0, len(r.Permissions))
-	for _, perm := range r.Permissions {
-		permissions = append(permissions, perm.Name)
-	}
-
 	return RoleResponse{
 		ID:          r.ID,
 		Name:        r.Name,
 		Description: r.Description,
-		Permissions: permissions,
+		Permissions: permissionNames,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}

@@ -1,3 +1,4 @@
+// File: backend/services/account-service/internal/domain/entity/profile_history.go
 // account-service\internal\domain\entity\profile_history.go
 
 package entity

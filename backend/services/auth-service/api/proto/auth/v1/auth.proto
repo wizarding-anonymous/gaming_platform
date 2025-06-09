@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package auth.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/your-org/auth-service/gen/go/auth/v1;authv1";
+
+// AuthService defines the gRPC interface for authentication and authorization.
+service AuthService {
+  // ValidateToken checks the validity of a JWT access token and returns its claims.
+  // Used by API Gateway and other services to authorize user requests.
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // CheckPermission verifies if a user (identified by user_id or by token)
+  // has a specific permission, optionally for a given resource.
+  rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+
+  // GetUserInfo retrieves basic user information for an authenticated entity (user or service).
+  // This is typically used by other services needing user details after token validation.
+  rpc GetUserInfo(GetUserInfoRequest) returns (UserInfoResponse);
+
+  // GetJWKS returns the JSON Web Key Set (JWKS) containing public keys
+  // used to verify JWTs issued by this Auth Service.
+  // This allows other services to validate tokens locally if needed.
+  rpc GetJWKS(GetJWKSRequest) returns (GetJWKSResponse);
+
+  // HealthCheck provides a standard gRPC health check.
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthCheckResponse);
+}
+
+// --- Message Definitions ---
+
+message ValidateTokenRequest {
+  string token = 1; // The JWT access token string.
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;                      // True if the token is valid, false otherwise.
+  string user_id = 2;                  // User ID from the token claims.
+  string username = 3;                 // Username from the token claims.
+  repeated string roles = 4;           // List of roles associated with the user.
+  repeated string permissions = 5;     // List of permissions associated with the user/roles.
+  google.protobuf.Timestamp expires_at = 6; // Token expiration timestamp.
+  string session_id = 7;               // Session ID associated with the token.
+  string error_code = 8;               // Specific error code if token is invalid (e.g., "token_expired", "token_invalid_signature").
+  string error_message = 9;            // Human-readable error message if token is invalid.
+}
+
+message CheckPermissionRequest {
+  // Option 1: Provide user_id directly if known (e.g., for service-to-service checks on behalf of a user)
+  string user_id = 1;
+
+  // Option 2: Provide token, from which user_id and roles/permissions will be extracted.
+  // If token is provided, user_id might be ignored or used as a cross-check.
+  // string token = 2; // This was considered, but user_id is generally preferred for internal checks after initial validation.
+  // The calling service is expected to have validated the token and extracted user_id first.
+
+  string permission = 3;        // The permission string to check (e.g., "games.publish", "users.edit").
+  string resource_id = 4;       // Optional: The ID of the resource being accessed (e.g., game_id, user_id).
+                                // Used for fine-grained, resource-specific permission checks.
+}
+
+message CheckPermissionResponse {
+  bool has_permission = 1;     // True if the user has the permission, false otherwise.
+}
+
+message GetUserInfoRequest {
+  // User ID for whom information is requested.
+  string user_id = 1;
+  // Alternatively, a token could be passed, but similar to CheckPermission,
+  // it's often better for the calling service to validate the token first.
+}
+
+message UserInfo {
+  string id = 1;
+  string username = 2;
+  string email = 3;                 // Email address (may be empty depending on privacy/permissions).
+  string status = 4;                // User account status (e.g., "active", "blocked", "pending_verification").
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp email_verified_at = 6; // Null if email is not verified.
+  google.protobuf.Timestamp last_login_at = 7;     // Null if never logged in.
+  repeated string roles = 8;           // List of roles.
+  bool mfa_enabled = 9;             // True if Multi-Factor Authentication is enabled.
+}
+
+message UserInfoResponse {
+  UserInfo user = 1;
+}
+
+message GetJWKSRequest {
+  // No parameters needed for JWKS request.
+}
+
+message GetJWKSResponse {
+  message JSONWebKey {
+    string kty = 1; // Key Type (e.g., "RSA")
+    string kid = 2; // Key ID
+    string use = 3; // Public Key Use (e.g., "sig" for signature)
+    string alg = 4; // Algorithm (e.g., "RS256")
+    string n = 5;   // Modulus (for RSA keys, Base64URL encoded)
+    string e = 6;   // Exponent (for RSA keys, Base64URL encoded)
+    // Fields for EC keys (crv, x, y) can be added if other algorithms are supported.
+  }
+  repeated JSONWebKey keys = 1; // List of public keys.
+}
+
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+    // SERVICE_UNKNOWN = 3; // If checking specific sub-services within Auth.
+  }
+  ServingStatus status = 1;
+}

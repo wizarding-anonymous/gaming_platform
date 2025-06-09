@@ -1,50 +1,63 @@
+// File: backend/services/auth-service/internal/domain/repository/interfaces/session_repository.go
+// Package interfaces defines the interfaces for repository implementations.
+// (Assuming this package comment is already present from user_repository.go or another file in this package)
 package interfaces
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/your-org/auth-service/internal/domain/models"
+	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Added for ErrNotFound
 )
 
-// SessionRepository определяет интерфейс для работы с сессиями в хранилище
+// SessionRepository defines the interface for managing user sessions in the data store.
+// It includes methods for creating, retrieving, updating, and deleting sessions,
+// as well as handling session expiration and potentially caching.
 type SessionRepository interface {
-	// Create создает новую сессию
-	Create(ctx context.Context, session models.Session) (models.Session, error)
-	
-	// GetByID получает сессию по ID
-	GetByID(ctx context.Context, id uuid.UUID) (models.Session, error)
-	
-	// GetByRefreshToken получает сессию по refresh токену
-	GetByRefreshToken(ctx context.Context, refreshToken string) (models.Session, error)
-	
-	// GetUserSessions получает все сессии пользователя
-	GetUserSessions(ctx context.Context, userID uuid.UUID) ([]models.Session, error)
-	
-	// Update обновляет информацию о сессии
-	Update(ctx context.Context, session models.Session) error
-	
-	// UpdateLastActivity обновляет время последней активности сессии
-	UpdateLastActivity(ctx context.Context, id uuid.UUID) error
-	
-	// Delete удаляет сессию
+	// Create persists a new session to the database.
+	// It takes a models.Session object, which should have UserID, UserAgent, IPAddress, and ExpiresAt populated.
+	Create(ctx context.Context, session *models.Session) error
+
+	// FindByID retrieves a session by its unique ID. (Changed from GetByID for consistency with other repos)
+	// Returns domainErrors.ErrNotFound if no session is found.
+	FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
+
+	// FindByUserID retrieves all sessions for a specific user. (Changed from GetUserSessions)
+	// TODO: Consider if params models.ListSessionsParams is still needed or if this should return all (active) sessions.
+	// For now, keeping it simple. The original GetUserSessions with filters might be a separate, more specific method.
+	FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Session, error)
+
+	// UpdateLastActivityAt updates the last activity timestamp for a given session ID.
+	// This is important for tracking active sessions and determining inactivity for expiration.
+	UpdateLastActivityAt(ctx context.Context, id uuid.UUID, lastActivityAt time.Time) error
+
+	// Delete removes a session by its ID. This is the primary way to "revoke" or invalidate a session.
+	// Returns domainErrors.ErrNotFound if the session to delete is not found.
 	Delete(ctx context.Context, id uuid.UUID) error
+
+	// DeleteAllByUserID removes all sessions for a given user, optionally excluding one specified sessionID.
+	// This is useful for "logout all other devices" functionality or when a user's account is compromised/deleted.
+	// Returns the number of sessions deleted and an error if any.
+	DeleteAllByUserID(ctx context.Context, userID uuid.UUID, exceptSessionID *uuid.UUID) (int64, error) // Changed from DeleteAllUserSessions
+
+	// DeleteExpired removes all sessions where expires_at is in the past.
+	// This is a cleanup task that should be run periodically.
+	// Returns the number of sessions deleted and an error if any.
+	DeleteExpired(ctx context.Context) (int64, error) // Changed from DeleteExpiredSessions
+
+	// --- Cache Methods (These are optional and might be part of a decorated repository) ---
+
+	// StoreInCache saves essential session data (e.g., UserID) to a cache with a TTL.
+	// The actual data stored might be minimal, just enough for quick validation or lookup.
+	// This can help reduce database load for frequent session checks.
+	StoreInCache(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID, ttl time.Duration) error // Renamed
 	
-	// Revoke отзывает сессию
-	Revoke(ctx context.Context, id uuid.UUID) error
+	// GetUserIDFromCache retrieves the UserID associated with a sessionID from the cache.
+	// Returns domainErrors.ErrNotFound if the sessionID is not found in the cache or if it has expired.
+	GetUserIDFromCache(ctx context.Context, sessionID uuid.UUID) (uuid.UUID, error)
 	
-	// RevokeAllUserSessions отзывает все сессии пользователя
-	RevokeAllUserSessions(ctx context.Context, userID uuid.UUID, exceptSessionID *uuid.UUID) error
-	
-	// RevokeExpiredSessions отзывает все истекшие сессии
-	RevokeExpiredSessions(ctx context.Context) error
-	
-	// StoreSessionInCache сохраняет сессию в кэше
-	StoreSessionInCache(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) error
-	
-	// GetSessionFromCache получает информацию о сессии из кэша
-	GetSessionFromCache(ctx context.Context, sessionID uuid.UUID) (uuid.UUID, error)
-	
-	// RemoveSessionFromCache удаляет сессию из кэша
-	RemoveSessionFromCache(ctx context.Context, sessionID uuid.UUID) error
+	// RemoveFromCache explicitly removes a session from the cache, e.g., on logout.
+	RemoveFromCache(ctx context.Context, sessionID uuid.UUID) error // Renamed
 }
