@@ -194,12 +194,15 @@ func (r *RefreshTokenRepositoryPostgres) DeleteExpiredAndRevoked(ctx context.Con
 	return totalDeleted, nil
 }
 
-// DeleteByUserID removes all refresh tokens for a specific user.
+// DeleteByUserID removes all refresh tokens for a specific user by finding their sessions first.
 func (r *RefreshTokenRepositoryPostgres) DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
-	query := `DELETE FROM refresh_tokens WHERE user_id = $1`
+	query := `
+		DELETE FROM refresh_tokens
+		WHERE session_id IN (SELECT id FROM sessions WHERE user_id = $1)
+	`
 	result, err := r.pool.Exec(ctx, query, userID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to delete refresh tokens by user ID: %w", err)
+		return 0, fmt.Errorf("failed to delete refresh tokens by user ID (via sessions): %w", err)
 	}
 	return result.RowsAffected(), nil
 }

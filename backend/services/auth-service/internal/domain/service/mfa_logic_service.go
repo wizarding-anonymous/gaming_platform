@@ -12,9 +12,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/your-org/auth-service/internal/config" // For MFAConfig
 	"github.com/your-org/auth-service/internal/domain/models"
+	domainErrors "github.com/your-org/auth-service/internal/domain/errors"     // For domain errors like ErrNotFound
 	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces" // Corrected path
 	"github.com/your-org/auth-service/internal/infrastructure/security"
-	// Kafka client if events are published directly from here
+	kafkaPkg "github.com/your-org/auth-service/internal/events/kafka" // Assuming this is the Sarama producer
 )
 
 // MFALogicService defines the interface for Multi-Factor Authentication (MFA) business logic.
@@ -86,6 +87,11 @@ type MFALogicService interface {
 	// 2FA is not active (domainErrors.Err2FANotEnabled, domainErrors.ErrMFANotVerified),
 	// or if repository operations fail.
 	RegenerateBackupCodes(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) (backupCodes []string, err error)
+
+	// GetActiveBackupCodeCount retrieves the number of active (unused) backup codes for a user.
+	// Requires that 2FA (TOTP) is active and verified.
+	// Returns the count of active backup codes, or an error if 2FA is not active/verified or on other failures.
+	GetActiveBackupCodeCount(ctx context.Context, userID uuid.UUID) (count int, err error)
 }
 
 // mfaLogicService implements the MFALogicService interface, providing concrete business logic
@@ -306,13 +312,24 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 
 	enabledAt := time.Now() // Capture consistent timestamp
 	// Publish CloudEvent for MFA enabled
-	mfaEnabledPayload := eventModels.MFAEnabledPayload{
+	// Assuming MFAEnabledPayload is in models package
+	mfaEnabledPayload := models.MFAEnabledPayload{
 		UserID:    userID.String(),
 		MFAType:   string(models.MFATypeTOTP), // Assuming models.MFATypeTOTP is "totp"
 		EnabledAt: enabledAt,
 	}
+	subjectMFAEnabled := userID.String()
+	contentTypeJSON := "application/json"
 	// TODO: Determine correct topic, using placeholder "auth-events" for now. Should be from cfg.
-	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthMFAEnabledV1, userID.String(), mfaEnabledPayload); err != nil {
+	// Assuming event type models.AuthMFAEnabledV1 is kafkaPkg.EventType (string alias)
+	if err := s.kafkaProducer.PublishCloudEvent(
+		ctx,
+		"auth-events", // topic
+		kafkaPkg.EventType(models.AuthMFAEnabledV1), // eventType
+		&subjectMFAEnabled,    // subject
+		&contentTypeJSON,      // dataContentType
+		mfaEnabledPayload,     // dataPayload
+	); err != nil {
 		// s.logger.Error("Failed to publish CloudEvent for MFA enabled", zap.Error(err), zap.String("userID", userID.String()))
 		// Add to audit details as a warning, as core MFA activation succeeded.
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
@@ -507,19 +524,30 @@ func (s *mfaLogicService) Disable2FA(ctx context.Context, userID uuid.UUID, veri
 	auditDetails = map[string]interface{}{"secrets_deleted_count": deletedSecrets, "backup_codes_deleted_count": deletedBackupCodes}
 	if deletedSecrets > 0 || deletedBackupCodes > 0 {
 		disabledAt := time.Now()
-		mfaDisabledPayload := eventModels.MFADisabledPayload{
+		// Assuming MFADisabledPayload is in models package
+		mfaDisabledPayload := models.MFADisabledPayload{
 			UserID:     userID.String(),
 			MFAType:    string(models.MFATypeTOTP), // Assuming disable implies TOTP for now
 			DisabledAt: disabledAt,
 		}
+		subjectMFADisabled := userID.String()
+		contentTypeJSON := "application/json"
 		// TODO: Determine correct topic
-		if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthMFADisabledV1, userID.String(), mfaDisabledPayload); err != nil {
+		// Assuming event type models.AuthMFADisabledV1 is kafkaPkg.EventType (string alias)
+		if err := s.kafkaProducer.PublishCloudEvent(
+			ctx,
+			"auth-events", // topic
+			kafkaPkg.EventType(models.AuthMFADisabledV1), // eventType
+			&subjectMFADisabled,   // subject
+			&contentTypeJSON,      // dataContentType
+			mfaDisabledPayload,    // dataPayload
+		); err != nil {
 			// s.logger.Error("Failed to publish CloudEvent for MFA disabled", zap.Error(err), zap.String("userID", userID.String()))
 			auditDetails["warning_cloudevent_publish"] = err.Error()
 		}
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_disable", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 	} else {
-		auditDetails["info"] = domainErrors.Err2FANotEnabled.Error()
+		auditDetails["info"] = domainErrors.Err2FANotEnabled.Error() // Ensure domainErrors is imported
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_disable", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 	}
 	return nil
@@ -624,6 +652,54 @@ func (s *mfaLogicService) isUserAuthorizedForSensitiveAction(ctx context.Context
 	default:
 		return false, fmt.Errorf("invalid verification method for sensitive action: %s", verificationMethod)
 	}
+}
+
+func (s *mfaLogicService) GetActiveBackupCodeCount(ctx context.Context, userID uuid.UUID) (int, error) {
+	actorAndTargetID := &userID
+	ipAddress, userAgent := getIPAndUserAgentFromCtx(ctx) // Using the new helper
+	var auditDetails = make(map[string]interface{})
+
+	mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, models.MFATypeTOTP)
+	if err != nil {
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			auditDetails["error"] = domainErrors.Err2FANotEnabled.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+			return 0, domainErrors.Err2FANotEnabled
+		}
+		auditDetails["error"] = "failed to fetch mfa secret"
+		auditDetails["details"] = err.Error()
+		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		return 0, fmt.Errorf("error fetching mfa secret: %w", err)
+	}
+	if !mfaSecret.Verified {
+		auditDetails["error"] = domainErrors.ErrMFANotVerified.Error()
+		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		return 0, domainErrors.ErrMFANotVerified
+	}
+
+	count, err := s.mfaBackupCodeRepo.CountActiveByUserID(ctx, userID)
+	if err != nil {
+		auditDetails["error"] = "failed to count active backup codes"
+		auditDetails["details"] = err.Error()
+		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		return 0, fmt.Errorf("failed to count active backup codes: %w", err)
+	}
+
+	auditDetails["active_backup_code_count"] = count
+	s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+	return count, nil
+}
+
+// Helper function to extract IP and UserAgent from context metadata
+// This is a simplified example; actual implementation might vary based on how metadata is stored.
+func getIPAndUserAgentFromCtx(ctx context.Context) (string, string) {
+    ipAddress := "unknown"
+    userAgent := "unknown"
+    if md, ok := ctx.Value("metadata").(map[string]string); ok {
+        if val, exists := md["ip-address"]; exists { ipAddress = val }
+        if val, exists := md["user-agent"]; exists { userAgent = val }
+    }
+    return ipAddress, userAgent
 }
 
 

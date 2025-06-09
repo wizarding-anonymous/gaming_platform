@@ -8,8 +8,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/your-org/auth-service/internal/domain/models"
+	domainService "github.com/your-org/auth-service/internal/domain/service" // Ensure this is imported
 	"github.com/your-org/auth-service/internal/repository/interfaces"
-	"github.com/your-org/auth-service/internal/utils/kafka"
+	// "github.com/your-org/auth-service/internal/utils/kafka" // To be replaced
+	eventskafka "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
 	"github.com/your-org/auth-service/internal/utils/security"
 	"go.uber.org/zap"
 )
@@ -18,7 +20,7 @@ import (
 type UserService struct {
 	userRepo    interfaces.UserRepository
 	roleRepo    interfaces.RoleRepository
-	kafkaClient *kafka.Client
+	kafkaClient *eventskafka.Producer // Changed to Sarama-based producer
 	logger      *zap.Logger
 	auditLogRecorder domainService.AuditLogRecorder // Added for audit logging
 }
@@ -27,14 +29,14 @@ type UserService struct {
 func NewUserService(
 	userRepo interfaces.UserRepository,
 	roleRepo interfaces.RoleRepository,
-	kafkaClient *kafka.Client,
+	kafkaClient *eventskafka.Producer, // Changed to Sarama-based producer
 	logger *zap.Logger,
 	auditLogRecorder domainService.AuditLogRecorder, // Added
 ) *UserService {
 	return &UserService{
 		userRepo:    userRepo,
 		roleRepo:    roleRepo,
-		kafkaClient: kafkaClient,
+		kafkaClient: kafkaClient, // Assign Sarama-based producer
 		logger:      logger,
 		auditLogRecorder: auditLogRecorder, // Added
 	}
@@ -148,10 +150,11 @@ func (s *UserService) CreateUser(ctx context.Context, req models.CreateUserReque
 		UserID:    newUser.ID.String(),
 		Email:     newUser.Email,
 		Username:  newUser.Username,
-		CreatedAt: newUser.CreatedAt, // This is models.UserCreatedEvent
+		CreatedAt: newUser.CreatedAt,
 	}
 	// Map to new CloudEvent payload UserRegisteredPayload
-	userRegisteredPayload := eventModels.UserRegisteredPayload{
+	// Assuming UserRegisteredPayload is now in models package
+	userRegisteredPayload := models.UserRegisteredPayload{
 		UserID:                newUser.ID.String(),
 		Username:              newUser.Username,
 		Email:                 newUser.Email,
@@ -159,9 +162,19 @@ func (s *UserService) CreateUser(ctx context.Context, req models.CreateUserReque
 		RegistrationTimestamp: newUser.CreatedAt,
 		InitialStatus:         string(models.UserStatusActive), // Assuming admin creation implies active
 	}
+	subjectUserCreated := newUser.ID.String()
+	contentTypeJSON := "application/json"
 	// TODO: Determine correct topic. Using placeholder "auth-events".
 	// Also, confirm if AuthUserRegisteredV1 is the correct type or if an admin-specific one is needed.
-	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthUserRegisteredV1, newUser.ID.String(), userRegisteredPayload); err != nil {
+	// Assuming eventModels.AuthUserRegisteredV1 is now models.AuthUserRegisteredV1
+	if err := s.kafkaClient.PublishCloudEvent( // Corrected s.kafkaProducer to s.kafkaClient
+		ctx,
+		"auth-events", // topic
+		eventskafka.EventType(models.AuthUserRegisteredV1), // eventType
+		&subjectUserCreated, // subject
+		&contentTypeJSON,    // dataContentType
+		userRegisteredPayload, // dataPayload
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for user created/registered", zap.Error(err), zap.String("user_id", newUser.ID.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 		auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -254,10 +267,11 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, req models.U
 		UserID:    user.ID.String(),
 		Email:     user.Email,
 		Username:  user.Username,
-		UpdatedAt: user.UpdatedAt, // This is models.UserUpdatedEvent (old)
+		UpdatedAt: user.UpdatedAt,
 	}
 	// Map to new CloudEvent Payload
-	userProfileUpdatedPayload := eventModels.UserProfileUpdatedPayload{
+	// Assuming UserProfileUpdatedPayload is now in models package
+	userProfileUpdatedPayload := models.UserProfileUpdatedPayload{
 		UserID:        user.ID.String(),
 		UpdatedAt:     user.UpdatedAt,
 		ChangedFields: changedFields, // Captured earlier in the method
@@ -266,9 +280,18 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, req models.U
 		actorIDStr := actorID.String()
 		userProfileUpdatedPayload.ActorID = &actorIDStr
 	}
-
+	subjectUserProfileUpdated := user.ID.String()
+	contentTypeJSON := "application/json"
 	// TODO: Determine correct topic
-	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthUserProfileUpdatedV1, user.ID.String(), userProfileUpdatedPayload); err != nil {
+	// Assuming eventModels.AuthUserProfileUpdatedV1 is now models.AuthUserProfileUpdatedV1
+	if err := s.kafkaClient.PublishCloudEvent( // Corrected s.kafkaProducer to s.kafkaClient
+		ctx,
+		"auth-events", // topic
+		eventskafka.EventType(models.AuthUserProfileUpdatedV1), // eventType
+		&subjectUserProfileUpdated, // subject
+		&contentTypeJSON,           // dataContentType
+		userProfileUpdatedPayload,  // dataPayload
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for user profile updated", zap.Error(err), zap.String("user_id", user.ID.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 		auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -324,9 +347,18 @@ func (s *UserService) DeleteUser(ctx context.Context, id uuid.UUID, actorID *uui
 		actorIDStr := actorID.String()
 		userAccountDeactivatedPayload.ActorID = &actorIDStr
 	}
-
+	subjectUserDeactivated := user.ID.String()
+	contentTypeJSON := "application/json"
 	// TODO: Determine correct topic. Using placeholder "auth-events".
-	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthUserAccountDeactivatedV1, user.ID.String(), userAccountDeactivatedPayload); err != nil {
+	// Assuming eventModels.AuthUserAccountDeactivatedV1 is now models.AuthUserAccountDeactivatedV1
+	if err := s.kafkaClient.PublishCloudEvent( // Corrected s.kafkaProducer to s.kafkaClient
+		ctx,
+		"auth-events", // topic
+		eventskafka.EventType(models.AuthUserAccountDeactivatedV1), // eventType
+		&subjectUserDeactivated, // subject
+		&contentTypeJSON,        // dataContentType
+		userAccountDeactivatedPayload, // dataPayload
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for user deactivated", zap.Error(err), zap.String("user_id", user.ID.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 		auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -370,16 +402,27 @@ func (s *UserService) ChangePassword(ctx context.Context, id uuid.UUID, oldPassw
 
 	// Отправка события об изменении пароля
 		UserID:    user.ID.String(),
-		UpdatedAt: user.UpdatedAt, // This is models.PasswordChangedEvent (old)
+		UpdatedAt: user.UpdatedAt,
 	}
 	// Map to new CloudEvent Payload
-	passwordChangedPayload := eventModels.UserPasswordChangedPayload{
+	// Assuming UserPasswordChangedPayload is now in models package
+	passwordChangedPayload := models.UserPasswordChangedPayload{
 		UserID:    user.ID.String(),
 		ChangedAt: user.UpdatedAt, // user.UpdatedAt was set to time.Now() before this
 		Source:    "user_self_service", // Assuming this ChangePassword is self-service
 	}
+	subjectPasswordChanged := user.ID.String()
+	contentTypeJSON := "application/json"
 	// TODO: Determine correct topic. Using placeholder "auth-events".
-	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthUserPasswordChangedV1, user.ID.String(), passwordChangedPayload); err != nil {
+	// Assuming eventModels.AuthUserPasswordChangedV1 is now models.AuthUserPasswordChangedV1
+	if err := s.kafkaClient.PublishCloudEvent( // Corrected s.kafkaProducer to s.kafkaClient
+		ctx,
+		"auth-events", // topic
+		eventskafka.EventType(models.AuthUserPasswordChangedV1), // eventType
+		&subjectPasswordChanged, // subject
+		&contentTypeJSON,        // dataContentType
+		passwordChangedPayload,  // dataPayload
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for password changed", zap.Error(err), zap.String("user_id", user.ID.String()))
 		// Not returning error for this, but logging it.
 	}
@@ -458,7 +501,8 @@ func (s *UserService) BlockUser(ctx context.Context, id uuid.UUID, actorID *uuid
 	}
 
 	blockedAt := time.Now()
-	userBlockedPayload := eventModels.UserAccountBlockedPayload{
+	// Assuming UserAccountBlockedPayload is now in models package
+	userBlockedPayload := models.UserAccountBlockedPayload{
 		UserID:    id.String(),
 		BlockedAt: blockedAt,
 	}
@@ -469,8 +513,18 @@ func (s *UserService) BlockUser(ctx context.Context, id uuid.UUID, actorID *uuid
 		actorIDStr := actorID.String()
 		userBlockedPayload.ActorID = &actorIDStr
 	}
+	subjectUserBlocked := id.String()
+	contentTypeJSON := "application/json"
 	// TODO: Determine correct topic
-	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthUserAccountBlockedV1, id.String(), userBlockedPayload); err != nil {
+	// Assuming eventModels.AuthUserAccountBlockedV1 is now models.AuthUserAccountBlockedV1
+	if err := s.kafkaClient.PublishCloudEvent( // Corrected s.kafkaProducer to s.kafkaClient
+		ctx,
+		"auth-events", // topic
+		eventskafka.EventType(models.AuthUserAccountBlockedV1), // eventType
+		&subjectUserBlocked, // subject
+		&contentTypeJSON,    // dataContentType
+		userBlockedPayload,  // dataPayload
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for user blocked", zap.Error(err), zap.String("user_id", id.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 		auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -521,7 +575,8 @@ func (s *UserService) UnblockUser(ctx context.Context, id uuid.UUID, actorID *uu
 	}
 
 	unblockedAt := time.Now()
-	userUnblockedPayload := eventModels.UserAccountUnblockedPayload{
+	// Assuming UserAccountUnblockedPayload is now in models package
+	userUnblockedPayload := models.UserAccountUnblockedPayload{
 		UserID:      id.String(),
 		UnblockedAt: unblockedAt,
 	}
@@ -529,8 +584,18 @@ func (s *UserService) UnblockUser(ctx context.Context, id uuid.UUID, actorID *uu
 		actorIDStr := actorID.String()
 		userUnblockedPayload.ActorID = &actorIDStr
 	}
+	subjectUserUnblocked := id.String()
+	contentTypeJSON := "application/json"
 	// TODO: Determine correct topic
-	if err := s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", eventModels.AuthUserAccountUnblockedV1, id.String(), userUnblockedPayload); err != nil {
+	// Assuming eventModels.AuthUserAccountUnblockedV1 is now models.AuthUserAccountUnblockedV1
+	if err := s.kafkaClient.PublishCloudEvent( // Corrected s.kafkaProducer to s.kafkaClient
+		ctx,
+		"auth-events", // topic
+		eventskafka.EventType(models.AuthUserAccountUnblockedV1), // eventType
+		&subjectUserUnblocked, // subject
+		&contentTypeJSON,      // dataContentType
+		userUnblockedPayload,  // dataPayload
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for user unblocked", zap.Error(err), zap.String("user_id", id.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 		auditDetails["warning_cloudevent_publish"] = err.Error()

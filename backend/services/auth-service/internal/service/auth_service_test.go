@@ -16,7 +16,9 @@ import (
 	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
 	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces"
 	domainService "github.com/your-org/auth-service/internal/domain/service"
-	eventMocks "github.com/your-org/auth-service/internal/events/mocks" // Assuming a kafka mock might exist or be needed
+	// eventMocks "github.com/your-org/auth-service/internal/events/mocks" // Assuming a kafka mock might exist or be needed
+	eventskafka "github.com/your-org/auth-service/internal/events/kafka" // For eventskafka.EventType
+	mockproducer "github.com/your-org/auth-service/internal/events/mocks" // Mock producer
 	"go.uber.org/zap"
 )
 
@@ -437,7 +439,7 @@ type AuthServiceTestSuite struct {
 	mockVerificationRepo *MockVerificationCodeRepository
 	mockTokenService     *MockTokenService
 	mockSessionService   *MockSessionService
-	mockKafkaProducer    *eventMocks.MockProducer // Assuming a general Kafka mock
+	mockKafkaProducer    *mockproducer.MockProducer // Use the aliased mock producer
 	mockPasswordService  *MockPasswordService
 	mockTokenMgmtService *MockTokenManagementService
 	mockMfaSecretRepo    *MockMFASecretRepository
@@ -457,7 +459,7 @@ func (s *AuthServiceTestSuite) SetupTest() {
 	s.mockVerificationRepo = new(MockVerificationCodeRepository)
 	s.mockTokenService = new(MockTokenService)
 	s.mockSessionService = new(MockSessionService)
-	s.mockKafkaProducer = new(eventMocks.MockProducer)
+	s.mockKafkaProducer = new(mockproducer.MockProducer) // Use the aliased mock producer
 	s.mockPasswordService = new(MockPasswordService)
 	s.mockTokenMgmtService = new(MockTokenManagementService)
 	s.mockMfaSecretRepo = new(MockMFASecretRepository)
@@ -537,7 +539,17 @@ func (s *AuthServiceTestSuite) TestForgotPassword_Success() {
 	s.mockVerificationRepo.On("Create", ctx, mock.AnythingOfType("*models.VerificationCode")).Return(nil).Once()
 
 	// Mock Kafka producer for CloudEvent
-	s.mockKafkaProducer.On("PublishCloudEvent", ctx, s.cfg.Kafka.Producer.Topic, models.AuthSecurityPasswordResetRequestedV1, user.ID.String(), mock.AnythingOfType("eventModels.PasswordResetRequestedPayload")).Return(nil).Once()
+	subjectUserIDStr := user.ID.String()
+	contentTypeJSON := "application/json"
+	s.mockKafkaProducer.On(
+		"PublishCloudEvent",
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		eventskafka.EventType(models.AuthSecurityPasswordResetRequestedV1),
+		&subjectUserIDStr,
+		&contentTypeJSON,
+		mock.AnythingOfType("models.PasswordResetRequestedPayload"), // Changed from eventModels
+	).Return(nil).Once()
 
 	// Mock AuditLogRecorder
 	s.mockAuditRecorder.On("RecordEvent", ctx, &user.ID, "password_reset_request", models.AuditLogStatusSuccess, &user.ID, models.AuditTargetTypeUser, mock.Anything, ipAddress, mock.AnythingOfType("string")).Once()
@@ -772,8 +784,19 @@ func (s *AuthServiceTestSuite) TestLogin_Success() {
 	s.mockUserRepo.On("UpdateLastLogin", metadataCtx, user.ID, mock.AnythingOfType("time.Time")).Return(nil).Once()
 	s.mockSessionService.On("CreateSession", metadataCtx, user.ID, userAgent, ipAddress).Return(session, nil).Once()
 	s.mockTokenService.On("CreateTokenPairWithSession", metadataCtx, user, session.ID).Return(tokenPair, nil).Once()
-	s.mockKafkaProducer.On("PublishUserEvent", metadataCtx, "user.login", mock.AnythingOfType("models.UserLoginEvent")).Return(nil).Maybe() // Older event
-	s.mockKafkaProducer.On("PublishCloudEvent", metadataCtx, s.cfg.Kafka.Producer.Topic, models.AuthUserLoginSuccessV1, user.ID.String(), mock.AnythingOfType("models.UserLoginSuccessPayload")).Return(nil).Once()
+	// s.mockKafkaProducer.On("PublishUserEvent", metadataCtx, "user.login", mock.AnythingOfType("models.UserLoginEvent")).Return(nil).Maybe() // Older event - REMOVED from auth_service
+
+	subjectUserIDStrLogin := user.ID.String()
+	contentTypeJSONLogin := "application/json"
+	s.mockKafkaProducer.On(
+		"PublishCloudEvent",
+		metadataCtx,
+		s.cfg.Kafka.Producer.Topic,
+		eventskafka.EventType(models.AuthUserLoginSuccessV1),
+		&subjectUserIDStrLogin,
+		&contentTypeJSONLogin,
+		mock.AnythingOfType("models.UserLoginSuccessPayload"),
+	).Return(nil).Once()
 	s.mockAuditRecorder.On("RecordEvent", metadataCtx, &user.ID, "user_login", models.AuditLogStatusSuccess, &user.ID, models.AuditTargetTypeUser, mock.Anything, ipAddress, userAgent).Once()
 
 	_, _, _, err := s.authService.Login(metadataCtx, req) // host param is not used in new signature
@@ -822,7 +845,18 @@ func (s *AuthServiceTestSuite) TestResendVerificationEmail_Success() {
 	s.mockUserRepo.On("FindByEmail", metadataCtx, email).Return(user, nil).Once()
 	s.mockVerificationRepo.On("DeleteByUserIDAndType", metadataCtx, user.ID, models.VerificationCodeTypeEmailVerification).Return(int64(0), nil).Once()
 	s.mockVerificationRepo.On("Create", metadataCtx, mock.AnythingOfType("*models.VerificationCode")).Return(nil).Once()
-	s.mockKafkaProducer.On("PublishCloudEvent", metadataCtx, s.cfg.Kafka.Producer.Topic, eventMocks.AuthSecurityEmailVerificationRequestedV1, user.ID.String(), mock.AnythingOfType("eventModels.EmailVerificationRequestedPayload")).Return(nil).Once()
+
+	subjectUserIDStrResend := user.ID.String()
+	contentTypeJSONResend := "application/json"
+	s.mockKafkaProducer.On(
+		"PublishCloudEvent",
+		metadataCtx,
+		s.cfg.Kafka.Producer.Topic,
+		eventskafka.EventType(models.AuthSecurityEmailVerificationRequestedV1), // Changed from eventMocks
+		&subjectUserIDStrResend,
+		&contentTypeJSONResend,
+		mock.AnythingOfType("models.EmailVerificationRequestedPayload"), // Changed from eventModels
+	).Return(nil).Once()
 	// No direct audit log in ResendVerificationEmail for success, relies on events.
 
 	err := s.authService.ResendVerificationEmail(metadataCtx, email)
@@ -879,7 +913,18 @@ func (s *AuthServiceTestSuite) TestResetPassword_Success() {
 	s.mockUserRepo.On("UpdatePassword", metadataCtx, userID, "newHashedPassword").Return(nil).Once()
 	s.mockVerificationRepo.On("MarkAsUsed", metadataCtx, verificationCode.ID, mock.AnythingOfType("time.Time")).Return(nil).Once()
 	s.mockSessionService.On("DeleteAllUserSessions", metadataCtx, userID, (*uuid.UUID)(nil)).Return(int64(1), nil).Once()
-	s.mockKafkaProducer.On("PublishCloudEvent", metadataCtx, s.cfg.Kafka.Producer.Topic, models.AuthUserPasswordResetV1, userID.String(), mock.AnythingOfType("models.UserPasswordResetPayload")).Return(nil).Once()
+
+	subjectUserIDStrReset := userID.String()
+	contentTypeJSONReset := "application/json"
+	s.mockKafkaProducer.On(
+		"PublishCloudEvent",
+		metadataCtx,
+		s.cfg.Kafka.Producer.Topic,
+		eventskafka.EventType(models.AuthUserPasswordResetV1),
+		&subjectUserIDStrReset,
+		&contentTypeJSONReset,
+		mock.AnythingOfType("models.UserPasswordResetPayload"),
+	).Return(nil).Once()
 	s.mockAuditRecorder.On("RecordEvent", metadataCtx, &userID, "password_reset", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, ipAddress, userAgent).Once()
 
 	err := s.authService.ResetPassword(metadataCtx, plainToken, newPassword)

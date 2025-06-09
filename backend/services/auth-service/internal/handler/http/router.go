@@ -42,6 +42,7 @@ func SetupRouter(
 	roleHandler := NewRoleHandler(roleService, logger) // Assuming RoleService DI is stable
 	adminHandler := NewAdminHandler(logger, userService, roleService, auditLogService) // Instantiate AdminHandler
 	validationHandler := NewValidationHandler(logger, tokenManagementService, authService) // Updated NewValidationHandler call
+	meHandler := NewMeHandler(logger, authService, userService, mfaLogicSvc, apiKeyService, sessionService) // Instantiate MeHandler, added sessionService
 
 
 	// Настройка маршрутов для метрик и проверки работоспособности
@@ -94,33 +95,8 @@ func SetupRouter(
 		// AuthMiddleware might need TokenManagementService if access tokens are RS256
 		protected.Use(middleware.AuthMiddleware(tokenManagementService, logger))
 		{
-			// "/me" specific routes
-			me := protected.Group("/me")
-			{
-				me.GET("", userHandler.GetCurrentUser)      // GET /api/v1/me
-				me.PUT("", userHandler.UpdateUser)          // PUT /api/v1/me
-				me.DELETE("", userHandler.DeleteUser)       // DELETE /api/v1/me
-				me.PUT("/password", userHandler.ChangePassword) // PUT /api/v1/me/password
-				me.GET("/sessions", userHandler.ListSessions) // GET /api/v1/me/sessions
-				me.DELETE("/sessions/:session_id", userHandler.RevokeSession) // DELETE /api/v1/me/sessions/:session_id
-
-				// API Key Management routes for /me
-				apiKeysGroup := me.Group("/api-keys")
-				{
-					apiKeysGroup.GET("", userHandler.ListAPIKeys)
-					apiKeysGroup.POST("", userHandler.CreateAPIKey)
-					apiKeysGroup.DELETE("/:key_id", userHandler.DeleteAPIKey)
-				}
-
-				// 2FA Management routes for /me
-				mfaGroup := me.Group("/2fa")
-				{
-					mfaGroup.POST("/totp/enable", userHandler.Enable2FAInitiate)       // New: Was authHandler.Enable2FA
-					mfaGroup.POST("/totp/verify", userHandler.VerifyAndActivate2FA)    // New: Was authHandler.Verify2FA
-					mfaGroup.POST("/disable", userHandler.Disable2FA)                  // New: Was authHandler.Disable2FA
-					mfaGroup.POST("/backup-codes/regenerate", userHandler.RegenerateBackupCodes) // New
-				}
-			}
+			// Register /me routes using MeHandler
+			RegisterMeRoutes(protected, meHandler)
 
 			// Admin/general user routes (if any user can access /users/:id or if it's admin only)
 			// For now, assuming /users/:id is more general or admin, distinct from /me
