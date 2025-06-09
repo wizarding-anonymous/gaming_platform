@@ -93,8 +93,20 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 		return "", nil, fmt.Errorf("failed to generate API key secret: %w", err)
 	}
 	secretPart := base64.URLEncoding.EncodeToString(secretBytes)
-	prefix := apiKeyPrefix
-	rawAPIKey := prefix + secretPart
+	// prefix := apiKeyPrefix // Original global prefix, not used for raw key anymore
+
+	newKeyID := uuid.NewString() // Generate ID before creating struct for logging
+	auditDetails["key_id_generated"] = newKeyID // Log the ID we intend to create
+
+	// Generate unique prefix using the first 8 characters of the newKeyID
+	if len(newKeyID) < 8 {
+		// This case should ideally not happen with UUIDs, but good practice to check
+		auditDetails["error"] = "failed to generate API key prefix due to short newKeyID"
+		s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_create", models.AuditLogStatusFailure, nil, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent)
+		return "", nil, errors.New("failed to generate API key prefix: newKeyID is too short")
+	}
+	uniquePrefix := fmt.Sprintf("pltfrm_sk_%s", newKeyID[:8])
+	rawAPIKey := uniquePrefix + "_" + secretPart
 
 	hashedSecret, err := s.passwordService.HashPassword(secretPart)
 	if err != nil {
@@ -113,14 +125,13 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 	}
 
 	now := time.Now()
-	newKeyID := uuid.NewString() // Generate ID before creating struct for logging
-	auditDetails["key_id_generated"] = newKeyID // Log the ID we intend to create
+	// newKeyID is already generated above to create uniquePrefix
 
 	storedKey := &entity.APIKey{
 		ID:          newKeyID,
 		UserID:      userID,
 		Name:        name,
-		KeyPrefix:   prefix, // This is the global prefix, not the unique one for the key.
+		KeyPrefix:   uniquePrefix, // Store the unique prefix
 		KeyHash:     hashedSecret,
 		Permissions: permissionsJSON,
 		ExpiresAt:   expiresAt,

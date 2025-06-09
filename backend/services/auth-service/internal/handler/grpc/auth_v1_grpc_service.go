@@ -11,7 +11,7 @@ import (
 	// Import the generated Go code for the auth/v1 proto
 	// The module path used during protoc generation was "github.com/gameplatform/auth-service"
 	// and the go_package option was "github.com/gameplatform/auth-service/gen/go/auth/v1;authv1"
-	authv1 "github.com/gameplatform/auth-service/gen/go/auth/v1" 
+	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/proto/auth/v1"
 )
 
 // AuthV1Service is the gRPC service for auth.v1 operations like HealthCheck and CheckPermission.

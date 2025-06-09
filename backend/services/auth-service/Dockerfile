@@ -40,8 +40,13 @@ COPY configs ./configs
 COPY --from=builder /app/auth-service .
 
 # Установка прав на исполнение
-RUN chmod +x /app/auth-service && \
-    chown -R appuser:appuser /app
+RUN chmod +x /app/auth-service # Keep this for the executable itself
+
+# Copy migration files
+COPY ./migrations /app/migrations
+
+# Set ownership for the entire /app directory, including migrations and executable
+RUN chown -R appuser:appuser /app
 
 # Переключение на непривилегированного пользователя
 USER appuser

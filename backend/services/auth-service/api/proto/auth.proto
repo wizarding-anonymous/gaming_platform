@@ -4,7 +4,7 @@ syntax = "proto3";
 
 package auth;
 
-option go_package = "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/api/proto/auth";
+option go_package = "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/proto/auth/v1;authv1";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";

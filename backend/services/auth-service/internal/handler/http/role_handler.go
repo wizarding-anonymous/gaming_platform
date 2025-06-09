@@ -55,17 +55,18 @@ func (h *RoleHandler) GetRoles(c *gin.Context) {
 func (h *RoleHandler) GetRole(c *gin.Context) {
 	// Получение ID роли из URL
 	roleIDStr := c.Param("id")
-	roleID, err := uuid.Parse(roleIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid role ID",
-			"code":  "invalid_request",
-		})
-		return
-	}
+	// roleID, err := uuid.Parse(roleIDStr) // Changed: roleID is now string
+	// if err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{
+	// 		"error": "Invalid role ID",
+	// 		"code":  "invalid_request",
+	// 	})
+	// 	return
+	// }
+	roleID := roleIDStr // Changed: roleID is now string
 
 	// Получение роли
-	role, err := h.roleService.GetRoleByID(c.Request.Context(), roleID)
+	role, err := h.roleService.GetRoleByID(c.Request.Context(), roleID) // roleID is now string
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -123,14 +124,15 @@ func (h *RoleHandler) CreateRole(c *gin.Context) {
 func (h *RoleHandler) UpdateRole(c *gin.Context) {
 	// Получение ID роли из URL
 	roleIDStr := c.Param("id")
-	roleID, err := uuid.Parse(roleIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid role ID",
-			"code":  "invalid_request",
-		})
-		return
-	}
+	// roleID, err := uuid.Parse(roleIDStr) // Changed: roleID is now string
+	// if err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{
+	// 		"error": "Invalid role ID",
+	// 		"code":  "invalid_request",
+	// 	})
+	// 	return
+	// }
+	roleID := roleIDStr // Changed: roleID is now string
 
 	// Получение данных из запроса
 	var req models.UpdateRoleRequest
@@ -152,7 +154,7 @@ func (h *RoleHandler) UpdateRole(c *gin.Context) {
 	}
 
 	// Обновление роли
-	role, err := h.roleService.UpdateRole(c.Request.Context(), roleID, req)
+	role, err := h.roleService.UpdateRole(c.Request.Context(), roleID, req) // roleID is now string
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -172,17 +174,18 @@ func (h *RoleHandler) UpdateRole(c *gin.Context) {
 func (h *RoleHandler) DeleteRole(c *gin.Context) {
 	// Получение ID роли из URL
 	roleIDStr := c.Param("id")
-	roleID, err := uuid.Parse(roleIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid role ID",
-			"code":  "invalid_request",
-		})
-		return
-	}
+	// roleID, err := uuid.Parse(roleIDStr) // Changed: roleID is now string
+	// if err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{
+	// 		"error": "Invalid role ID",
+	// 		"code":  "invalid_request",
+	// 	})
+	// 	return
+	// }
+	roleID := roleIDStr // Changed: roleID is now string
 
 	// Удаление роли
-	err = h.roleService.DeleteRole(c.Request.Context(), roleID)
+	err = h.roleService.DeleteRole(c.Request.Context(), roleID) // roleID is now string
 	if err != nil {
 		h.handleError(c, err)
 		return
