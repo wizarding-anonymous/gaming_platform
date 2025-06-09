@@ -71,6 +71,37 @@ func AuthMiddleware(tokenService *service.TokenService) gin.HandlerFunc {
 	}
 }
 
+// SecurityHeadersMiddleware sets common HTTP security headers.
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// X-Content-Type-Options
+		c.Header("X-Content-Type-Options", "nosniff")
+
+		// X-Frame-Options
+		c.Header("X-Frame-Options", "DENY")
+
+		// Content-Security-Policy
+		c.Header("Content-Security-Policy", "default-src 'self'")
+
+		// Strict-Transport-Security (HSTS)
+		// Only set HSTS if the request is over HTTPS.
+		// Check c.Request.TLS for direct HTTPS connections.
+		// Check X-Forwarded-Proto if behind a TLS-terminating proxy.
+		isHTTPS := false
+		if c.Request.TLS != nil {
+			isHTTPS = true
+		} else if c.GetHeader("X-Forwarded-Proto") == "https" {
+			isHTTPS = true
+		}
+
+		if isHTTPS {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+
+		c.Next()
+	}
+}
+
 // RoleMiddleware проверяет наличие у пользователя требуемых ролей
 func RoleMiddleware(requiredRoles []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
