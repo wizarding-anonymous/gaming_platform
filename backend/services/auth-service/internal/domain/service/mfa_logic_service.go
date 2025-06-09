@@ -87,6 +87,11 @@ type MFALogicService interface {
 	// 2FA is not active (domainErrors.Err2FANotEnabled, domainErrors.ErrMFANotVerified),
 	// or if repository operations fail.
 	RegenerateBackupCodes(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) (backupCodes []string, err error)
+
+	// GetActiveBackupCodeCount retrieves the number of active (unused) backup codes for a user.
+	// Requires that 2FA (TOTP) is active and verified.
+	// Returns the count of active backup codes, or an error if 2FA is not active/verified or on other failures.
+	GetActiveBackupCodeCount(ctx context.Context, userID uuid.UUID) (count int, err error)
 }
 
 // mfaLogicService implements the MFALogicService interface, providing concrete business logic
@@ -647,6 +652,54 @@ func (s *mfaLogicService) isUserAuthorizedForSensitiveAction(ctx context.Context
 	default:
 		return false, fmt.Errorf("invalid verification method for sensitive action: %s", verificationMethod)
 	}
+}
+
+func (s *mfaLogicService) GetActiveBackupCodeCount(ctx context.Context, userID uuid.UUID) (int, error) {
+	actorAndTargetID := &userID
+	ipAddress, userAgent := getIPAndUserAgentFromCtx(ctx) // Using the new helper
+	var auditDetails = make(map[string]interface{})
+
+	mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, models.MFATypeTOTP)
+	if err != nil {
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			auditDetails["error"] = domainErrors.Err2FANotEnabled.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+			return 0, domainErrors.Err2FANotEnabled
+		}
+		auditDetails["error"] = "failed to fetch mfa secret"
+		auditDetails["details"] = err.Error()
+		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		return 0, fmt.Errorf("error fetching mfa secret: %w", err)
+	}
+	if !mfaSecret.Verified {
+		auditDetails["error"] = domainErrors.ErrMFANotVerified.Error()
+		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		return 0, domainErrors.ErrMFANotVerified
+	}
+
+	count, err := s.mfaBackupCodeRepo.CountActiveByUserID(ctx, userID)
+	if err != nil {
+		auditDetails["error"] = "failed to count active backup codes"
+		auditDetails["details"] = err.Error()
+		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		return 0, fmt.Errorf("failed to count active backup codes: %w", err)
+	}
+
+	auditDetails["active_backup_code_count"] = count
+	s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_get_backup_code_count", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+	return count, nil
+}
+
+// Helper function to extract IP and UserAgent from context metadata
+// This is a simplified example; actual implementation might vary based on how metadata is stored.
+func getIPAndUserAgentFromCtx(ctx context.Context) (string, string) {
+    ipAddress := "unknown"
+    userAgent := "unknown"
+    if md, ok := ctx.Value("metadata").(map[string]string); ok {
+        if val, exists := md["ip-address"]; exists { ipAddress = val }
+        if val, exists := md["user-agent"]; exists { userAgent = val }
+    }
+    return ipAddress, userAgent
 }
 
 
