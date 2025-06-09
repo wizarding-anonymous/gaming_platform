@@ -4,7 +4,7 @@ package service
 import (
 	"context"
 	"time" // Keep for TelegramAuthMaxAge
-	"github.com/your-org/auth-service/internal/domain/models" // For TelegramLoginRequest DTO
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For TelegramLoginRequest DTO
 )
 
 // TelegramVerifierService defines the interface for verifying Telegram authentication data.

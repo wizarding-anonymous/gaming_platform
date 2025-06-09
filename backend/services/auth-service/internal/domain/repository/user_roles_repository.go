@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	// "github.com/your-org/auth-service/internal/domain/models" // Not directly needed for junction table ops
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // Not directly needed for junction table ops
 )
 
 // UserRolesRepository defines the interface for managing the user-role assignments.

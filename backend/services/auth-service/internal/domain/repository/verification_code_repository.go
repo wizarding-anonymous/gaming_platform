@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Ensure this import is present
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // Ensure this import is present
 )
 
 // VerificationCodeRepository defines the interface for interacting with verification code data.

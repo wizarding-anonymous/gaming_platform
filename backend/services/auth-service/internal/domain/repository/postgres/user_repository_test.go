@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/domain/repository/postgres" // Import the package to test
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/postgres" // Import the package to test
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // Driver

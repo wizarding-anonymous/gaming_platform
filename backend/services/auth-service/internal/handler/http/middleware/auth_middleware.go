@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/your-org/auth-service/internal/domain/service" // For TokenManagementService and Claims
-	// httpHandler "github.com/your-org/auth-service/internal/handler/http" // For ErrorResponse, if it's made public
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // For TokenManagementService and Claims
+	// httpHandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http" // For ErrorResponse, if it's made public
 	"go.uber.org/zap"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 )
 
 const (

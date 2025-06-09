@@ -8,12 +8,12 @@ import (
 
 	"errors" // Added for errors.Is
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // For domainErrors.ErrSessionNotFound
-	"github.com/your-org/auth-service/internal/repository/interfaces"
-	// "github.com/your-org/auth-service/internal/utils/kafka" // To be replaced
-	eventskafka "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
-	domainService "github.com/your-org/auth-service/internal/domain/service" // Added for TokenManagementService
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // For domainErrors.ErrSessionNotFound
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka" // To be replaced
+	eventskafka "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Sarama-based producer
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Added for TokenManagementService
 	"go.uber.org/zap"
 )
 

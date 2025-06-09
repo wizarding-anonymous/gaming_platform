@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	domainService "github.com/your-org/auth-service/internal/domain/service"
-	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces"
-	appSecurity "github.com/your-org/auth-service/internal/infrastructure/security"
-	// "github.com/your-org/auth-service/internal/utils/kafka" // Replaced by events/kafka
-	kafkaEvents "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	appSecurity "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka" // Replaced by events/kafka
+	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Sarama-based producer
 	"go.uber.org/zap"
 )
 
@@ -1602,14 +1602,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	domainService "github.com/your-org/auth-service/internal/domain/service"
-	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces"
-	appSecurity "github.com/your-org/auth-service/internal/infrastructure/security"
-	// "github.com/your-org/auth-service/internal/utils/kafka" // Replaced by events/kafka
-	kafkaEvents "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	appSecurity "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka" // Replaced by events/kafka
+	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Sarama-based producer
 	"go.uber.org/zap"
 	"github.com/golang-jwt/jwt/v5" // For OAuth state JWT
 )

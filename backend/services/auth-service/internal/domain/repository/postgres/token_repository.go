@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/your-org/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"go.uber.org/zap"
 )
 

@@ -29,7 +29,7 @@ import (
 
 // Config is a placeholder for the actual application configuration struct.
 // In a real scenario, this would be the struct loaded from config.yaml,
-// like 'config.Config' from 'github.com/your-org/auth-service/internal/config'.
+// like 'config.Config' from 'github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config'.
 type Config struct {
 	AppLogLevel    string
 	HTTPPort       int

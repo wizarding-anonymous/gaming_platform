@@ -15,8 +15,8 @@ import (
 	// Assuming models, eventModels, authDomainModels will be aliased or resolved to a common models package
 	// For now, let's assume a primary 'models' package for event payloads and types,
 	// and AuditLogStatus constants.
-	"github.com/your-org/auth-service/internal/domain/models" // For EventType, Payloads, Audit statuses
-	kafkaPkg "github.com/your-org/auth-service/internal/events/kafka" // Assuming this is the Sarama producer path
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For EventType, Payloads, Audit statuses
+	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Assuming this is the Sarama producer path
 	"github.com/gameplatform/auth-service/internal/domain/repository"
 	"github.com/google/uuid"
 )

@@ -802,7 +802,7 @@ const file_auth_v1_auth_proto_rawDesc = "" +
 	"\x0fCheckPermission\x12\x1f.auth.v1.CheckPermissionRequest\x1a .auth.v1.CheckPermissionResponse\x12E\n" +
 	"\vGetUserInfo\x12\x1b.auth.v1.GetUserInfoRequest\x1a\x19.auth.v1.UserInfoResponse\x12<\n" +
 	"\aGetJWKS\x12\x17.auth.v1.GetJWKSRequest\x1a\x18.auth.v1.GetJWKSResponse\x12C\n" +
-	"\vHealthCheck\x12\x16.google.protobuf.Empty\x1a\x1c.auth.v1.HealthCheckResponseB8Z6github.com/your-org/auth-service/gen/go/auth/v1;authv1b\x06proto3"
+        "\vHealthCheck\x12\x16.google.protobuf.Empty\x1a\x1c.auth.v1.HealthCheckResponseB8Z6github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/gen/go/auth/v1;authv1b\x06proto3"
 
 var (
 	file_auth_v1_auth_proto_rawDescOnce sync.Once

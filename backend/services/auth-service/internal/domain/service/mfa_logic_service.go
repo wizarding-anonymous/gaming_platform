@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/config" // For MFAConfig
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"     // For domain errors like ErrNotFound
-	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces" // Corrected path
-	"github.com/your-org/auth-service/internal/infrastructure/security"
-	kafkaPkg "github.com/your-org/auth-service/internal/events/kafka" // Assuming this is the Sarama producer
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // For MFAConfig
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"     // For domain errors like ErrNotFound
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces" // Corrected path
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
+	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Assuming this is the Sarama producer
 )
 
 // MFALogicService defines the interface for Multi-Factor Authentication (MFA) business logic.

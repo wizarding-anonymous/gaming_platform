@@ -7,7 +7,7 @@ import (
 	// "time" // Not strictly needed here, but often used for pool settings
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/your-org/auth-service/internal/config" // Assuming this is the correct config path
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // Assuming this is the correct config path
 )
 
 // NewDBPool creates a new PostgreSQL connection pool.

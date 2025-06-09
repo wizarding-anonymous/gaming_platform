@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/service"
-	"github.com/your-org/auth-service/internal/utils/validator"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/validator"
 	"go.uber.org/zap"
 )
 

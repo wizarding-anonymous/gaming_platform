@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/domain/repository/interfaces" // Corrected path
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/interfaces" // Corrected path
 )
 
 // SessionRepositoryPostgres implements interfaces.SessionRepository for PostgreSQL.

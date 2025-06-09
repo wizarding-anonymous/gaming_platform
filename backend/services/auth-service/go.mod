@@ -1,6 +1,9 @@
-module github.com/your-org/auth-service
+// File: backend/services/auth-service/go.mod
+module github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service
 
 go 1.21
+
+replace github.com/Shopify/sarama => github.com/IBM/sarama v1.45.2
 
 require (
 	github.com/casbin/casbin/v2 v2.77.2
@@ -25,8 +28,9 @@ require (
 	go.opentelemetry.io/otel/trace v1.21.0
 	go.uber.org/zap v1.26.0
 	golang.org/x/crypto v0.15.0
-	google.golang.org/grpc v1.59.0
-	google.golang.org/protobuf v1.31.0
+        google.golang.org/grpc v1.59.0
+        google.golang.org/protobuf v1.31.0
+       github.com/IBM/sarama v1.45.2 // indirect
 )
 
 require (

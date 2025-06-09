@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/domain/models"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Added for ErrNotFound
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // Added for ErrNotFound
 )
 
 // SessionRepository defines the interface for managing user sessions in the data store.

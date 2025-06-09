@@ -5,7 +5,7 @@ package auth.v1;
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
 
-option go_package = "github.com/your-org/auth-service/gen/go/auth/v1;authv1";
+option go_package = "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/gen/go/auth/v1;authv1";
 
 // AuthService defines the gRPC interface for authentication and authorization.
 service AuthService {

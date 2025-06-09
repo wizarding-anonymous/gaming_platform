@@ -80,14 +80,14 @@ type UserRepository interface {
 // Note: domainErrors.ErrUserNotFound etc. are expected to be defined in the domain/errors package.
 // The import path for models might need to be adjusted based on the actual project structure if "github.com/gameplatform/auth-service" is not correct.
 // I am using "github.com/gameplatform/auth-service/internal/domain/models" as a placeholder, matching the structure of the prompt.
-// If the actual module path is different (e.g. "github.com/your-org/auth-service"), this needs to be used in models and here.
-// Based on previous logs, it seems "github.com/your-org/auth-service" is the actual module path.
+// If the actual module path is different (e.g. "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service"), this needs to be used in models and here.
+// Based on previous logs, it seems "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service" is the actual module path.
 // I will correct the import path for models.
-// Corrected import: "github.com/your-org/auth-service/internal/domain/models"
+// Corrected import: "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 // The provided user_repository.go uses "github.com/gameplatform/auth-service/internal/domain/entity".
 // I will stick to "models" as per my current changes and assume "entity" was the old name.
 // It looks like the original file used "github.com/gameplatform/auth-service/internal/domain/entity".
 // I should use the existing project's module path.
-// The postgres implementation uses "github.com/your-org/auth-service/internal/domain/models".
+// The postgres implementation uses "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models".
 // The interface was using "github.com/gameplatform/auth-service/internal/domain/entity".
-// This is an inconsistency I need to resolve. I will make the interface use "github.com/your-org/auth-service/internal/domain/models".
+// This is an inconsistency I need to resolve. I will make the interface use "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models".

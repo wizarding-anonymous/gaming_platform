@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/utils/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/logger"
 )
 
 // Client представляет клиент для работы с Telegram API

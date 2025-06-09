@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/your-org/auth-service/internal/events/kafka"
-	"github.com/your-org/auth-service/internal/service"
-	"github.com/your-org/auth-service/internal/utils/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/logger"
 )
 
 // AccountEventHandler обрабатывает события, связанные с аккаунтами

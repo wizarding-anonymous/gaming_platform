@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 )
 
 var (

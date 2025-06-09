@@ -6,7 +6,7 @@ import (
 	"context"
 	"runtime/debug"
 
-	"github.com/your-org/auth-service/internal/utils/metrics"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

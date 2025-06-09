@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	// "github.com/your-org/auth-service/internal/domain/models" // Not directly needed for junction table
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	"github.com/your-org/auth-service/internal/domain/repository"
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // Not directly needed for junction table
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 )
 
 // UserRolesRepositoryPostgres implements repository.UserRolesRepository for PostgreSQL.

@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/domain/repository"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 )
 
 // RefreshTokenRepositoryPostgres implements repository.RefreshTokenRepository

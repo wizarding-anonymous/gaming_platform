@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/your-org/auth-service/internal/config"
-	"github.com/your-org/auth-service/internal/utils/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/logger"
 )
 
 // Limiter представляет ограничитель скорости запросов

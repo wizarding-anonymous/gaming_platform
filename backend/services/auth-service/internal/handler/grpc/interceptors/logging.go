@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/utils/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/logger"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

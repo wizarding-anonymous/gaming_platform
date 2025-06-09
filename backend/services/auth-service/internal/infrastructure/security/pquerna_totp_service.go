@@ -8,7 +8,7 @@ import (
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
-	"github.com/your-org/auth-service/internal/domain/service" // Path to the TOTPService interface
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Path to the TOTPService interface
 )
 
 // pquernaTOTPService implements the service.TOTPService using the pquerna/otp library.

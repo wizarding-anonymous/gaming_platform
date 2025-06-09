@@ -9,19 +9,19 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/config"
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/repository/redis"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis"
 	"go.uber.org/zap"
 )
 
-	domainErrors "github.com/your-org/auth-service/internal/domain/errors"
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/repository/redis"
-	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces" // For new repo dependencies
-	domainService "github.com/your-org/auth-service/internal/domain/service"     // For TokenManagementService
-	"github.com/your-org/auth-service/internal/infrastructure/security"      // For HashToken
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces" // For new repo dependencies
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"     // For TokenManagementService
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"      // For HashToken
 	"go.uber.org/zap"
 )
 
