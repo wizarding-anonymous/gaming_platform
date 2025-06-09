@@ -1808,6 +1808,9 @@ func (s *AuthService) HandleOAuthCallback(
 			s.logger.Error("VK token exchange returned empty access token", zap.String("provider", providerName))
 			return nil, nil, errors.New("VK token exchange failed: empty access token")
 		}
+		providerAccessToken := vkTokenResponse.AccessToken
+		// VK does not typically issue refresh tokens in this flow directly.
+		// If it did, it would be: providerRefreshToken := vkTokenResponse.RefreshToken
 		providerData = vkTokenResponse
 
 		// VK Fetch User Info
@@ -1879,6 +1882,9 @@ func (s *AuthService) HandleOAuthCallback(
 			s.logger.Error("OK token exchange returned empty access token", zap.String("provider", providerName))
 			return nil, nil, errors.New("OK token exchange failed: empty access token")
 		}
+		providerAccessToken := okTokenResponse.AccessToken
+		// OK does not typically issue refresh tokens in this flow.
+		// providerRefreshToken := okTokenResponse.RefreshToken (if available)
 		providerData = okTokenResponse
 
 		// OK Fetch User Info
@@ -1955,11 +1961,22 @@ func (s *AuthService) HandleOAuthCallback(
 			user = newUser
 			isNewUser = true
 
+			hashedAccessToken := appSecurity.HashToken(providerAccessToken)
+			var hashedRefreshToken string
+			// Example if a provider had a refresh token, e.g. `providerRefreshToken` variable
+			// if providerRefreshToken != "" {
+			// 	hashedRefreshToken = appSecurity.HashToken(providerRefreshToken)
+			// }
+
 			newExtAccount := &models.ExternalAccount{
-				ID: uuid.New(), UserID: user.ID, Provider: providerName, ExternalUserID: externalUserID,
-				// Store provider tokens (hashed if sensitive) and profile data if needed
-				// AccessTokenHash: hash(providerAccessToken), RefreshTokenHash: hash(providerRefreshToken), TokenExpiresAt: ...,
-				// ProfileData: json.Marshal(rawProviderProfileData),
+				ID:                 uuid.New(),
+				UserID:             user.ID,
+				Provider:           providerName,
+				ExternalUserID:     externalUserID,
+				AccessTokenHash:    hashedAccessToken,
+				RefreshTokenHash:   hashedRefreshToken, // Will be empty if no refresh token
+				// TokenExpiresAt: // TODO: Store expiry time if available from provider response
+				// ProfileData: json.Marshal(rawProviderProfileData), // TODO: Store relevant parts of `providerData`
 			}
 			if errCreateExt := s.externalAccountRepo.Create(ctx, newExtAccount); errCreateExt != nil {
 				return nil, nil, fmt.Errorf("failed to link external OAuth account: %w", errCreateExt)
