@@ -76,7 +76,7 @@ security:
 mfa:
   enabled: true
   totp_issuer_name: "YourPlatform"
-  totp_secret_encryption_key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" # 64 hex chars for 32 bytes
+  totp_encryption_key: "0000000000000000000000000000000000000000000000000000000000000000" # Placeholder 64 hex chars for 32 bytes
   totp_backup_code_count: 10
 
 logging:

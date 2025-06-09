@@ -46,8 +46,8 @@ Auth Service является центральным компонентом пл
 - **Клиент кэша**: go-redis
 - **Очередь сообщений**: Apache Kafka
 - **Клиент Kafka**: confluent-kafka-go
-- **Работа с JWT**: jwt-go
-- **Хеширование паролей**: bcrypt
+- **Работа с JWT**: golang-jwt/jwt/v5
+- **Хеширование паролей**: Argon2id (golang.org/x/crypto/argon2)
 - **Логирование**: Zap
 - **Мониторинг (метрики)**: Prometheus
 - **Трассировка**: OpenTelemetry (OTel)
@@ -170,7 +170,8 @@ docker-compose up -d
 - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` - Параметры подключения к PostgreSQL
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` - Параметры подключения к Redis
 - `KAFKA_BROKERS` - Список брокеров Kafka
-- `JWT_SECRET` - Секретный ключ для подписи JWT
+- `JWT_PRIVATE_KEY_PATH`: Путь к приватному ключу RSA для подписи JWT-токенов.
+- `JWT_PUBLIC_KEY_PATH`: Путь к публичному ключу RSA для проверки JWT-токенов.
 - `ACCESS_TOKEN_TTL` - Время жизни Access Token (в секундах)
 - `REFRESH_TOKEN_TTL` - Время жизни Refresh Token (в секундах)
 - `TELEGRAM_BOT_TOKEN` - Токен Telegram Bot API
@@ -209,8 +210,8 @@ helm upgrade --install auth-service ./deployments/helm/auth-service \
 
 ## Безопасность
 
-- Пароли хранятся в виде хешей bcrypt
-- Все API-эндпоинты защищены JWT-аутентификацией (кроме публичных)
+- Пароли хранятся в виде хешей Argon2id.
+- Все API-эндпоинты защищены JWT-аутентификацией (RS256) (кроме публичных).
 - Поддерживается двухфакторная аутентификация (2FA)
 - Реализована защита от брутфорс-атак через ограничение количества попыток входа
 - Все действия пользователей логируются для аудита безопасности

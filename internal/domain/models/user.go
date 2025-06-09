@@ -1,4 +1,4 @@
-// File: backend/services/auth-service/internal/domain/models/user.go
+// File: internal/domain/models/user.go
 package models
 
 import (
@@ -23,9 +23,8 @@ type User struct {
 	DeletedAt           *time.Time `json:"deleted_at,omitempty" db:"deleted_at"`
 	Roles               []Role     `json:"roles,omitempty" db:"-"` // Loaded separately
 
-	// Fields for Two-Factor Authentication
-	TwoFactorEnabled bool   `json:"two_factor_enabled" db:"-"` // Not directly in users table per spec, managed via mfa_secrets or service logic
-	TwoFactorSecret  string `json:"-" db:"-"`                  // Stores encrypted secret, not directly in users table. Handled by service logic.
+	// TwoFactorEnabled can remain as a transient field, populated by service logic
+	TwoFactorEnabled bool `json:"two_factor_enabled" db:"-"`
 }
 
 // UserStatus defines the possible statuses for a user.
@@ -106,6 +105,7 @@ type UserResponse struct {
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 	Roles               []string   `json:"roles,omitempty"`
+	TwoFactorEnabled    bool       `json:"two_factor_enabled"`
 }
 
 // ToResponse converts a User model to an API UserResponse.
@@ -126,5 +126,16 @@ func (u *User) ToResponse() UserResponse {
 		CreatedAt:           u.CreatedAt,
 		UpdatedAt:           u.UpdatedAt,
 		Roles:               roleNames,
+		TwoFactorEnabled:    u.TwoFactorEnabled, // Include in response
 	}
+}
+
+// Role struct needs to be defined for u.Roles to compile.
+// This is a minimal definition. A more complete one might exist elsewhere
+// or be part of the `auth_microservice_specification_final.md`.
+type Role struct {
+	ID          uuid.UUID `json:"id" db:"id"` // Or string, depending on actual schema
+	Name        string    `json:"name" db:"name"`
+	Description string    `json:"description,omitempty" db:"description"`
+	// Permissions []Permission `json:"permissions,omitempty" db:"-"` // Loaded separately
 }
