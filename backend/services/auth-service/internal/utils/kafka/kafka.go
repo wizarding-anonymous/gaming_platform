@@ -7,9 +7,22 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 )
+
+// CloudEvent defines the structure for CloudEvents v1.0.
+type CloudEvent struct {
+	SpecVersion     string      `json:"specversion"`
+	Type            string      `json:"type"`
+	Source          string      `json:"source"`
+	Subject         *string     `json:"subject,omitempty"`
+	ID              string      `json:"id"`
+	Time            time.Time   `json:"time"`
+	DataContentType *string     `json:"datacontenttype,omitempty"`
+	Data            interface{} `json:"data,omitempty"`
+}
 
 // Producer представляет продюсера Kafka
 type Producer struct {
@@ -69,6 +82,58 @@ func (p *Producer) ProduceJSON(topic string, key string, value interface{}) erro
 	}
 
 	return p.Produce(topic, key, data)
+}
+
+// PublishCloudEvent sends a CloudEvents v1.0 compliant event to Kafka.
+func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventType string, source string, subject *string, eventID string, dataContentType *string, dataPayload interface{}) error {
+	contentType := "application/json"
+	if dataContentType != nil && *dataContentType != "" {
+		contentType = *dataContentType
+	}
+
+	actualEventID := eventID
+	if actualEventID == "" {
+		actualEventID = uuid.NewString() // Generate unique ID if not provided
+	}
+
+	cloudEvent := CloudEvent{
+		SpecVersion:     "1.0",
+		Type:            eventType,
+		Source:          source,
+		Subject:         subject,
+		ID:              actualEventID,
+		Time:            time.Now().UTC(),
+		DataContentType: &contentType, // Pointer to string
+		Data:            dataPayload,
+	}
+
+	eventJSON, err := json.Marshal(cloudEvent)
+	if err != nil {
+		p.logger.Error("Failed to marshal CloudEvent to JSON", zap.Error(err), zap.String("eventType", eventType))
+		return fmt.Errorf("failed to marshal CloudEvent to JSON: %w", err)
+	}
+
+	// Use the existing Produce method to send the message
+	var keyForPartition string
+	if subject != nil && *subject != "" {
+		keyForPartition = *subject
+	} else {
+		keyForPartition = actualEventID // Fallback to eventID for partitioning if subject is nil
+	}
+
+	err = p.Produce(topic, keyForPartition, eventJSON)
+	if err != nil {
+		p.logger.Error("Failed to produce CloudEvent", zap.Error(err), zap.String("eventType", eventType), zap.String("topic", topic))
+		return err // Produce already wraps the error
+	}
+
+	p.logger.Info("CloudEvent published",
+		zap.String("topic", topic),
+		zap.String("eventType", eventType),
+		zap.Stringp("subject", subject),
+		zap.String("eventID", actualEventID),
+	)
+	return nil
 }
 
 // Consumer представляет консьюмера Kafka

@@ -230,7 +230,18 @@ func (s *AuthService) Register(ctx context.Context, req models.CreateUserRequest
 	// Publish CloudEvent
 	// The topic should ideally come from a central config or be a constant for this event stream
 	// Using s.cfg.Kafka.Producer.Topic as per previous patterns for a general topic
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserRegisteredV1, createdUser.ID.String(), userRegisteredPayload); err != nil {
+	subjectUserID := createdUser.ID.String()
+	contentTypeJSON := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserRegisteredV1),
+		"auth-service",
+		&subjectUserID,
+		"", // eventID - producer generates
+		&contentTypeJSON,
+		userRegisteredPayload,
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for user registered", zap.Error(err), zap.String("user_id", createdUser.ID.String()))
 		// Non-critical for registration flow itself, but good to note for audit/monitoring.
 		// The audit log for registration success is recorded later.
@@ -402,15 +413,6 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
 		return nil, nil, "", err // Propagate error
 	}
 
-	event := models.UserLoginEvent{
-		UserID: user.ID.String(), Email: user.Email, IPAddress: ipAddress, UserAgent: userAgent, LoginAt: time.Now(),
-	}
-	if err := s.kafkaClient.PublishUserEvent(ctx, "user.login", event); err != nil {
-		s.logger.Error("Failed to publish user login event", zap.Error(err), zap.String("user_id", user.ID.String()))
-		if auditErrorDetails == nil { auditErrorDetails = make(map[string]interface{}) }
-		auditErrorDetails["warning_kafka_event"] = err.Error()
-	}
-
 	// Publish CloudEvent for login success
 	loginSuccessPayload := models.UserLoginSuccessPayload{
 		UserID:    user.ID.String(),
@@ -420,7 +422,18 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
 		UserAgent: userAgent,
 		LoginType: "password", // This specific method is password-based login
 	}
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserLoginSuccessV1, user.ID.String(), loginSuccessPayload); err != nil {
+	subjectUserIDLogin := user.ID.String()
+	contentTypeJSONLogin := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserLoginSuccessV1),
+		"auth-service",
+		&subjectUserIDLogin,
+		"", // eventID
+		&contentTypeJSONLogin,
+		loginSuccessPayload,
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for user login success", zap.Error(err), zap.String("user_id", user.ID.String()))
 		if auditErrorDetails == nil { auditErrorDetails = make(map[string]interface{}) }
 		auditErrorDetails["warning_cloudevent_publish"] = err.Error() // Add to audit details if publish fails
@@ -509,7 +522,18 @@ func (s *AuthService) CompleteLoginAfter2FA(ctx context.Context, userID uuid.UUI
 		UserAgent: userAgent,
 		LoginType: "password_2fa", // Specific login type
 	}
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserLoginSuccessV1, user.ID.String(), loginSuccessPayload); err != nil {
+	subjectUserID2FA := user.ID.String()
+	contentTypeJSON2FA := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserLoginSuccessV1),
+		"auth-service",
+		&subjectUserID2FA,
+		"", // eventID
+		&contentTypeJSON2FA,
+		loginSuccessPayload,
+	); err != nil {
 		s.logger.Error("CompleteLoginAfter2FA: Failed to publish CloudEvent for user login success (2FA)", zap.Error(err), zap.String("user_id", user.ID.String()))
 		if auditErrorDetails == nil { auditErrorDetails = make(map[string]interface{}) }
 		auditErrorDetails["warning_cloudevent_publish"] = err.Error()
@@ -677,7 +701,18 @@ func (s *AuthService) Logout(ctx context.Context, accessToken, refreshToken stri
 			SessionID: claims.SessionID,
 			LogoutAt:  logoutTime,
 		}
-		if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserLogoutSuccessV1, claims.UserID, logoutPayload); err != nil {
+		subjectUserLogout := claims.UserID
+		contentTypeJSONLogout := "application/json"
+		if err := s.kafkaClient.PublishCloudEvent(
+			ctx,
+			s.cfg.Kafka.Producer.Topic,
+			string(models.AuthUserLogoutSuccessV1),
+			"auth-service",
+			&subjectUserLogout,
+			"", // eventID
+			&contentTypeJSONLogout,
+			logoutPayload,
+		); err != nil {
 			s.logger.Error("Logout: Failed to publish CloudEvent for user logout", zap.Error(err), zap.String("user_id", claims.UserID))
 			if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 			auditDetails["warning_cloudevent_publish_logout"] = err.Error()
@@ -690,7 +725,18 @@ func (s *AuthService) Logout(ctx context.Context, accessToken, refreshToken stri
 			RevokedAt: logoutTime,
 			ActorID:   &claims.UserID, // User initiated their own session revocation
 		}
-		if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthSessionRevokedV1, claims.SessionID, sessionRevokedPayload); err != nil {
+		subjectSessionRevoked := claims.SessionID
+		contentTypeJSONSessionRevoked := "application/json"
+		if err := s.kafkaClient.PublishCloudEvent(
+			ctx,
+			s.cfg.Kafka.Producer.Topic,
+			string(models.AuthSessionRevokedV1),
+			"auth-service",
+			&subjectSessionRevoked,
+			"", // eventID
+			&contentTypeJSONSessionRevoked,
+			sessionRevokedPayload,
+		); err != nil {
 			s.logger.Error("Logout: Failed to publish CloudEvent for session revoked", zap.Error(err), zap.String("session_id", claims.SessionID))
 			if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 			auditDetails["warning_cloudevent_publish_session_revoked"] = err.Error()
@@ -766,7 +812,18 @@ func (s *AuthService) LogoutAll(ctx context.Context, accessToken string) error {
 		RevokedAt: time.Now(),
 		ActorID:   &claims.UserID, // User initiated action
 	}
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserAllSessionsRevokedV1, claims.UserID, allSessionsRevokedPayload); err != nil {
+	subjectUserLogoutAll := claims.UserID
+	contentTypeJSONLogoutAll := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserAllSessionsRevokedV1),
+		"auth-service",
+		&subjectUserLogoutAll,
+		"", // eventID
+		&contentTypeJSONLogoutAll,
+		allSessionsRevokedPayload,
+	); err != nil {
 		s.logger.Error("LogoutAll: Failed to publish CloudEvent for all sessions revoked", zap.Error(err), zap.String("user_id", claims.UserID))
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 		auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -855,7 +912,18 @@ func (s *AuthService) VerifyEmail(ctx context.Context, plainVerificationTokenVal
 		Email:     user.Email,
 		VerifiedAt: now,
 	}
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserEmailVerifiedV1, user.ID.String(), emailVerifiedPayload); err != nil {
+	subjectUserEmailVerified := user.ID.String()
+	contentTypeJSONEmailVerified := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserEmailVerifiedV1),
+		"auth-service",
+		&subjectUserEmailVerified,
+		"", // eventID
+		&contentTypeJSONEmailVerified,
+		emailVerifiedPayload,
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for email verified", zap.Error(err), zap.String("user_id", user.ID.String()))
 		if auditErrorDetails == nil { auditErrorDetails = make(map[string]interface{}) }
 		auditErrorDetails["warning_cloudevent_publish"] = err.Error()
@@ -927,8 +995,20 @@ func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string)
 		Email:       user.Email,
 		RequestedAt: time.Now(),
 	}
+	subjectUserResendVerification := user.ID.String()
+	contentTypeJSONResendVerification := "application/json"
 	// TODO: Determine correct topic. Using placeholder "auth-events".
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, eventModels.AuthSecurityEmailVerificationRequestedV1, user.ID.String(), emailVerificationRequestedPayload); err != nil {
+	// Assuming eventModels.AuthSecurityEmailVerificationRequestedV1 is equivalent to models.AuthSecurityEmailVerificationRequestedV1
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthSecurityEmailVerificationRequestedV1), // Changed from eventModels
+		"auth-service",
+		&subjectUserResendVerification,
+		"", // eventID
+		&contentTypeJSONResendVerification,
+		emailVerificationRequestedPayload,
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for email verification requested", zap.Error(err), zap.String("user_id", user.ID.String()))
 		// Non-critical for flow, log only.
 	}
@@ -1022,8 +1102,20 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 		Email:       user.Email,
 		RequestedAt: time.Now(),
 	}
+	subjectUserForgotPassword := user.ID.String()
+	contentTypeJSONForgotPassword := "application/json"
 	// TODO: Determine correct topic. Using placeholder "auth-events".
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, eventModels.AuthSecurityPasswordResetRequestedV1, user.ID.String(), passwordResetRequestedPayload); err != nil {
+	// Assuming eventModels.AuthSecurityPasswordResetRequestedV1 is equivalent to models.AuthSecurityPasswordResetRequestedV1
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthSecurityPasswordResetRequestedV1), // Changed from eventModels
+		"auth-service",
+		&subjectUserForgotPassword,
+		"", // eventID
+		&contentTypeJSONForgotPassword,
+		passwordResetRequestedPayload,
+	); err != nil {
 		s.logger.Error("ForgotPassword: Failed to publish CloudEvent for password reset requested", zap.Error(err), zap.String("user_id", user.ID.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{})} // Should not be nil if user was found
 		auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -1103,7 +1195,18 @@ func (s *AuthService) ResetPassword(ctx context.Context, plainToken, newPassword
 		UserID:  user.ID.String(),
 		ResetAt: time.Now(), // Or a more precise time if available from user object after update
 	}
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserPasswordResetV1, user.ID.String(), passwordResetPayload); err != nil {
+	subjectUserResetPassword := user.ID.String()
+	contentTypeJSONResetPassword := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserPasswordResetV1),
+		"auth-service",
+		&subjectUserResetPassword,
+		"", // eventID
+		&contentTypeJSONResetPassword,
+		passwordResetPayload,
+	); err != nil {
 		s.logger.Error("ResetPassword: Failed to publish CloudEvent for password reset", zap.Error(err), zap.String("user_id", user.ID.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 		auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -1172,7 +1275,18 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID, oldP
 		ChangedAt: user.UpdatedAt, // Assuming user.UpdatedAt was set during password update
 		Source:    "user_self_service",
 	}
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserPasswordChangedV1, userID.String(), passwordChangedPayload); err != nil {
+	subjectUserChangePassword := userID.String()
+	contentTypeJSONChangePassword := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserPasswordChangedV1),
+		"auth-service",
+		&subjectUserChangePassword,
+		"", // eventID
+		&contentTypeJSONChangePassword,
+		passwordChangedPayload,
+	); err != nil {
 		s.logger.Error("ChangePassword: Failed to publish CloudEvent for password changed", zap.Error(err), zap.String("user_id", userID.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
 		auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -1365,8 +1479,20 @@ func (s *AuthService) LoginWithTelegram(
 				RegistrationTimestamp: regEvent.CreatedAt, // Use the fetched CreatedAt
 				InitialStatus:         string(models.UserStatusActive), // Social logins usually active
 			}
+			subjectUserTelegramRegister := user.ID.String()
+			contentTypeJSONTelegramRegister := "application/json"
 			// TODO: Determine correct topic. Using placeholder "auth-events".
-			if errKafka := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, eventModels.AuthUserRegisteredV1, user.ID.String(), userRegisteredPayload); errKafka != nil {
+			// Assuming eventModels.AuthUserRegisteredV1 is equivalent to models.AuthUserRegisteredV1
+			if errKafka := s.kafkaClient.PublishCloudEvent(
+				ctx,
+				s.cfg.Kafka.Producer.Topic,
+				string(models.AuthUserRegisteredV1), // Changed from eventModels
+				"auth-service",
+				&subjectUserTelegramRegister,
+				"", // eventID
+				&contentTypeJSONTelegramRegister,
+				userRegisteredPayload,
+			); errKafka != nil {
 				s.logger.Error("Failed to publish CloudEvent for Telegram user registered", zap.Error(errKafka), zap.String("user_id", user.ID.String()))
 			}
 
@@ -1436,7 +1562,18 @@ func (s *AuthService) LoginWithTelegram(
 		UserAgent: userAgent,
 		LoginType: "telegram",
 	}
-	if err := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserLoginSuccessV1, user.ID.String(), loginSuccessPayload); err != nil {
+	subjectUserTelegramLogin := user.ID.String()
+	contentTypeJSONTelegramLogin := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserLoginSuccessV1),
+		"auth-service",
+		&subjectUserTelegramLogin,
+		"", // eventID
+		&contentTypeJSONTelegramLogin,
+		loginSuccessPayload,
+	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for Telegram login success", zap.Error(err), zap.String("user_id", user.ID.String()))
 		// Non-critical, but log it.
 	}
@@ -1835,8 +1972,20 @@ func (s *AuthService) HandleOAuthCallback(
 				RegistrationTimestamp: user.CreatedAt,
 				InitialStatus:         string(models.UserStatusActive), // Social logins usually active
 			}
+			subjectUserOAuthRegister := user.ID.String()
+			contentTypeJSONOAuthRegister := "application/json"
 			// TODO: Determine correct topic. Using placeholder "auth-events".
-			if errKafka := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, eventModels.AuthUserRegisteredV1, user.ID.String(), userRegisteredPayload); errKafka != nil {
+			// Assuming eventModels.AuthUserRegisteredV1 is equivalent to models.AuthUserRegisteredV1
+			if errKafka := s.kafkaClient.PublishCloudEvent(
+				ctx,
+				s.cfg.Kafka.Producer.Topic,
+				string(models.AuthUserRegisteredV1), // Changed from eventModels
+				"auth-service",
+				&subjectUserOAuthRegister,
+				"", // eventID
+				&contentTypeJSONOAuthRegister,
+				userRegisteredPayload,
+			); errKafka != nil {
 				s.logger.Error("HandleOAuthCallback: Failed to publish CloudEvent for new OAuth user registered", zap.Error(errKafka), zap.String("user_id", user.ID.String()))
 				// Non-critical for login flow.
 			}
@@ -1877,7 +2026,18 @@ func (s *AuthService) HandleOAuthCallback(
 		UserAgent: userAgent,
 		LoginType: fmt.Sprintf("oauth_%s", providerName), // e.g., "oauth_google"
 	}
-	if errKafka := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, models.AuthUserLoginSuccessV1, user.ID.String(), oauthLoginSuccessPayload); errKafka != nil {
+	subjectUserOAuthLogin := user.ID.String()
+	contentTypeJSONOAuthLogin := "application/json"
+	if errKafka := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		string(models.AuthUserLoginSuccessV1),
+		"auth-service",
+		&subjectUserOAuthLogin,
+		"", // eventID
+		&contentTypeJSONOAuthLogin,
+		oauthLoginSuccessPayload,
+	); errKafka != nil {
 		s.logger.Error("Failed to publish CloudEvent for OAuth login success", zap.Error(errKafka), zap.String("user_id", user.ID.String()), zap.String("provider", providerName))
 		// Non-critical, but log it.
 	}

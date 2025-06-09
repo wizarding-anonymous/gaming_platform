@@ -10,8 +10,29 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/google/uuid"
-	"github.com/your-org/auth-service/internal/events/models" // For CloudEvent and EventType constants
-	"github.com/your-org/auth-service/internal/utils/logger"  // Assuming logger interface is here
+	// "github.com/your-org/auth-service/internal/events/models" // For CloudEvent and EventType constants
+	"github.com/your-org/auth-service/internal/utils/logger" // Assuming logger interface is here
+)
+
+// CloudEvent defines the structure for CloudEvents v1.0.
+type CloudEvent struct {
+	SpecVersion     string      `json:"specversion"`
+	Type            string      `json:"type"`
+	Source          string      `json:"source"`
+	Subject         *string     `json:"subject,omitempty"`
+	ID              string      `json:"id"`
+	Time            time.Time   `json:"time"`
+	DataContentType *string     `json:"datacontenttype,omitempty"`
+	Data            interface{} `json:"data,omitempty"`
+}
+
+// EventType is a string alias for event types.
+type EventType string
+
+// Constants for CloudEvent fields
+const (
+	CloudEventSpecVersion     = "1.0"
+	CloudEventDataContentType = "application/json"
 )
 
 // Producer представляет собой продюсер Kafka для отправки событий CloudEvents
@@ -47,10 +68,11 @@ func NewProducer(brokers []string, logger logger.Logger, cloudEventSource string
 
 // PublishCloudEvent constructs a CloudEvent and sends it to the specified Kafka topic.
 // - topic: The Kafka topic to publish to.
-// - eventType: The CloudEvents type string (e.g., models.AuthUserRegisteredV1).
+// - eventType: The CloudEvents type string (e.g., "com.example.user.created").
 // - subject: An optional subject for the CloudEvent (e.g., user ID, entity ID). Can be empty.
-// - dataPayload: The actual event data struct (e.g., models.UserRegisteredPayload).
-func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventType models.EventType, subject string, dataPayload interface{}) error {
+// - dataContentType: The content type of the data payload (e.g., "application/json").
+// - dataPayload: The actual event data struct.
+func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventType EventType, subject *string, dataContentType *string, dataPayload interface{}) error {
 	eventID, err := uuid.NewRandom()
 	if err != nil {
 		p.logger.Error("Failed to generate CloudEvent ID", "error", err)
@@ -60,12 +82,17 @@ func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventTyp
 	// TODO: Extract traceID from context if available and add as an extension attribute or in header.
 	// traceID, _ := ctx.Value("traceID").(string)
 
-	cloudEvent := models.CloudEvent{
-		SpecVersion:     models.CloudEventSpecVersion,
+	actualDataContentType := CloudEventDataContentType // Default
+	if dataContentType != nil && *dataContentType != "" {
+		actualDataContentType = *dataContentType
+	}
+
+	cloudEvent := CloudEvent{
+		SpecVersion:     CloudEventSpecVersion,
 		ID:              eventID.String(),
 		Source:          p.source, // Use configured source from NewProducer
 		Type:            string(eventType),
-		DataContentType: models.CloudEventDataContentType,
+		DataContentType: &actualDataContentType,
 		Subject:         subject,
 		Time:            time.Now().UTC(),
 		Data:            dataPayload,
@@ -73,13 +100,13 @@ func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventTyp
 
 	eventJSON, err := json.Marshal(cloudEvent)
 	if err != nil {
-		p.logger.Error("Failed to marshal CloudEvent to JSON", "error", err, "eventType", eventType, "eventID", cloudEvent.ID)
+		p.logger.Error("Failed to marshal CloudEvent to JSON", "error", err, "eventType", string(eventType), "eventID", cloudEvent.ID)
 		return fmt.Errorf("failed to marshal CloudEvent to JSON: %w", err)
 	}
 
 	var messageKey sarama.Encoder
-	if subject != "" { // Use subject for partitioning if available and meaningful
-		messageKey = sarama.StringEncoder(subject)
+	if subject != nil && *subject != "" { // Use subject for partitioning if available and meaningful
+		messageKey = sarama.StringEncoder(*subject)
 	}
 	// If no subject, Sarama will use random partitioning unless a key is set.
 	// Alternatively, could use eventID.String() for key if specific partitioning not needed based on subject.
@@ -96,7 +123,7 @@ func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventTyp
 		p.logger.Error("Failed to send CloudEvent to Kafka",
 			"error", err,
 			"topic", topic,
-			"eventType", eventType,
+			"eventType", string(eventType),
 			"eventID", cloudEvent.ID,
 			"subject", subject,
 		)
@@ -105,7 +132,7 @@ func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventTyp
 
 	p.logger.Info("CloudEvent sent to Kafka",
 		"topic", topic,
-		"eventType", eventType,
+		"eventType", string(eventType),
 		"eventID", cloudEvent.ID,
 		"subject", subject,
 		"partition", partition,
