@@ -10,7 +10,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/grpc/interceptors"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
-	pb "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/pkg/api/proto"
+	pb "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"

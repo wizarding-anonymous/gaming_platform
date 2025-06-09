@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package auth.v1;
+package auth.v1; // Используем package из "нового" proto
+
+option go_package = "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1;authv1"; // Рекомендуемый путь
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
-
-option go_package = "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/gen/go/auth/v1;authv1";
 
 // AuthService defines the gRPC interface for authentication and authorization.
 service AuthService {

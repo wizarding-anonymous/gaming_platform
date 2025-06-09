@@ -18,13 +18,14 @@ type RBACService interface {
 	GetUserRoles(ctx context.Context, userID string) ([]*entity.Role, error)
 	GetRolePermissions(ctx context.Context, roleID string) ([]*entity.Permission, error)
 	GetAllUserPermissions(ctx context.Context, userID string) ([]*entity.Permission, error)
-	CheckUserPermission(ctx context.Context, userID string, permissionID string) (bool, error) // permissionID is the string ID like "games.publish"
+	CheckUserPermission(ctx context.Context, userID string, permissionID string, resourceID *string) (bool, error) // permissionID is the string ID like "games.publish"
 }
 
 type rbacServiceImpl struct {
 	userRepo       repository.UserRepository
 	roleRepo       repository.RoleRepository
 	permissionRepo repository.PermissionRepository
+	logger         *zap.Logger // Added logger
 	// No direct need for user_roles or role_permissions repos if RoleRepository handles those relationships.
 }
 
@@ -33,6 +34,7 @@ type RBACServiceConfig struct {
 	UserRepo       repository.UserRepository
 	RoleRepo       repository.RoleRepository
 	PermissionRepo repository.PermissionRepository
+	Logger         *zap.Logger // Added logger
 }
 
 // NewRBACService creates a new rbacServiceImpl.
@@ -41,6 +43,7 @@ func NewRBACService(cfg RBACServiceConfig) RBACService {
 		userRepo:       cfg.UserRepo,
 		roleRepo:       cfg.RoleRepo,
 		permissionRepo: cfg.PermissionRepo,
+		logger:         cfg.Logger.Named("rbac_service"), // Initialize logger
 	}
 }
 
@@ -137,9 +140,29 @@ func (s *rbacServiceImpl) GetAllUserPermissions(ctx context.Context, userID stri
 	return finalPermissions, nil
 }
 
-func (s *rbacServiceImpl) CheckUserPermission(ctx context.Context, userID string, permissionID string) (bool, error) {
+func (s *rbacServiceImpl) CheckUserPermission(ctx context.Context, userID string, permissionID string, resourceID *string) (bool, error) {
+	s.logger.Debug("CheckUserPermission called",
+		zap.String("userID", userID),
+		zap.String("permissionID", permissionID),
+		zap.Stringp("resourceID", resourceID),
+	)
+
+	if resourceID != nil && *resourceID != "" {
+		s.logger.Info("Resource-specific permission check triggered but not fully implemented.",
+			zap.String("userID", userID),
+			zap.String("permissionID", permissionID),
+			zap.Stringp("resourceID", resourceID),
+		)
+		// Placeholder: No permissions for specific resources until implemented.
+		// For safety, default to false. If specific resource logic were added,
+		// it might return true if the user has permission for that specific resource.
+		return false, nil
+	}
+
+	// Existing logic for general permissions (no resourceID)
 	userPermissions, err := s.GetAllUserPermissions(ctx, userID)
 	if err != nil {
+		s.logger.Error("Failed to get user permissions for check", zap.Error(err), zap.String("userID", userID))
 		return false, fmt.Errorf("failed to get user permissions for check: %w", err)
 	}
 
@@ -147,9 +170,8 @@ func (s *rbacServiceImpl) CheckUserPermission(ctx context.Context, userID string
 		if p.ID == permissionID { // Assuming permissionID is the string ID like "games.publish"
 			return true, nil
 		}
-		// Also could check by p.Name if permissionID is meant to be the human-readable name
 	}
-
+	s.logger.Debug("User does not have general permission", zap.String("userID", userID), zap.String("permissionID", permissionID))
 	return false, nil
 }
 

@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	// Import generated protobuf code for auth.v1
-	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/gen/go/auth/v1"
+	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1"
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // If needed by service, or for JWKS example
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For User models if returned by UserService mock

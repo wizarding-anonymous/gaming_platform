@@ -6,7 +6,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256" // Added for HashStringSHA256
 	"encoding/base64"
+	"encoding/hex" // Added for HashStringSHA256
 	"errors"
 	"fmt"
 	"io"
@@ -115,6 +117,13 @@ func GenerateKey(keySize int) ([]byte, error) {
 		return nil, fmt.Errorf("ошибка генерации ключа: %w", err)
 	}
 	return key, nil
+}
+
+// HashStringSHA256 хеширует строку с использованием SHA256 и возвращает hex-строку.
+func HashStringSHA256(data string) string {
+	hasher := sha256.New()
+	hasher.Write([]byte(data))
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 // GenerateKeyString генерирует случайный ключ шифрования указанной длины и возвращает его в виде строки base64

@@ -190,6 +190,38 @@ func (h *AdminHandler) BlockUser(c *gin.Context) {
 		}
 		return
 	}
+
+	adminUserIDRaw, _ := c.Get(middleware.GinContextUserIDKey)
+	var adminIDPtr *uuid.UUID
+	if adminUUID, ok := adminUserIDRaw.(uuid.UUID); ok {
+		adminIDPtr = &adminUUID
+	} else if adminIDStr, ok := adminUserIDRaw.(string); ok {
+		if parsedID, pErr := uuid.Parse(adminIDStr); pErr == nil {
+			adminIDPtr = &parsedID
+		} else {
+			h.logger.Error("Failed to parse adminUserID from context for audit log", zap.Any("adminUserIDRaw", adminUserIDRaw), zap.Error(pErr))
+		}
+	} else if adminUserIDRaw != nil {
+		h.logger.Error("AdminUserID from context is of unexpected type for audit log", zap.Any("adminUserIDRaw", adminUserIDRaw))
+	}
+
+
+	auditDetails := map[string]interface{}{"reason": req.Reason, "target_user_id": targetUserID.String()}
+
+	if errAudit := h.auditLogService.RecordEvent(
+		c.Request.Context(),
+		adminIDPtr,
+		"admin_user_block",
+		models.AuditLogStatusSuccess,
+		targetUserID.String(),
+		models.AuditTargetTypeUser,
+		auditDetails,
+		c.ClientIP(),
+		c.Request.UserAgent(),
+	); errAudit != nil {
+		h.logger.Error("Failed to record audit event for admin_user_block", zap.Error(errAudit), zap.String("target_user_id", targetUserID.String()))
+	}
+
 	SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{"message": "User blocked successfully"})
 }
 
@@ -216,6 +248,37 @@ func (h *AdminHandler) UnblockUser(c *gin.Context) {
 		}
 		return
 	}
+
+	adminUserIDRaw, _ := c.Get(middleware.GinContextUserIDKey)
+	var adminIDPtr *uuid.UUID
+	if adminUUID, ok := adminUserIDRaw.(uuid.UUID); ok {
+		adminIDPtr = &adminUUID
+	} else if adminIDStr, ok := adminUserIDRaw.(string); ok {
+		if parsedID, pErr := uuid.Parse(adminIDStr); pErr == nil {
+			adminIDPtr = &parsedID
+		} else {
+			h.logger.Error("Failed to parse adminUserID from context for audit log", zap.Any("adminUserIDRaw", adminUserIDRaw), zap.Error(pErr))
+		}
+	} else if adminUserIDRaw != nil {
+		h.logger.Error("AdminUserID from context is of unexpected type for audit log", zap.Any("adminUserIDRaw", adminUserIDRaw))
+	}
+
+	auditDetails := map[string]interface{}{"target_user_id": targetUserID.String()}
+
+	if errAudit := h.auditLogService.RecordEvent(
+		c.Request.Context(),
+		adminIDPtr,
+		"admin_user_unblock",
+		models.AuditLogStatusSuccess,
+		targetUserID.String(),
+		models.AuditTargetTypeUser,
+		auditDetails,
+		c.ClientIP(),
+		c.Request.UserAgent(),
+	); errAudit != nil {
+		h.logger.Error("Failed to record audit event for admin_user_unblock", zap.Error(errAudit), zap.String("target_user_id", targetUserID.String()))
+	}
+
 	SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{"message": "User unblocked successfully"})
 }
 
@@ -250,6 +313,40 @@ func (h *AdminHandler) UpdateUserRoles(c *gin.Context) {
 		}
 		return
 	}
+
+	adminUserIDRaw, _ := c.Get(middleware.GinContextUserIDKey)
+	var adminIDPtr *uuid.UUID
+	if adminUUID, ok := adminUserIDRaw.(uuid.UUID); ok {
+		adminIDPtr = &adminUUID
+	} else if adminIDStr, ok := adminUserIDRaw.(string); ok {
+		if parsedID, pErr := uuid.Parse(adminIDStr); pErr == nil {
+			adminIDPtr = &parsedID
+		} else {
+			h.logger.Error("Failed to parse adminUserID from context for audit log", zap.Any("adminUserIDRaw", adminUserIDRaw), zap.Error(pErr))
+		}
+	} else if adminUserIDRaw != nil {
+		h.logger.Error("AdminUserID from context is of unexpected type for audit log", zap.Any("adminUserIDRaw", adminUserIDRaw))
+	}
+
+	auditDetails := map[string]interface{}{
+		"target_user_id": targetUserID.String(),
+		"updated_role_ids": req.RoleIDs,
+	}
+
+	if errAudit := h.auditLogService.RecordEvent(
+		c.Request.Context(),
+		adminIDPtr,
+		"admin_user_roles_update",
+		models.AuditLogStatusSuccess,
+		targetUserID.String(),
+		models.AuditTargetTypeUser,
+		auditDetails,
+		c.ClientIP(),
+		c.Request.UserAgent(),
+	); errAudit != nil {
+		h.logger.Error("Failed to record audit event for admin_user_roles_update", zap.Error(errAudit), zap.String("target_user_id", targetUserID.String()))
+	}
+
 	SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{"message": "User roles updated successfully"})
 }
 

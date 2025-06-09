@@ -11,8 +11,8 @@ import (
 
 	// Import the generated Go code for the auth/v1 proto
 	// The module path used during protoc generation was "github.com/gameplatform/auth-service"
-	// and the go_package option was "github.com/gameplatform/auth-service/gen/go/auth/v1;authv1"
-	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/proto/auth/v1"
+	// and the go_package option was "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1;authv1"
+	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/healthcheck"
 )
 
@@ -258,18 +258,19 @@ func (s *AuthV1Service) GetJWKS(ctx context.Context, req *authv1.GetJWKSRequest)
 
 
 // CheckPermission implements the CheckPermission RPC method.
-// It uses RBACService (which should wrap AuthService) to determine if the user has the specified permission.
+// It uses RBACService to determine if the user has the specified permission.
 func (s *AuthV1Service) CheckPermission(ctx context.Context, req *authv1.CheckPermissionRequest) (*authv1.CheckPermissionResponse, error) {
-	if req == nil || req.UserId == "" || req.PermissionId == "" {
-		s.logger.Warn("CheckPermission called with invalid arguments", zap.Any("request", req))
-		return nil, status.Errorf(codes.InvalidArgument, "user_id and permission_id are required")
+	if req == nil || req.UserId == "" || req.Permission == "" { // Changed req.PermissionId to req.Permission
+		s.logger.Warn("CheckPermission called with invalid arguments",
+			zap.String("user_id", req.GetUserId()),       // Use getters for safety
+			zap.String("permission", req.GetPermission()), // Use getters for safety
+		)
+		return nil, status.Errorf(codes.InvalidArgument, "user_id and permission are required")
 	}
 
-	userID, err := uuid.Parse(req.UserId)
-	if err != nil {
-		s.logger.Warn("CheckPermission called with invalid user_id format", zap.String("user_id", req.UserId), zap.Error(err))
-		return nil, status.Errorf(codes.InvalidArgument, "user_id format is invalid")
-	}
+	// RBACService.CheckUserPermission expects userID as string.
+	// No need to parse userID to uuid.UUID here.
+	userID := req.UserId
 
 	var resourceIDPtr *string
 	if req.ResourceId != "" {
@@ -277,23 +278,17 @@ func (s *AuthV1Service) CheckPermission(ctx context.Context, req *authv1.CheckPe
 	}
 
 	s.logger.Debug("gRPC CheckPermission called",
-		zap.String("user_id", req.UserId),
-		zap.String("permission_id", req.PermissionId),
+		zap.String("user_id", userID),
+		zap.String("permission", req.Permission), // Changed req.PermissionId to req.Permission
 		zap.Stringp("resource_id", resourceIDPtr),
 	)
 
-	// Assuming s.rbacService.CheckUserPermission is compatible with AuthService.CheckUserPermission signature
-	// (uuid.UUID, string, *string)
-	// If rbacService is an alias for AuthService or wraps it directly, this should work.
-	// If RBACService has a different signature (e.g. string for userID), this call would need adjustment
-	// or the rbacService needs to handle the UUID parsing and resourceID pointer logic.
-	// For this task, we assume rbacService directly uses or wraps the AuthService method with the updated signature.
-	hasPerm, err := s.rbacService.CheckUserPermission(ctx, userID, req.PermissionId, resourceIDPtr)
+	hasPerm, err := s.rbacService.CheckUserPermission(ctx, userID, req.Permission, resourceIDPtr) // Changed req.PermissionId to req.Permission, passed userID as string
 	if err != nil {
 		s.logger.Error("RBACService.CheckUserPermission failed",
 			zap.Error(err),
-			zap.String("user_id", req.UserId),
-			zap.String("permission_id", req.PermissionId),
+			zap.String("user_id", userID),
+			zap.String("permission", req.Permission), // Changed req.PermissionId to req.Permission
 			zap.Stringp("resource_id", resourceIDPtr),
 		)
 		return nil, status.Errorf(codes.Internal, "failed to check permission")

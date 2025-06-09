@@ -51,29 +51,39 @@ func NewAuthHandler(
 // RegisterUser handles user registration.
 // POST /api/v1/auth/register
 func (h *AuthHandler) RegisterUser(c *gin.Context) {
-	var req models.CreateUserRequest
+	var req models.RegisterRequest // Changed to models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid request payload", err)
 		return
 	}
 
-	user, verificationTokenPlain, err := h.authService.Register(c.Request.Context(), req)
+	// Assuming AuthService.Register now returns (user *models.User, tokenPair *models.TokenPair, err error)
+	// And the verification token step is handled within AuthService or a subsequent flow.
+	user, tokenPair, err := h.authService.Register(c.Request.Context(), req) // Pass models.RegisterRequest
 	if err != nil {
-		h.logger.Error("RegisterUser: service error", zap.Error(err))
+		h.logger.Error("RegisterUser: service error", zap.Error(err), zap.String("username", req.Username), zap.String("email", req.Email))
 		if errors.Is(err, domainErrors.ErrEmailExists) || errors.Is(err, domainErrors.ErrUsernameExists) {
 			ErrorResponse(c.Writer, h.logger, http.StatusConflict, err.Error(), err)
+		} else if errors.Is(err, domainErrors.ErrInvalidCaptcha) {
+			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, domainErrors.ErrInvalidCaptcha.Error(), err)
+		} else if errors.Is(err, domainErrors.ErrPasswordPwned) {
+			// Using 422 Unprocessable Entity as password itself is valid but pwned
+			ErrorResponse(c.Writer, h.logger, http.StatusUnprocessableEntity, domainErrors.ErrPasswordPwned.Error(), err)
 		} else {
 			ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Failed to register user", err)
 		}
 		return
 	}
-	h.logger.Info("User registration successful, verification token generated (for out-of-band delivery)",
-		zap.String("userID", user.ID.String()),
-		zap.String("verificationToken_DEV_ONLY", verificationTokenPlain),
-	)
+
+	// If registration implies immediate login (which the new Register signature suggests by returning TokenPair)
+	h.logger.Info("User registration successful and logged in", zap.String("userID", user.ID.String()))
+
+	// SetAuthCookies(c, tokenPair.AccessToken, tokenPair.RefreshToken, h.cfg.JWT.AccessTokenTTL, h.cfg.JWT.RefreshTokenTTL)
+
 	SuccessResponse(c.Writer, h.logger, http.StatusCreated, gin.H{
-		"message": "User registered successfully. Please check your email to verify your account.",
+		"message": "User registered successfully.", // Simplified message if tokens are returned
 		"user":    user.ToResponse(),
+		"tokens":  tokenPair, // Return tokens if registration logs the user in
 	})
 }
 

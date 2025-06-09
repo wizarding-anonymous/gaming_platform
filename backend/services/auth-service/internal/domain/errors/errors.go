@@ -52,6 +52,16 @@ var (
 	// Ошибки Telegram
 	ErrTelegramAuth      = errors.New("ошибка аутентификации через Telegram")
 	ErrTelegramIDExists  = errors.New("Telegram ID уже привязан к другому аккаунту")
+
+	// Ошибки OAuth2
+	ErrOAuthProviderNotFound         = errors.New("провайдер OAuth2 не найден или не сконфигурирован")
+	ErrOAuthStateMismatch            = errors.New("некорректный параметр state OAuth2") // For state validation in handler
+	ErrFailedToFetchUserInfoFromProvider = errors.New("не удалось получить информацию о пользователе от провайдера OAuth2")
+	ErrOAuthExchangeCode             = errors.New("ошибка обмена кода авторизации на токен OAuth2") // More specific than generic internal
+
+	// Ошибки CAPTCHA и HIBP
+	ErrInvalidCaptcha                = errors.New("недействительный или отсутствующий токен CAPTCHA")
+	// ErrPasswordPwned is already defined above
 )
 
 // AppError представляет ошибку приложения с дополнительной информацией
