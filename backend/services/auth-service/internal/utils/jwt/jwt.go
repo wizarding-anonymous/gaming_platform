@@ -3,11 +3,12 @@
 package jwt
 
 import (
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 )
@@ -23,6 +24,8 @@ var (
 	ErrInvalidSigningMethod = errors.New("invalid signing method")
 	// ErrInvalidClaims возвращается, когда claims токена недействительны
 	ErrInvalidClaims = errors.New("invalid token claims")
+	// ErrKeyParsingFailed возвращается, когда не удалось разобрать ключ
+	ErrKeyParsingFailed = errors.New("failed to parse RSA key")
 )
 
 // TokenType определяет тип JWT токена
@@ -41,14 +44,28 @@ const (
 
 // TokenManager управляет JWT токенами
 type TokenManager struct {
-	config *config.JWTConfig
+	config     *config.JWTConfig
+	privateKey *rsa.PrivateKey
+	publicKey  *rsa.PublicKey
 }
 
 // NewTokenManager создает новый менеджер токенов
-func NewTokenManager(config *config.JWTConfig) *TokenManager {
-	return &TokenManager{
-		config: config,
+func NewTokenManager(cfg *config.JWTConfig) (*TokenManager, error) {
+	privKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(cfg.RSAPrivateKeyPEM))
+	if err != nil {
+		return nil, fmt.Errorf("%w: private key: %v", ErrKeyParsingFailed, err)
 	}
+
+	pubKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(cfg.RSAPublicKeyPEM))
+	if err != nil {
+		return nil, fmt.Errorf("%w: public key: %v", ErrKeyParsingFailed, err)
+	}
+
+	return &TokenManager{
+		config:     cfg,
+		privateKey: privKey,
+		publicKey:  pubKey,
+	}, nil
 }
 
 // GenerateAccessToken генерирует новый access токен
@@ -58,7 +75,7 @@ func (tm *TokenManager) GenerateAccessToken(user *models.User, sessionID string)
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(tm.config.AccessTokenTTL) * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(tm.config.AccessTokenTTL))), // Updated: AccessTokenTTL is already time.Duration
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    tm.config.Issuer,
 			ID:        sessionID,
@@ -70,8 +87,8 @@ func (tm *TokenManager) GenerateAccessToken(user *models.User, sessionID string)
 		TokenType: string(AccessToken),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(tm.config.Secret))
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	return token.SignedString(tm.privateKey)
 }
 
 // GenerateRefreshToken генерирует новый refresh токен
@@ -81,7 +98,7 @@ func (tm *TokenManager) GenerateRefreshToken(userID, sessionID string) (string, 
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(tm.config.RefreshTokenTTL) * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(tm.config.RefreshTokenTTL))), // Updated: RefreshTokenTTL is already time.Duration
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    tm.config.Issuer,
 			ID:        sessionID,
@@ -90,8 +107,8 @@ func (tm *TokenManager) GenerateRefreshToken(userID, sessionID string) (string, 
 		TokenType: string(RefreshToken),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(tm.config.Secret))
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	return token.SignedString(tm.privateKey)
 }
 
 // GenerateEmailVerificationToken генерирует токен для подтверждения email
@@ -101,7 +118,7 @@ func (tm *TokenManager) GenerateEmailVerificationToken(userID, email string) (st
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(tm.config.EmailVerificationTokenTTL) * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(tm.config.EmailVerificationToken.ExpiresIn)),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    tm.config.Issuer,
 		},
@@ -110,8 +127,8 @@ func (tm *TokenManager) GenerateEmailVerificationToken(userID, email string) (st
 		TokenType: string(EmailVerificationToken),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(tm.config.Secret))
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	return token.SignedString(tm.privateKey)
 }
 
 // GeneratePasswordResetToken генерирует токен для сброса пароля
@@ -121,7 +138,7 @@ func (tm *TokenManager) GeneratePasswordResetToken(userID, email string) (string
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(tm.config.PasswordResetTokenTTL) * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(tm.config.PasswordResetToken.ExpiresIn)),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    tm.config.Issuer,
 		},
@@ -130,18 +147,34 @@ func (tm *TokenManager) GeneratePasswordResetToken(userID, email string) (string
 		TokenType: string(PasswordResetToken),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(tm.config.Secret))
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	return token.SignedString(tm.privateKey)
 }
 
-// ParseToken парсит и проверяет JWT токен
+// getKeyFunc is a helper for ParseToken and specific parse functions
+func (tm *TokenManager) getKeyFunc(token *jwt.Token) (interface{}, error) {
+	if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+		return nil, ErrInvalidSigningMethod
+	}
+	return tm.publicKey, nil
+}
+
+// ParseToken парсит и проверяет JWT токен, пытаясь определить его тип
 func (tm *TokenManager) ParseToken(tokenString string) (jwt.Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrInvalidSigningMethod
-		}
-		return []byte(tm.config.Secret), nil
-	})
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}))
+
+	var allClaims struct {
+		AccessTokenClaims
+		RefreshTokenClaims
+		EmailVerificationClaims
+		PasswordResetClaims
+		TokenType string `json:"token_type"` // Common field to help determine type if others are ambiguous
+	}
+
+	// First parse without specific claims struct to get TokenType if possible
+	// This is a simplified approach; a more robust way might involve trying to parse into each specific claim type.
+	tempClaims := jwt.MapClaims{}
+	token, err := parser.ParseWithClaims(tokenString, tempClaims, tm.getKeyFunc)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
@@ -157,58 +190,52 @@ func (tm *TokenManager) ParseToken(tokenString string) (jwt.Claims, error) {
 		return nil, ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*AccessTokenClaims)
-	if !ok {
-		// Пробуем другие типы claims
-		token, err = jwt.ParseWithClaims(tokenString, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-			return []byte(tm.config.Secret), nil
-		})
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
+	// Determine actual claims type based on "token_type" field or by trying to parse into specific types
+	// For simplicity, this example will try parsing into AccessTokenClaims first, then others.
+	// A more robust solution might inspect tempClaims["token_type"]
+
+	accessTokenClaims := &AccessTokenClaims{}
+	token, err = parser.ParseWithClaims(tokenString, accessTokenClaims, tm.getKeyFunc)
+	if err == nil && token.Valid {
+		if accessTokenClaims.TokenType == string(AccessToken) {
+			return accessTokenClaims, nil
 		}
-		
-		claims, ok := token.Claims.(*RefreshTokenClaims)
-		if !ok {
-			// Пробуем другие типы claims
-			token, err = jwt.ParseWithClaims(tokenString, &EmailVerificationClaims{}, func(token *jwt.Token) (interface{}, error) {
-				return []byte(tm.config.Secret), nil
-			})
-			if err != nil {
-				return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
-			}
-			
-			claims, ok := token.Claims.(*EmailVerificationClaims)
-			if !ok {
-				// Пробуем другие типы claims
-				token, err = jwt.ParseWithClaims(tokenString, &PasswordResetClaims{}, func(token *jwt.Token) (interface{}, error) {
-					return []byte(tm.config.Secret), nil
-				})
-				if err != nil {
-					return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
-				}
-				
-				claims, ok := token.Claims.(*PasswordResetClaims)
-				if !ok {
-					return nil, ErrInvalidClaims
-				}
-				return claims, nil
-			}
-			return claims, nil
-		}
-		return claims, nil
 	}
 
-	return claims, nil
+	refreshTokenClaims := &RefreshTokenClaims{}
+	token, err = parser.ParseWithClaims(tokenString, refreshTokenClaims, tm.getKeyFunc)
+	if err == nil && token.Valid {
+		if refreshTokenClaims.TokenType == string(RefreshToken) {
+			return refreshTokenClaims, nil
+		}
+	}
+
+	emailVerificationClaims := &EmailVerificationClaims{}
+	token, err = parser.ParseWithClaims(tokenString, emailVerificationClaims, tm.getKeyFunc)
+	if err == nil && token.Valid {
+		if emailVerificationClaims.TokenType == string(EmailVerificationToken) {
+			return emailVerificationClaims, nil
+		}
+	}
+
+	passwordResetClaims := &PasswordResetClaims{}
+	token, err = parser.ParseWithClaims(tokenString, passwordResetClaims, tm.getKeyFunc)
+	if err == nil && token.Valid {
+		if passwordResetClaims.TokenType == string(PasswordResetToken) {
+			return passwordResetClaims, nil
+		}
+	}
+
+	// If we reach here, either the token type is unknown or some other error occurred during specific parsing attempts.
+	// The initial generic parse already checked for major errors like expiration or invalid signature.
+	return nil, ErrInvalidClaims // Or return the tempClaims if partial info is acceptable
 }
+
 
 // ParseAccessToken парсит и проверяет access токен
 func (tm *TokenManager) ParseAccessToken(tokenString string) (*AccessTokenClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrInvalidSigningMethod
-		}
-		return []byte(tm.config.Secret), nil
-	})
+	claims := &AccessTokenClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, tm.getKeyFunc)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
@@ -224,13 +251,8 @@ func (tm *TokenManager) ParseAccessToken(tokenString string) (*AccessTokenClaims
 		return nil, ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*AccessTokenClaims)
-	if !ok {
-		return nil, ErrInvalidClaims
-	}
-
 	if claims.TokenType != string(AccessToken) {
-		return nil, fmt.Errorf("%w: invalid token type", ErrInvalidToken)
+		return nil, fmt.Errorf("%w: invalid token type, expected %s, got %s", ErrInvalidToken, AccessToken, claims.TokenType)
 	}
 
 	return claims, nil
@@ -238,12 +260,8 @@ func (tm *TokenManager) ParseAccessToken(tokenString string) (*AccessTokenClaims
 
 // ParseRefreshToken парсит и проверяет refresh токен
 func (tm *TokenManager) ParseRefreshToken(tokenString string) (*RefreshTokenClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrInvalidSigningMethod
-		}
-		return []byte(tm.config.Secret), nil
-	})
+	claims := &RefreshTokenClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, tm.getKeyFunc)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
@@ -259,13 +277,8 @@ func (tm *TokenManager) ParseRefreshToken(tokenString string) (*RefreshTokenClai
 		return nil, ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*RefreshTokenClaims)
-	if !ok {
-		return nil, ErrInvalidClaims
-	}
-
 	if claims.TokenType != string(RefreshToken) {
-		return nil, fmt.Errorf("%w: invalid token type", ErrInvalidToken)
+		return nil, fmt.Errorf("%w: invalid token type, expected %s, got %s", ErrInvalidToken, RefreshToken, claims.TokenType)
 	}
 
 	return claims, nil
@@ -273,12 +286,8 @@ func (tm *TokenManager) ParseRefreshToken(tokenString string) (*RefreshTokenClai
 
 // ParseEmailVerificationToken парсит и проверяет токен подтверждения email
 func (tm *TokenManager) ParseEmailVerificationToken(tokenString string) (*EmailVerificationClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &EmailVerificationClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrInvalidSigningMethod
-		}
-		return []byte(tm.config.Secret), nil
-	})
+	claims := &EmailVerificationClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, tm.getKeyFunc)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
@@ -294,13 +303,8 @@ func (tm *TokenManager) ParseEmailVerificationToken(tokenString string) (*EmailV
 		return nil, ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*EmailVerificationClaims)
-	if !ok {
-		return nil, ErrInvalidClaims
-	}
-
 	if claims.TokenType != string(EmailVerificationToken) {
-		return nil, fmt.Errorf("%w: invalid token type", ErrInvalidToken)
+		return nil, fmt.Errorf("%w: invalid token type, expected %s, got %s", ErrInvalidToken, EmailVerificationToken, claims.TokenType)
 	}
 
 	return claims, nil
@@ -308,12 +312,8 @@ func (tm *TokenManager) ParseEmailVerificationToken(tokenString string) (*EmailV
 
 // ParsePasswordResetToken парсит и проверяет токен сброса пароля
 func (tm *TokenManager) ParsePasswordResetToken(tokenString string) (*PasswordResetClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &PasswordResetClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrInvalidSigningMethod
-		}
-		return []byte(tm.config.Secret), nil
-	})
+	claims := &PasswordResetClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, tm.getKeyFunc)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
@@ -329,13 +329,8 @@ func (tm *TokenManager) ParsePasswordResetToken(tokenString string) (*PasswordRe
 		return nil, ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*PasswordResetClaims)
-	if !ok {
-		return nil, ErrInvalidClaims
-	}
-
 	if claims.TokenType != string(PasswordResetToken) {
-		return nil, fmt.Errorf("%w: invalid token type", ErrInvalidToken)
+		return nil, fmt.Errorf("%w: invalid token type, expected %s, got %s", ErrInvalidToken, PasswordResetToken, claims.TokenType)
 	}
 
 	return claims, nil

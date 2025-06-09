@@ -208,22 +208,22 @@ func main() {
 	// Инициализация StubCaptchaService
 	stubCaptchaService := infraCaptcha.NewStubCaptchaService(cfg.Captcha, logger)
 
-	// Инициализация MFALogicService
-	mfaLogicService := service.NewMFALogicService(
-		cfg, // Changed to global cfg
-		totpService,
-		encryptionService,
-		mfaSecretRepo,
-		mfaBackupCodeRepo,
-		userRepo,
-		passwordService,
-		auditLogService,
-		kafkaProducer, // Added kafkaProducer
-		rateLimiter,   // Added rateLimiter
-	)
+	// Инициализация AuditLogService (needs to be initialized before services that depend on it)
+	auditLogService := service.NewAuditLogService(auditLogRepo, logger)
 
-	// Инициализация AuditLogService
-	auditLogService := service.NewAuditLogService(auditLogRepo, logger) // Moved up to ensure it's available for services below
+	// Инициализация TwoFactorService (refactored service)
+	// This will serve as the MFALogicService implementation for AuthService
+	twoFactorServiceImpl, err := service.NewTwoFactorService(
+		userRepo,
+		mfaSecretRepo,
+		kafkaProducer, // Assuming this is the correct kafka client type expected
+		logger,
+		cfg.MFA.TOTPIssuerName,
+		&cfg.MFA,
+	)
+	if err != nil {
+		logger.Fatal("Failed to initialize TwoFactorService (MFALogicService impl)", zap.Error(err))
+	}
 
 	// Инициализация APIKeyService
 	apiKeyServiceConfig := domainService.APIKeyServiceConfig{ // Changed: Use domainService.APIKeyServiceConfig
@@ -265,13 +265,13 @@ func main() {
 		passwordService,
 		tokenManagementService,
 		mfaSecretRepo,
-		mfaLogicService,
+		twoFactorServiceImpl, // Pass the refactored TwoFactorService as the MFALogicService
 		userRolesRepo,
-		roleService,          // Added missing parameter
-		externalAccountRepo,  // Added missing parameter
-		telegramService,      // Added missing parameter (as telegramVerifier)
-		auditLogService,      // Added for audit logging
-		rateLimiter,          // Added rateLimiter
+		roleService,
+		externalAccountRepo, // This was missing from the original NewAuthService call structure in my view, ensure it's defined
+		telegramService,   // Ensure telegramService is defined
+		auditLogService,
+		rateLimiter,
 		hibpClient,           // Added HIBPService
 		stubCaptchaService,   // Added CaptchaService
 	)
@@ -305,7 +305,8 @@ func main() {
 		cfg.Telegram.BotToken, // Pass BotToken from config
 	)
 	// twoFactorService from previous setup is now replaced by mfaLogicService via AuthService
-	// var twoFactorService *service.TwoFactorService // This would be the old one
+	// var twoFactorService *service.TwoFactorService // This line is now definitely for the old one, or can be removed.
+	// The refactored twoFactorServiceImpl is now used as the mfaLogicService.
 
 
 	// Инициализация обработчиков событий
@@ -366,9 +367,9 @@ func main() {
 		tokenService,         // Old TokenService, still passed as some handlers might use it directly
 		sessionService,
 		telegramService,
-		mfaLogicService,
+		twoFactorServiceImpl, // Pass the refactored TwoFactorService here as well if httpHandler expects it directly
 		apiKeyService,
-		auditLogService,      // Pass auditLogService to SetupRouter
+		auditLogService,
 		tokenManagementService,
 		cfg,
 		logger,

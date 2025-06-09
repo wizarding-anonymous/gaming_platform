@@ -1,5 +1,7 @@
 # API документация Auth Service
 
+**Важно:** Этот документ предоставляет обзор и примеры API. Актуальным и исчерпывающим источником спецификаций API (REST, gRPC, События), моделей данных и логики работы является `auth_microservice_specification_final.md`.
+
 ## Содержание
 
 - [REST API](#rest-api)
@@ -44,12 +46,13 @@ POST /api/v1/auth/register
 Ответ (201 Created):
 ```json
 {
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "email": "user@example.com",
-  "username": "username",
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "Bearer",
-  "expires_in": 900
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "user@example.com",
+    "username": "username",
+    "status": "pending_verification",
+    "message": "Для завершения регистрации проверьте ваш email и перейдите по ссылке для подтверждения."
+  }
 }
 ```
 
@@ -70,8 +73,8 @@ POST /api/v1/auth/login
 Ответ (200 OK):
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", // (Примечание: Токены используют алгоритм RS256. Приведенный пример является иллюстративным для формата JWT.)
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", // (Примечание: Токены используют алгоритм RS256. Приведенный пример является иллюстративным для формата JWT.)
   "token_type": "Bearer",
   "expires_in": 3600
 }
@@ -115,15 +118,15 @@ POST /api/v1/auth/refresh-token
 Запрос:
 ```json
 {
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." // (Примечание: Токены используют алгоритм RS256. Приведенный пример является иллюстративным для формата JWT.)
 }
 ```
 
 Ответ (200 OK):
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", // (Примечание: Токены используют алгоритм RS256. Приведенный пример является иллюстративным для формата JWT.)
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", // (Примечание: Токены используют алгоритм RS256. Приведенный пример является иллюстративным для формата JWT.)
   "token_type": "Bearer",
   "expires_in": 3600
 }
@@ -768,8 +771,8 @@ message Role {
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", // (Примечание: Токены используют алгоритм RS256. Приведенный пример является иллюстративным для формата JWT.)
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", // (Примечание: Токены используют алгоритм RS256. Приведенный пример является иллюстративным для формата JWT.)
   "token_type": "Bearer",
   "expires_in": 3600
 }

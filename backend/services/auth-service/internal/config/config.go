@@ -84,18 +84,16 @@ type TokenConfig struct {
 }
 
 type JWTConfig struct {
-	SecretKey              string        `mapstructure:"secret_key"`
 	AccessTokenTTL         time.Duration `mapstructure:"access_token_ttl"`
 	RefreshTokenTTL        time.Duration `mapstructure:"refresh_token_ttl"`
 	EmailVerificationToken TokenConfig   `mapstructure:"email_verification_token"`
 	PasswordResetToken     TokenConfig   `mapstructure:"password_reset_token"`
-	RSAPrivateKeyPath      string        `mapstructure:"rsa_private_key_path"`
-	RSAPublicKeyPath       string        `mapstructure:"rsa_public_key_path"`
+	RSAPrivateKeyPEM       string        `mapstructure:"rsa_private_key_pem"`
+	RSAPublicKeyPEM        string        `mapstructure:"rsa_public_key_pem"`
 	JWKSKeyID              string        `mapstructure:"jwks_key_id"`
 	Issuer                 string        `mapstructure:"issuer"`
 	Audience               string        `mapstructure:"audience"`
 	RefreshTokenByteLength uint32        `mapstructure:"refresh_token_byte_length"`
-	HMACSecretKey          string        `mapstructure:"hmac_secret_key"`
 	OAuthStateCookieTTL    time.Duration `mapstructure:"oauth_state_cookie_ttl"`
 	OAuthStateSecret       string        `mapstructure:"oauth_state_secret"`
 	MFAChallengeTokenTTL   time.Duration `mapstructure:"mfa_challenge_token_ttl"`
@@ -140,10 +138,10 @@ type SecurityConfig struct {
 }
 
 type MFAConfig struct {
-	Enabled                 bool   `mapstructure:"enabled"`
-	TOTPIssuerName          string `mapstructure:"totp_issuer_name"`
-	TOTPSecretEncryptionKey string `mapstructure:"totp_secret_encryption_key"`
-	TOTPBackupCodeCount     int    `mapstructure:"totp_backup_code_count"`
+	Enabled             bool   `mapstructure:"enabled"`
+	TOTPIssuerName      string `mapstructure:"totp_issuer_name"`
+	TOTPEncryptionKey   string `mapstructure:"totp_encryption_key"` // Hex-encoded 32-byte key
+	TOTPBackupCodeCount int    `mapstructure:"totp_backup_code_count"`
 }
 
 type LoggingConfig struct {
