@@ -154,6 +154,86 @@ type SessionDeactivatedEvent struct {
 	DeactivatedAt time.Time `json:"deactivated_at"`
 }
 
+// --- User Security Event Payloads ---
+
+// UserLoginFailedPayload is published when a user login attempt fails.
+type UserLoginFailedPayload struct {
+	UserID         string    `json:"user_id,omitempty"` // Optional: might not be known if lookup failed by identifier
+	AttemptedAt    time.Time `json:"attempted_at"`
+	IPAddress      string    `json:"ip_address,omitempty"`
+	UserAgent      string    `json:"user_agent,omitempty"`
+	Reason         string    `json:"reason"` // e.g., "user_not_found", "invalid_credentials", "mfa_required", "mfa_failed"
+	FailedAttempts int       `json:"failed_attempts,omitempty"` // Current failed attempts count if applicable
+}
+
+// UserAccountLockedPayload is published when a user account is locked due to excessive failed login attempts.
+type UserAccountLockedPayload struct {
+	UserID         string     `json:"user_id"`
+	LockedAt       time.Time  `json:"locked_at"`
+	LockoutUntil   *time.Time `json:"lockout_until,omitempty"` // When the lockout automatically expires
+	TriggeringIP   string     `json:"triggering_ip,omitempty"`
+	TriggeringUA   string     `json:"triggering_ua,omitempty"`
+	FailedAttempts int        `json:"failed_attempts"` // Number of failed attempts that triggered the lockout
+}
+
+
+// --- CloudEvent Types ---
+// These constants define the `type` attribute for CloudEvents.
+// Format: {service_name}.{aggregate_type}.{event_name}.{version}
+// Example: auth.user.registered.v1
+
+// User Lifecycle Events
+const (
+	AuthUserRegisteredV1   = "auth.user.registered.v1"
+	AuthUserEmailVerifiedV1 = "auth.user.email_verified.v1"
+	// AuthUserDeletedV1 is usually an event from Account service, not published by Auth.
+	// Auth service might consume account.user.deleted.v1
+)
+
+// Security Events
+const (
+	AuthUserLoginSuccessV1             = "auth.user.login_success.v1"
+	AuthUserLoginFailedV1              = "auth.user.login_failed.v1" // New
+	AuthUserAccountLockedV1            = "auth.user.account_locked.v1" // New
+	AuthUserLogoutSuccessV1            = "auth.user.logout_success.v1"
+	AuthUserAllSessionsRevokedV1       = "auth.user.all_sessions_revoked.v1"
+	AuthUserPasswordChangedV1          = "auth.user.password_changed.v1"
+	AuthUserPasswordResetV1            = "auth.user.password_reset.v1"
+	AuthSecurityEmailVerificationRequestedV1 = "auth.security.email_verification_requested.v1"
+	AuthSecurityPasswordResetRequestedV1 = "auth.security.password_reset_requested.v1"
+	// MFA Events
+	AuthUser2FAEnabledV1  = "auth.user.2fa_enabled.v1"
+	AuthUser2FADisabledV1 = "auth.user.2fa_disabled.v1"
+	AuthUser2FABackupCodesGeneratedV1 = "auth.user.2fa_backup_codes_generated.v1"
+	// API Key Events
+	AuthUserAPIKeyCreatedV1 = "auth.user.api_key_created.v1"
+	AuthUserAPIKeyDeletedV1 = "auth.user.api_key_deleted.v1"
+)
+
+// Session Events
+const (
+	AuthSessionCreatedV1 = "auth.session.created.v1"
+	AuthSessionRefreshedV1 = "auth.session.refreshed.v1" // If refresh token rotation creates a new session logical record or for audit
+	AuthSessionRevokedV1 = "auth.session.revoked.v1"
+)
+
+// Role & Permission Events (can be expanded)
+const (
+	AuthRoleCreatedV1 = "auth.rbac.role_created.v1"
+	AuthRoleUpdatedV1 = "auth.rbac.role_updated.v1"
+	AuthRoleDeletedV1 = "auth.rbac.role_deleted.v1"
+	AuthUserRoleAssignedV1 = "auth.rbac.user_role_assigned.v1"
+	AuthUserRoleRevokedV1  = "auth.rbac.user_role_revoked.v1"
+	// AuthPermissionAssignedToRoleV1 = "auth.rbac.permission_assigned_to_role.v1"
+	// AuthPermissionRevokedFromRoleV1 = "auth.rbac.permission_revoked_from_role.v1"
+)
+
+// External Account Events
+const (
+	AuthExternalAccountLinkedV1   = "auth.external_account.linked.v1"
+	AuthExternalAccountUnlinkedV1 = "auth.external_account.unlinked.v1"
+)
+
 // AllSessionsDeactivatedEvent is published when all sessions for a user are deactivated (deleted).
 type AllSessionsDeactivatedEvent struct {
 	UserID        string    `json:"user_id"`

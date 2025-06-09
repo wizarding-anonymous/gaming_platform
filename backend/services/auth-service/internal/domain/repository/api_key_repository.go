@@ -54,6 +54,10 @@ type APIKeyRepository interface {
 
 	// Delete removes an API key from the database by its ID.
 	Delete(ctx context.Context, id uuid.UUID) error
+
+	// DeleteByUserID removes all API keys for a specific user ID.
+	// Returns the number of keys deleted and an error if any.
+	DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
 	
 	// DeleteExpiredAndRevoked removes API keys that are past their expires_at
 	// or have been revoked for a certain period.

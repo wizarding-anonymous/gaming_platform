@@ -19,9 +19,13 @@ type AuthLogicService interface {
 	LoginUser(ctx context.Context, loginIdentifier, password string, deviceInfo map[string]string) (*entity.User, string, string, error) // User, AccessToken, RefreshToken (value), error
 	LoginWithTelegram(ctx context.Context, telegramData TelegramAuthData, ipAddress string, userAgent string, clientDeviceInfo map[string]interface{}) (*entity.User, string, string, error)
 	LogoutUser(ctx context.Context, sessionID string, refreshTokenValue *string) error
-	LogoutAllUserSessions(ctx context.Context, userID string) error
+	LogoutAllUserSessions(ctx context.Context, userID string) error // Note: userID is string here, AuthService uses uuid.UUID
 	ValidateAndParseToken(ctx context.Context, tokenString string) (*Claims, error) // Re-exposing from TokenService or calling it
 	// Other methods like RequestPasswordReset, ResetPassword, VerifyEmail etc. would go here
+
+	// System-level operations
+	SystemDeleteUser(ctx context.Context, userID uuid.UUID, adminUserID *uuid.UUID, reason *string) error
+	SystemLogoutAllUserSessions(ctx context.Context, userID uuid.UUID, adminUserID *uuid.UUID, reason *string) error
 }
 
 // SimplifiedConfigForAuthLogic is a placeholder for a more complete config struct.

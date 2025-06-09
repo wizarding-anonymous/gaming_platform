@@ -22,6 +22,21 @@ type Config struct {
 	Telemetry      TelemetryConfig              `mapstructure:"telemetry"`
 	OAuthProviders map[string]OAuthProviderConfig `mapstructure:"oauth_providers"`
 	Telegram       TelegramConfig               `mapstructure:"telegram"`
+	HIBP           HIBPConfig                   `mapstructure:"hibp"`
+	Captcha        CaptchaConfig                `mapstructure:"captcha"`
+}
+
+type HIBPConfig struct {
+	Enabled   bool   `mapstructure:"enabled" env-default:"false"`
+	UserAgent string `mapstructure:"user_agent" env-default:"AuthServiceHIBPChecker/1.0"`
+}
+
+type CaptchaConfig struct {
+	Enabled   bool   `mapstructure:"enabled" env-default:"false"`
+	Provider  string `mapstructure:"provider" env-default:""` // e.g., "recaptcha_v2", "hcaptcha", "yandex_smartcaptcha"
+	SecretKey string `mapstructure:"secret_key" env-default:""`
+	// SiteKey string `mapstructure:"site_key"` // SiteKey is usually for client-side, might not be needed in backend config
+	// VerifyURL string `mapstructure:"verify_url"` // Could be part of provider-specific logic
 }
 
 type ServerConfig struct {

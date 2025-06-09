@@ -160,7 +160,11 @@ func RegisterMeRoutes(router *gin.RouterGroup, meHandler *MeHandler /*, authMidd
 		me.GET("/2fa/backup-codes", meHandler.GetBackupCodeStatus)
 		me.GET("/sessions", meHandler.ListMySessions)                // Added ListMySessions route
 		me.DELETE("/sessions/:session_id", meHandler.DeleteMySession) // Added DeleteMySession route
-		// ... API key routes etc.
+
+		// API Key Routes
+		me.GET("/api-keys", meHandler.GetMyAPIKeys)
+		me.POST("/api-keys", meHandler.CreateMyAPIKey)
+		me.DELETE("/api-keys/:key_id", meHandler.DeleteMyAPIKey)
 	}
 }
 
@@ -581,6 +585,185 @@ func (h *MeHandler) DeleteMySession(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// --- API Key Management Handlers ---
+
+// CreateAPIKeyRequest defines the structure for creating a new API key.
+type CreateAPIKeyRequest struct {
+	Name      string     `json:"name" binding:"required,max=255"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"` // Optional expiration date
+}
+
+// APIKeyResponse defines the structure for an API key returned to the user.
+// The Key field is only populated on creation.
+type APIKeyResponse struct {
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Key        *string    `json:"key,omitempty"` // Only present on creation
+	KeyPrefix  string     `json:"key_prefix"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	// UserID     string     `json:"user_id"` // Typically not included in response to self
+}
+
+// ListAPIKeysResponse defines the structure for a list of API keys.
+type ListAPIKeysResponse struct {
+	Data []APIKeyResponse `json:"data"`
+}
+
+// GetMyAPIKeys handles fetching all API keys for the authenticated user.
+// GET /me/api-keys
+func (h *MeHandler) GetMyAPIKeys(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := h.logger.With(zap.String("handler", "GetMyAPIKeys"))
+
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		logger.Error("UserID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: User ID not found"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		logger.Error("Failed to parse userID from context", zap.String("rawUserID", userIDStr.(string)), zap.Error(err))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: Invalid User ID format"})
+		return
+	}
+	logger = logger.With(zap.String("userID", userID.String()))
+
+	keys, err := h.apiKeySvc.GetKeysByUserID(ctx, userID)
+	if err != nil {
+		logger.Error("Failed to get API keys by user ID", zap.Error(err))
+		// Specific error handling can be added here if apiKeySvc returns distinct error types
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API keys"})
+		return
+	}
+
+	responseKeys := make([]APIKeyResponse, len(keys))
+	for i, key := range keys {
+		responseKeys[i] = APIKeyResponse{
+			ID:         key.ID.String(),
+			Name:       key.Name,
+			KeyPrefix:  key.KeyPrefix,
+			CreatedAt:  key.CreatedAt,
+			ExpiresAt:  key.ExpiresAt,
+			LastUsedAt: key.LastUsedAt,
+			// Key: nil, // Key is never returned on list
+		}
+	}
+
+	logger.Info("Successfully retrieved API keys", zap.Int("count", len(responseKeys)))
+	c.JSON(http.StatusOK, ListAPIKeysResponse{Data: responseKeys})
+}
+
+// CreateMyAPIKey handles creating a new API key for the authenticated user.
+// POST /me/api-keys
+func (h *MeHandler) CreateMyAPIKey(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := h.logger.With(zap.String("handler", "CreateMyAPIKey"))
+
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		logger.Error("UserID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: User ID not found"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		logger.Error("Failed to parse userID from context", zap.String("rawUserID", userIDStr.(string)), zap.Error(err))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: Invalid User ID format"})
+		return
+	}
+	logger = logger.With(zap.String("userID", userID.String()))
+
+	var req CreateAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Failed to bind request JSON", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload: " + err.Error()})
+		return
+	}
+
+	// Optional: Validate ExpiresAt is in the future if provided
+	if req.ExpiresAt != nil && req.ExpiresAt.Before(time.Now()) {
+		logger.Warn("Expiration date is in the past", zap.Timep("expires_at", req.ExpiresAt))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Expiration date cannot be in the past"})
+		return
+	}
+
+	createdKey, fullKeyValue, err := h.apiKeySvc.CreateKey(ctx, userID, req.Name, req.ExpiresAt)
+	if err != nil {
+		logger.Error("Failed to create API key", zap.Error(err))
+		if errors.Is(err, domainErrors.ErrLimitExceeded) { // Example of specific domain error
+			c.JSON(http.StatusConflict, gin.H{"error": "API key limit reached"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create API key"})
+		return
+	}
+	logger = logger.With(zap.String("apiKeyID", createdKey.ID.String()))
+
+	response := APIKeyResponse{
+		ID:         createdKey.ID.String(),
+		Name:       createdKey.Name,
+		Key:        &fullKeyValue, // Full key is returned ONLY on creation
+		KeyPrefix:  createdKey.KeyPrefix,
+		CreatedAt:  createdKey.CreatedAt,
+		ExpiresAt:  createdKey.ExpiresAt,
+		LastUsedAt: createdKey.LastUsedAt,
+	}
+
+	logger.Info("Successfully created API key")
+	c.JSON(http.StatusCreated, response)
+}
+
+// DeleteMyAPIKey handles deleting a specific API key for the authenticated user.
+// DELETE /me/api-keys/:key_id
+func (h *MeHandler) DeleteMyAPIKey(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := h.logger.With(zap.String("handler", "DeleteMyAPIKey"))
+
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		logger.Error("UserID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: User ID not found"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		logger.Error("Failed to parse userID from context", zap.String("rawUserID", userIDStr.(string)), zap.Error(err))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: Invalid User ID format"})
+		return
+	}
+	logger = logger.With(zap.String("userID", userID.String()))
+
+	keyIDStr := c.Param("key_id")
+	keyID, err := uuid.Parse(keyIDStr)
+	if err != nil {
+		logger.Error("Failed to parse key_id from path", zap.String("rawKeyID", keyIDStr), zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid API key ID format"})
+		return
+	}
+	logger = logger.With(zap.String("apiKeyID", keyID.String()))
+
+	err = h.apiKeySvc.DeleteKey(ctx, userID, keyID)
+	if err != nil {
+		logger.Error("Failed to delete API key", zap.Error(err))
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found or does not belong to user"})
+			return
+		}
+		// If apiKeySvc.DeleteKey checks ownership and could return ErrForbidden:
+		if errors.Is(err, domainErrors.ErrForbidden) {
+			 c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: API key does not belong to user"})
+			 return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete API key"})
+		return
+	}
+
+	logger.Info("Successfully deleted API key")
+	c.Status(http.StatusNoContent)
+}
 
 // Need to import "strings" for error checking example
 import (

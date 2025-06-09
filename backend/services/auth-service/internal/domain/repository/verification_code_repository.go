@@ -52,6 +52,10 @@ type VerificationCodeRepository interface {
 	// Returns the number of codes deleted and an error if any.
 	DeleteByUserIDAndType(ctx context.Context, userID uuid.UUID, codeType models.VerificationCodeType) (int64, error)
 
+	// DeleteAllByUserID removes all verification codes for a specific user ID, regardless of type.
+	// Returns the number of codes deleted and an error if any.
+	DeleteAllByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
+
 	// DeleteExpired removes all verification codes from the database that have passed their `ExpiresAt` time.
 	// This is a cleanup task that should be run periodically to prevent accumulation of stale data.
 	// Returns the number of codes deleted and an error if any.

@@ -92,7 +92,7 @@ func (h *AdminEventsHandler) HandleAdminUserForceLogout(ctx context.Context, eve
 	// Placeholder for: err = h.authService.SystemLogoutAllUserSessions(ctx, targetUserID, payload.AdminUserID, payload.Reason)
 	// For now, directly call session and token service/repo methods as a placeholder.
 	// This logic should be encapsulated in AuthService.
-	if err := h.authService.SystemLogoutAllUserSessions(ctx, targetUserID, payload.AdminUserID, payload.Reason); err != nil {
+	if err := h.authService.SystemLogoutAllUserSessions(ctx, targetUserID, adminActorID, payload.Reason); err != nil {
 		h.logger.Error("Failed to force logout user sessions based on event", zap.Error(err), zap.String("targetUserID", targetUserID.String()), zap.String("eventID", event.ID))
 		// Depending on the error, may or may not NACK
 	}
@@ -149,12 +149,12 @@ func (h *AdminEventsHandler) HandleAdminUserBlock(ctx context.Context, event kaf
 		h.logger.Error("Failed to update user status to blocked from event", zap.Error(err), zap.String("targetUserID", targetUserID.String()), zap.String("eventID", event.ID))
 	}
 	// Also revoke sessions
-	// Placeholder: err = h.authService.SystemLogoutAllUserSessions(ctx, targetUserID, payload.AdminUserID, "user_blocked_event")
-	if err := h.authService.SystemLogoutAllUserSessions(ctx, targetUserID, payload.AdminUserID, "user_blocked_via_event"); err != nil {
+	blockReason := "user_blocked_via_event"
+	if err := h.authService.SystemLogoutAllUserSessions(ctx, targetUserID, adminActorID, &blockReason); err != nil {
 		h.logger.Error("Failed to force logout user sessions during block event", zap.Error(err), zap.String("targetUserID", targetUserID.String()), zap.String("eventID", event.ID))
 	}
 
-	auditDetails := map[string]interface{}{"event_payload": payload, "reason": "admin_user_block_event", "cloud_event_id": event.ID}
+	auditDetails := map[string]interface{}{"event_payload": payload, "reason": blockReason, "cloud_event_id": event.ID}
 	h.auditRecorder.RecordEvent(ctx, adminActorID, "admin_user_block_event_consumed", models.AuditLogStatusSuccess, &targetUserID, models.AuditTargetTypeUser, auditDetails, "", "")
 	return nil
 }

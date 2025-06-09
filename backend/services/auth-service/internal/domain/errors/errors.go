@@ -22,6 +22,7 @@ var (
 	ErrExpiredToken       = errors.New("истекший токен")
 	ErrRevokedToken       = errors.New("отозванный токен")
 	ErrInvalidRefreshToken = errors.New("недействительный refresh токен")
+	ErrPasswordPwned     = errors.New("пароль скомпрометирован и не может быть использован")
 	
 	// Ошибки пользователей
 	ErrUserNotFound      = errors.New("пользователь не найден")
