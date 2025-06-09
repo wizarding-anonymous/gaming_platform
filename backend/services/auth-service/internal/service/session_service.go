@@ -6,16 +6,13 @@ import (
 	"context"
 	"time"
 
+	"errors" // Added for errors.Is
 	"github.com/google/uuid"
 	"github.com/your-org/auth-service/internal/domain/models"
+	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // For domainErrors.ErrSessionNotFound
 	"github.com/your-org/auth-service/internal/repository/interfaces"
-	"github.com/your-org/auth-service/internal/utils/kafka"
-	"go.uber.org/zap"
-)
-
-	"github.com/your-org/auth-service/internal/domain/models"
-	"github.com/your-org/auth-service/internal/repository/interfaces"
-	"github.com/your-org/auth-service/internal/utils/kafka"
+	// "github.com/your-org/auth-service/internal/utils/kafka" // To be replaced
+	eventskafka "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
 	domainService "github.com/your-org/auth-service/internal/domain/service" // Added for TokenManagementService
 	"go.uber.org/zap"
 )
@@ -24,7 +21,7 @@ import (
 type SessionService struct {
 	sessionRepo      interfaces.SessionRepository
 	userRepo         interfaces.UserRepository // To verify user exists before creating session
-	kafkaClient      *kafka.Client
+	kafkaClient      *eventskafka.Producer     // Changed to Sarama-based producer
 	logger           *zap.Logger
 	tokenMgmtService domainService.TokenManagementService // Added
 }
@@ -33,14 +30,14 @@ type SessionService struct {
 func NewSessionService(
 	sessionRepo interfaces.SessionRepository,
 	userRepo interfaces.UserRepository,
-	kafkaClient *kafka.Client,
+	kafkaClient *eventskafka.Producer, // Changed to Sarama-based producer
 	logger *zap.Logger,
 	tokenMgmtService domainService.TokenManagementService, // Added
 ) *SessionService {
 	return &SessionService{
 		sessionRepo:      sessionRepo,
 		userRepo:         userRepo,
-		kafkaClient:      kafkaClient,
+		kafkaClient:      kafkaClient, // Assign Sarama-based producer
 		logger:           logger,
 		tokenMgmtService: tokenMgmtService, // Added
 	}
@@ -83,11 +80,23 @@ func (s *SessionService) CreateSession(ctx context.Context, userID uuid.UUID, us
 		UserID:    userID.String(),
 		IPAddress: ipAddress,
 		UserAgent: userAgent,
-		CreatedAt: session.CreatedAt,
+		CreatedAt: session.CreatedAt, // This should be a time.Time type for CloudEvent payload
 	}
-	err = s.kafkaClient.PublishSessionEvent(ctx, "session.created", event)
-	if err != nil {
-		s.logger.Error("Failed to publish session created event", zap.Error(err), zap.String("session_id", session.ID.String()))
+	// Assuming SessionCreatedEvent is suitable as a CloudEvent data payload.
+	// The actual CloudEvent payload for "auth.session.created.v1" might be models.SessionCreatedPayload.
+	// For now, using the existing 'event' struct as dataPayload.
+	// Topic needs to be from config or a central place. Using "auth-events" as placeholder.
+	subjectSessionCreated := session.ID.String()
+	contentTypeJSON := "application/json"
+	if errPub := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		"auth-events", // Replace with actual topic from cfg
+		eventskafka.EventType(models.AuthSessionCreatedV1), // Use actual CloudEvent type constant
+		&subjectSessionCreated,
+		&contentTypeJSON,
+		event, // This is models.SessionCreatedEvent
+	); errPub != nil {
+		s.logger.Error("Failed to publish session created CloudEvent", zap.Error(errPub), zap.String("session_id", session.ID.String()))
 	}
 
 	return session, nil
@@ -167,11 +176,23 @@ func (s *SessionService) DeactivateSession(ctx context.Context, sessionID uuid.U
 	event := models.SessionDeactivatedEvent{ // Or SessionDeletedEvent
 		SessionID:    sessionID.String(), // Use sessionID from param as 'session' might be from before delete
 		UserID:       session.UserID.String(), // UserID from fetched session
-		DeactivatedAt: time.Now(),
+		DeactivatedAt: time.Now(), // This should be a time.Time type
 	}
-	err = s.kafkaClient.PublishSessionEvent(ctx, "session.deactivated", event)
-	if err != nil {
-		s.logger.Error("Failed to publish session deactivated event", zap.Error(err), zap.String("session_id", session.ID.String()))
+	// Assuming SessionDeactivatedEvent is suitable as a CloudEvent data payload.
+	// The actual CloudEvent payload for "auth.session.revoked.v1" (as deactivation is a form of revocation)
+	// might be models.SessionRevokedPayload.
+	// For now, using the existing 'event' struct as dataPayload.
+	subjectSessionDeactivated := sessionID.String()
+	contentTypeJSON := "application/json"
+	if errPub := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		"auth-events", // Replace with actual topic from cfg
+		eventskafka.EventType(models.AuthSessionRevokedV1), // Assuming deactivation maps to Revoked event
+		&subjectSessionDeactivated,
+		&contentTypeJSON,
+		event, // This is models.SessionDeactivatedEvent
+	); errPub != nil {
+		s.logger.Error("Failed to publish session deactivated CloudEvent", zap.Error(errPub), zap.String("session_id", sessionID.String()))
 	}
 
 	return nil
@@ -200,11 +221,23 @@ func (s *SessionService) DeactivateAllUserSessions(ctx context.Context, userID u
 	// Ensure models.AllSessionsDeactivatedEvent is defined
 	event := models.AllSessionsDeactivatedEvent{ // Or AllSessionsDeletedEvent
 		UserID:       userID.String(),
-		DeactivatedAt: time.Now(), // Or DeletedAt
+		DeactivatedAt: time.Now(), // Or DeletedAt, should be time.Time
 	}
-	err = s.kafkaClient.PublishSessionEvent(ctx, "session.all_deactivated", event)
-	if err != nil {
-		s.logger.Error("Failed to publish all sessions deactivated event", zap.Error(err), zap.String("user_id", userID.String()))
+	// Assuming AllSessionsDeactivatedEvent is suitable as a CloudEvent data payload.
+	// The actual CloudEvent payload for "auth.user.all_sessions_revoked.v1"
+	// might be models.UserAllSessionsRevokedPayload.
+	// For now, using the existing 'event' struct as dataPayload.
+	subjectAllSessionsDeactivated := userID.String()
+	contentTypeJSON := "application/json"
+	if errPub := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		"auth-events", // Replace with actual topic from cfg
+		eventskafka.EventType(models.AuthUserAllSessionsRevokedV1), // Assuming this event type
+		&subjectAllSessionsDeactivated,
+		&contentTypeJSON,
+		event, // This is models.AllSessionsDeactivatedEvent
+	); errPub != nil {
+		s.logger.Error("Failed to publish all sessions deactivated CloudEvent", zap.Error(errPub), zap.String("user_id", userID.String()))
 	}
 
 	return nil

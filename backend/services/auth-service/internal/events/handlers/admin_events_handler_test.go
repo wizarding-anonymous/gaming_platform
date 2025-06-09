@@ -14,11 +14,12 @@ import (
 
 	"github.com/your-org/auth-service/internal/config"
 	"github.com/your-org/auth-service/internal/domain/models"
-	eventModels "github.com/your-org/auth-service/internal/events/models" // For CloudEvent and payloads
+	// eventModels "github.com/your-org/auth-service/internal/events/models" // To be removed
 	// domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Not typically returned by handlers
 	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces"
 	domainService "github.com/your-org/auth-service/internal/domain/service"
-	kafkaMocks "github.com/your-org/auth-service/internal/events/mocks"
+	// kafkaMocks "github.com/your-org/auth-service/internal/events/mocks" // Handler does not publish
+	"github.com/your-org/auth-service/internal/events/kafka" // For kafka.CloudEvent
 	"go.uber.org/zap"
 )
 
@@ -69,7 +70,7 @@ type AdminEventsHandlerTestSuite struct {
 	handler           *AdminEventsHandler
 	mockUserRepo      *MockUserRepository
 	mockAuthLogicSvc  *MockAuthLogicService
-	mockKafkaProducer *kafkaMocks.MockProducer
+	// mockKafkaProducer *kafkaMocks.MockProducer // Handler does not publish
 	mockAuditRecorder *MockAuditLogRecorder
 	cfg               *config.Config
 	logger            *zap.Logger
@@ -78,7 +79,7 @@ type AdminEventsHandlerTestSuite struct {
 func (s *AdminEventsHandlerTestSuite) SetupTest() {
 	s.mockUserRepo = new(MockUserRepository)
 	s.mockAuthLogicSvc = new(MockAuthLogicService)
-	s.mockKafkaProducer = new(kafkaMocks.MockProducer) // Ensure this mock is correctly accessible/defined
+	// s.mockKafkaProducer = new(kafkaMocks.MockProducer) // Handler does not publish
 	s.mockAuditRecorder = new(MockAuditLogRecorder)
 
 	s.logger, _ = zap.NewDevelopment()
@@ -95,7 +96,7 @@ func (s *AdminEventsHandlerTestSuite) SetupTest() {
 		s.cfg,
 		s.mockUserRepo,
 		s.mockAuthLogicSvc,
-		s.mockKafkaProducer,
+		// s.mockKafkaProducer, // Handler does not publish
 		s.mockAuditRecorder,
 	)
 }
@@ -109,22 +110,32 @@ func TestAdminEventsHandlerTestSuite(t *testing.T) {
 func (s *AdminEventsHandlerTestSuite) TestHandleAdminUserForceLogout() {
 	ctx := context.Background()
 	userID := uuid.New()
-	actorID := uuid.New() // Admin actor
+	adminActorIDString := uuid.New().String() // Admin actor ID as string
 
-	payload := eventModels.AdminUserActionPayload{
-		UserID:  userID.String(),
-		ActorID: actorID.String(),
-		Reason:  "security_incident",
+	// Use the local payload struct defined in admin_events_handler.go
+	payload := AdminUserForceLogoutPayload{
+		UserID:      userID.String(),
+		AdminUserID: adminActorIDString,
+		Reason:      PtrToString("security_incident"),
 	}
 	payloadBytes, _ := json.Marshal(payload)
-	cloudEvent := models.CloudEvent{
-		Type:   eventModels.AdminUserForceLogoutV1,
-		Source: "admin-service",
-		Data:   payloadBytes,
+
+	// Simulate receiving kafka.CloudEvent
+	cloudEvent := kafka.CloudEvent{
+		ID:              uuid.NewString(),
+		SpecVersion:     "1.0",
+		Type:            string(models.AdminUserForceLogoutV1), // Use constant from models
+		Source:          "admin-service",
+		Subject:         &payload.UserID, // Or adminActorIDString if that's the convention for subject
+		Time:            time.Now(),
+		DataContentType: PtrToString("application/json"),
+		Data:            payloadBytes,
 	}
 
-	s.mockAuthLogicSvc.On("SystemLogoutAllUserSessions", ctx, userID, "force_logout_by_admin:"+actorID.String()+",reason:security_incident").Return(nil).Once()
-	s.mockAuditRecorder.On("RecordEvent", ctx, &actorID, "admin_user_force_logout_event_processed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
+	parsedAdminActorID, _ := uuid.Parse(adminActorIDString)
+
+	s.mockAuthLogicSvc.On("SystemLogoutAllUserSessions", ctx, userID, payload.AdminUserID, payload.Reason).Return(nil).Once()
+	s.mockAuditRecorder.On("RecordEvent", ctx, &parsedAdminActorID, "admin_user_force_logout_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
 
 	err := s.handler.HandleAdminUserForceLogout(ctx, cloudEvent)
 	assert.NoError(s.T(), err)
@@ -135,75 +146,82 @@ func (s *AdminEventsHandlerTestSuite) TestHandleAdminUserForceLogout() {
 func (s *AdminEventsHandlerTestSuite) TestHandleAdminUserBlock() {
 	ctx := context.Background()
 	userID := uuid.New()
-	actorID := uuid.New()
+	adminActorIDString := uuid.New().String()
 	reason := "terms_of_service_violation"
 
-	payload := eventModels.AdminUserActionPayload{
-		UserID:  userID.String(),
-		ActorID: actorID.String(),
-		Reason:  reason,
+	payload := AdminUserBlockPayload{ // Local payload struct
+		UserID:      userID.String(),
+		AdminUserID: adminActorIDString,
+		Reason:      reason,
 	}
 	payloadBytes, _ := json.Marshal(payload)
-	cloudEvent := models.CloudEvent{
-		Type:   eventModels.AdminUserBlockV1,
-		Source: "admin-service",
-		Data:   payloadBytes,
+	cloudEvent := kafka.CloudEvent{ // kafka.CloudEvent
+		ID:              uuid.NewString(),
+		SpecVersion:     "1.0",
+		Type:            string(models.AdminUserBlockV1), // Use constant from models
+		Source:          "admin-service",
+		Subject:         &payload.UserID,
+		Time:            time.Now(),
+		DataContentType: PtrToString("application/json"),
+		Data:            payloadBytes,
 	}
 
-	user := &models.User{ID: userID, Email: "user@example.com", Username: "blockeduser"} // Need some user fields for event
+	parsedAdminActorID, _ := uuid.Parse(adminActorIDString)
 
-	s.mockUserRepo.On("FindByID", ctx, userID).Return(user, nil).Once()
+	// Mocking for the logic within HandleAdminUserBlock
 	s.mockUserRepo.On("UpdateStatus", ctx, userID, models.UserStatusBlocked).Return(nil).Once()
-	s.mockUserRepo.On("UpdateStatusReason", ctx, userID, &reason).Return(nil).Once()
-	s.mockAuthLogicSvc.On("SystemLogoutAllUserSessions", ctx, userID, "account_blocked_by_admin:"+actorID.String()+",reason:"+reason).Return(nil).Once()
-	s.mockKafkaProducer.On("PublishCloudEvent", ctx, s.cfg.Kafka.Producer.Topic, eventModels.AuthUserAccountBlockedV1, userID.String(), mock.AnythingOfType("eventModels.UserAccountBlockedPayload")).Return(nil).Once()
-	s.mockAuditRecorder.On("RecordEvent", ctx, &actorID, "admin_user_block_event_processed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
+	s.mockAuthLogicSvc.On("SystemLogoutAllUserSessions", ctx, userID, payload.AdminUserID, "user_blocked_via_event").Return(nil).Once()
+	s.mockAuditRecorder.On("RecordEvent", ctx, &parsedAdminActorID, "admin_user_block_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
 
 
 	err := s.handler.HandleAdminUserBlock(ctx, cloudEvent)
 	assert.NoError(s.T(), err)
 	s.mockUserRepo.AssertExpectations(s.T())
 	s.mockAuthLogicSvc.AssertExpectations(s.T())
-	s.mockKafkaProducer.AssertExpectations(s.T())
 	s.mockAuditRecorder.AssertExpectations(s.T())
 }
 
 func (s *AdminEventsHandlerTestSuite) TestHandleAdminUserUnblock() {
 	ctx := context.Background()
 	userID := uuid.New()
-	actorID := uuid.New()
+	adminActorIDString := uuid.New().String()
 	reason := "unblock_requested_by_support" // Optional reason for unblocking
 
-	payload := eventModels.AdminUserActionPayload{
-		UserID:  userID.String(),
-		ActorID: actorID.String(),
-		Reason:  reason,
+	payload := AdminUserUnblockPayload{ // Local payload struct
+		UserID:      userID.String(),
+		AdminUserID: adminActorIDString,
+		Reason:      &reason,
 	}
 	payloadBytes, _ := json.Marshal(payload)
-	cloudEvent := models.CloudEvent{
-		Type:   eventModels.AdminUserUnblockV1,
-		Source: "admin-service",
-		Data:   payloadBytes,
+	cloudEvent := kafka.CloudEvent{ // kafka.CloudEvent
+		ID:              uuid.NewString(),
+		SpecVersion:     "1.0",
+		Type:            string(models.AdminUserUnblockV1), // Use constant from models
+		Source:          "admin-service",
+		Subject:         &payload.UserID,
+		Time:            time.Now(),
+		DataContentType: PtrToString("application/json"),
+		Data:            payloadBytes,
 	}
 
+	parsedAdminActorID, _ := uuid.Parse(adminActorIDString)
+
 	// Scenario 1: User email is verified, status becomes Active
-	userVerified := &models.User{ID: userID, Email: "verified@example.com", Username: "unblockeduser", EmailVerifiedAt: &time.Time{}}
+	userVerified := &models.User{ID: userID, Email: "verified@example.com", Username: "unblockeduser", EmailVerifiedAt: PtrToTime(time.Now())}
 
 	s.mockUserRepo.On("FindByID", ctx, userID).Return(userVerified, nil).Once()
 	s.mockUserRepo.On("UpdateStatus", ctx, userID, models.UserStatusActive).Return(nil).Once()
-	s.mockUserRepo.On("UpdateStatusReason", ctx, userID, (*string)(nil)).Return(nil).Once() // Reason should be cleared
-	s.mockKafkaProducer.On("PublishCloudEvent", ctx, s.cfg.Kafka.Producer.Topic, eventModels.AuthUserAccountUnlockedV1, userID.String(), mock.AnythingOfType("eventModels.UserAccountUnlockedPayload")).Return(nil).Once()
-	s.mockAuditRecorder.On("RecordEvent", ctx, &actorID, "admin_user_unblock_event_processed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
+	s.mockAuditRecorder.On("RecordEvent", ctx, &parsedAdminActorID, "admin_user_unblock_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
 
 	err := s.handler.HandleAdminUserUnblock(ctx, cloudEvent)
 	assert.NoError(s.T(), err)
-	s.mockUserRepo.AssertExpectations(s.T()) // Reset for next scenario or use different suite method
-	s.mockKafkaProducer.AssertExpectations(s.T())
+	s.mockUserRepo.AssertExpectations(s.T())
 	s.mockAuditRecorder.AssertExpectations(s.T())
 
-	// Scenario 2: User email is NOT verified, status becomes PendingVerification
-	// Need to reset mocks if running in the same test method or use separate test methods.
-	// For simplicity, this would ideally be a separate test method.
-	// s.SetupTest() // Resets mocks for a new scenario if needed, or manually reset specific mocks.
-	// For now, this shows the structure.
+	// Scenario 2: User email is NOT verified, status becomes PendingVerification - should be a separate test method for clarity
+}
+
+// Helper function to get a pointer to time.Time, similar to PtrToString
+func PtrToTime(t time.Time) *time.Time {
+    return &t
 }

@@ -18,7 +18,8 @@ import (
 	domainService "github.com/your-org/auth-service/internal/domain/service"
 	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces"
 	appSecurity "github.com/your-org/auth-service/internal/infrastructure/security"
-	"github.com/your-org/auth-service/internal/utils/kafka"
+	// "github.com/your-org/auth-service/internal/utils/kafka" // Replaced by events/kafka
+	kafkaEvents "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
 	"go.uber.org/zap"
 )
 
@@ -30,7 +31,7 @@ type AuthService struct {
 	verificationCodeRepo   repoInterfaces.VerificationCodeRepository // Manages verification codes (e.g., email, password reset).
 	tokenService           *TokenService // Manages creation and validation of access/refresh token pairs with sessions.
 	sessionService         *SessionService // Handles user session lifecycle.
-	kafkaClient            *kafka.Client // Kafka client for publishing events.
+	kafkaClient            *kafkaEvents.Producer // Kafka client for publishing events - Switched to Sarama Producer
 	logger                 *zap.Logger // Application logger.
 	passwordService        domainService.PasswordService // Service for hashing and verifying passwords.
 	tokenManagementService domainService.TokenManagementService // Core service for JWT generation and validation (RS256).
@@ -54,7 +55,7 @@ func NewAuthService(
 	verificationCodeRepo repoInterfaces.VerificationCodeRepository,
 	tokenService *TokenService,
 	sessionService *SessionService,
-	kafkaClient *kafka.Client,
+	kafkaClient *kafkaEvents.Producer, // Switched to Sarama Producer
 	cfg *config.Config,
 	logger *zap.Logger,
 	passwordService domainService.PasswordService,
@@ -235,10 +236,10 @@ func (s *AuthService) Register(ctx context.Context, req models.CreateUserRequest
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserRegisteredV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserRegisteredV1),
+		// "auth-service", // Source is handled by Sarama producer internally
 		&subjectUserID,
-		"", // eventID - producer generates
+		// "", // EventID is handled by Sarama producer internally
 		&contentTypeJSON,
 		userRegisteredPayload,
 	); err != nil {
@@ -427,10 +428,10 @@ func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*mode
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserLoginSuccessV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserLoginSuccessV1),
+		// "auth-service", // Source handled internally
 		&subjectUserIDLogin,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONLogin,
 		loginSuccessPayload,
 	); err != nil {
@@ -527,10 +528,10 @@ func (s *AuthService) CompleteLoginAfter2FA(ctx context.Context, userID uuid.UUI
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserLoginSuccessV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserLoginSuccessV1),
+		// "auth-service", // Source handled internally
 		&subjectUserID2FA,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSON2FA,
 		loginSuccessPayload,
 	); err != nil {
@@ -706,10 +707,10 @@ func (s *AuthService) Logout(ctx context.Context, accessToken, refreshToken stri
 		if err := s.kafkaClient.PublishCloudEvent(
 			ctx,
 			s.cfg.Kafka.Producer.Topic,
-			string(models.AuthUserLogoutSuccessV1),
-			"auth-service",
+			kafkaEvents.EventType(models.AuthUserLogoutSuccessV1),
+			// "auth-service", // Source handled internally
 			&subjectUserLogout,
-			"", // eventID
+			// "", // EventID handled internally
 			&contentTypeJSONLogout,
 			logoutPayload,
 		); err != nil {
@@ -730,10 +731,10 @@ func (s *AuthService) Logout(ctx context.Context, accessToken, refreshToken stri
 		if err := s.kafkaClient.PublishCloudEvent(
 			ctx,
 			s.cfg.Kafka.Producer.Topic,
-			string(models.AuthSessionRevokedV1),
-			"auth-service",
+			kafkaEvents.EventType(models.AuthSessionRevokedV1),
+			// "auth-service", // Source handled internally
 			&subjectSessionRevoked,
-			"", // eventID
+			// "", // EventID handled internally
 			&contentTypeJSONSessionRevoked,
 			sessionRevokedPayload,
 		); err != nil {
@@ -817,10 +818,10 @@ func (s *AuthService) LogoutAll(ctx context.Context, accessToken string) error {
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserAllSessionsRevokedV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserAllSessionsRevokedV1),
+		// "auth-service", // Source handled internally
 		&subjectUserLogoutAll,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONLogoutAll,
 		allSessionsRevokedPayload,
 	); err != nil {
@@ -917,10 +918,10 @@ func (s *AuthService) VerifyEmail(ctx context.Context, plainVerificationTokenVal
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserEmailVerifiedV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserEmailVerifiedV1),
+		// "auth-service", // Source handled internally
 		&subjectUserEmailVerified,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONEmailVerified,
 		emailVerifiedPayload,
 	); err != nil {
@@ -999,15 +1000,16 @@ func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string)
 	contentTypeJSONResendVerification := "application/json"
 	// TODO: Determine correct topic. Using placeholder "auth-events".
 	// Assuming eventModels.AuthSecurityEmailVerificationRequestedV1 is equivalent to models.AuthSecurityEmailVerificationRequestedV1
+	// Assuming emailVerificationRequestedPayload is now models.EmailVerificationRequestedPayload
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthSecurityEmailVerificationRequestedV1), // Changed from eventModels
-		"auth-service",
+		kafkaEvents.EventType(models.AuthSecurityEmailVerificationRequestedV1), // Changed from eventModels
+		// "auth-service", // Source handled internally
 		&subjectUserResendVerification,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONResendVerification,
-		emailVerificationRequestedPayload,
+		emailVerificationRequestedPayload, // Ensure this is models.EmailVerificationRequestedPayload
 	); err != nil {
 		s.logger.Error("Failed to publish CloudEvent for email verification requested", zap.Error(err), zap.String("user_id", user.ID.String()))
 		// Non-critical for flow, log only.
@@ -1106,15 +1108,16 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	contentTypeJSONForgotPassword := "application/json"
 	// TODO: Determine correct topic. Using placeholder "auth-events".
 	// Assuming eventModels.AuthSecurityPasswordResetRequestedV1 is equivalent to models.AuthSecurityPasswordResetRequestedV1
+	// Assuming passwordResetRequestedPayload is now models.PasswordResetRequestedPayload
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthSecurityPasswordResetRequestedV1), // Changed from eventModels
-		"auth-service",
+		kafkaEvents.EventType(models.AuthSecurityPasswordResetRequestedV1), // Changed from eventModels
+		// "auth-service", // Source handled internally
 		&subjectUserForgotPassword,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONForgotPassword,
-		passwordResetRequestedPayload,
+		passwordResetRequestedPayload, // Ensure this is models.PasswordResetRequestedPayload
 	); err != nil {
 		s.logger.Error("ForgotPassword: Failed to publish CloudEvent for password reset requested", zap.Error(err), zap.String("user_id", user.ID.String()))
 		if auditDetails == nil { auditDetails = make(map[string]interface{})} // Should not be nil if user was found
@@ -1200,10 +1203,10 @@ func (s *AuthService) ResetPassword(ctx context.Context, plainToken, newPassword
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserPasswordResetV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserPasswordResetV1),
+		// "auth-service", // Source handled internally
 		&subjectUserResetPassword,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONResetPassword,
 		passwordResetPayload,
 	); err != nil {
@@ -1280,10 +1283,10 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID, oldP
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserPasswordChangedV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserPasswordChangedV1),
+		// "auth-service", // Source handled internally
 		&subjectUserChangePassword,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONChangePassword,
 		passwordChangedPayload,
 	); err != nil {
@@ -1483,15 +1486,16 @@ func (s *AuthService) LoginWithTelegram(
 			contentTypeJSONTelegramRegister := "application/json"
 			// TODO: Determine correct topic. Using placeholder "auth-events".
 			// Assuming eventModels.AuthUserRegisteredV1 is equivalent to models.AuthUserRegisteredV1
+	// Ensure userRegisteredPayload is models.UserRegisteredPayload
 			if errKafka := s.kafkaClient.PublishCloudEvent(
 				ctx,
 				s.cfg.Kafka.Producer.Topic,
-				string(models.AuthUserRegisteredV1), // Changed from eventModels
-				"auth-service",
+		kafkaEvents.EventType(models.AuthUserRegisteredV1), // Changed from eventModels
+		// "auth-service", // Source handled internally
 				&subjectUserTelegramRegister,
-				"", // eventID
+		// "", // EventID handled internally
 				&contentTypeJSONTelegramRegister,
-				userRegisteredPayload,
+		userRegisteredPayload, // Ensure this is models.UserRegisteredPayload
 			); errKafka != nil {
 				s.logger.Error("Failed to publish CloudEvent for Telegram user registered", zap.Error(errKafka), zap.String("user_id", user.ID.String()))
 			}
@@ -1567,10 +1571,10 @@ func (s *AuthService) LoginWithTelegram(
 	if err := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserLoginSuccessV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserLoginSuccessV1),
+		// "auth-service", // Source handled internally
 		&subjectUserTelegramLogin,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONTelegramLogin,
 		loginSuccessPayload,
 	); err != nil {
@@ -1604,8 +1608,10 @@ import (
 	domainService "github.com/your-org/auth-service/internal/domain/service"
 	repoInterfaces "github.com/your-org/auth-service/internal/repository/interfaces"
 	appSecurity "github.com/your-org/auth-service/internal/infrastructure/security"
-	"github.com/your-org/auth-service/internal/utils/kafka"
+	// "github.com/your-org/auth-service/internal/utils/kafka" // Replaced by events/kafka
+	kafkaEvents "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
 	"go.uber.org/zap"
+	"github.com/golang-jwt/jwt/v5" // For OAuth state JWT
 )
 // ... (rest of the file before InitiateOAuthLogin)
 
@@ -1976,15 +1982,16 @@ func (s *AuthService) HandleOAuthCallback(
 			contentTypeJSONOAuthRegister := "application/json"
 			// TODO: Determine correct topic. Using placeholder "auth-events".
 			// Assuming eventModels.AuthUserRegisteredV1 is equivalent to models.AuthUserRegisteredV1
+	// Ensure userRegisteredPayload is models.UserRegisteredPayload
 			if errKafka := s.kafkaClient.PublishCloudEvent(
 				ctx,
 				s.cfg.Kafka.Producer.Topic,
-				string(models.AuthUserRegisteredV1), // Changed from eventModels
-				"auth-service",
+		kafkaEvents.EventType(models.AuthUserRegisteredV1), // Changed from eventModels
+		// "auth-service", // Source handled internally
 				&subjectUserOAuthRegister,
-				"", // eventID
+		// "", // EventID handled internally
 				&contentTypeJSONOAuthRegister,
-				userRegisteredPayload,
+		userRegisteredPayload, // Ensure this is models.UserRegisteredPayload
 			); errKafka != nil {
 				s.logger.Error("HandleOAuthCallback: Failed to publish CloudEvent for new OAuth user registered", zap.Error(errKafka), zap.String("user_id", user.ID.String()))
 				// Non-critical for login flow.
@@ -2031,10 +2038,10 @@ func (s *AuthService) HandleOAuthCallback(
 	if errKafka := s.kafkaClient.PublishCloudEvent(
 		ctx,
 		s.cfg.Kafka.Producer.Topic,
-		string(models.AuthUserLoginSuccessV1),
-		"auth-service",
+		kafkaEvents.EventType(models.AuthUserLoginSuccessV1),
+		// "auth-service", // Source handled internally
 		&subjectUserOAuthLogin,
-		"", // eventID
+		// "", // EventID handled internally
 		&contentTypeJSONOAuthLogin,
 		oauthLoginSuccessPayload,
 	); errKafka != nil {

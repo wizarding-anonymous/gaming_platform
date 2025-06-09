@@ -12,7 +12,8 @@ import (
 	domainErrors "github.com/your-org/auth-service/internal/domain/errors" // Added for domainErrors.ErrRoleNotFound
 	domainService "github.com/your-org/auth-service/internal/domain/service" // Added for domainService.AuditLogRecorder
 	"github.com/your-org/auth-service/internal/repository/interfaces"
-	"github.com/your-org/auth-service/internal/utils/kafka"
+	// "github.com/your-org/auth-service/internal/utils/kafka" // To be replaced
+	kafkaEvents "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
 	"go.uber.org/zap"
 )
 
@@ -21,7 +22,7 @@ type RoleService struct {
 	roleRepo      interfaces.RoleRepository
 	userRepo      interfaces.UserRepository // Still needed for validating user existence in some flows
 	userRolesRepo interfaces.UserRolesRepository // Added
-	kafkaClient   *kafka.Client
+	kafkaClient   *kafkaEvents.Producer // Changed to Sarama-based producer
 	logger        *zap.Logger
 	auditLogRecorder domainService.AuditLogRecorder // Added for audit logging
 }
@@ -31,7 +32,7 @@ func NewRoleService(
 	roleRepo interfaces.RoleRepository,
 	userRepo interfaces.UserRepository,
 	userRolesRepo interfaces.UserRolesRepository, // Added
-	kafkaClient *kafka.Client,
+	kafkaClient *kafkaEvents.Producer, // Changed to Sarama-based producer
 	logger *zap.Logger,
 	auditLogRecorder domainService.AuditLogRecorder, // Added
 ) *RoleService {
@@ -39,7 +40,7 @@ func NewRoleService(
 		roleRepo:      roleRepo,
 		userRepo:      userRepo,
 		userRolesRepo: userRolesRepo, // Added
-		kafkaClient:   kafkaClient,
+		kafkaClient:   kafkaClient, // Assign Sarama-based producer
 		logger:        logger,
 		auditLogRecorder: auditLogRecorder, // Added
 	}
@@ -149,13 +150,13 @@ func (s *RoleService) CreateRole(ctx context.Context, req models.CreateRoleReque
 		subjectRoleCreated := createdRoleForEvent.ID // ID is string
 		contentTypeJSON := "application/json"
 		// TODO: Determine correct topic
-		if errKafka := s.kafkaProducer.PublishCloudEvent(
+		if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
 			ctx,
 			"auth-events", // topic
-			string(models.AuthRoleCreatedV1), // eventType, changed from eventModels
-			"auth-service", // source
+			kafkaEvents.EventType(models.AuthRoleCreatedV1), // eventType, cast to kafkaEvents.EventType
+			// "auth-service", // source - removed
 			&subjectRoleCreated, // subject
-			"", // eventID
+			// "", // eventID - removed
 			&contentTypeJSON, // dataContentType
 			roleCreatedPayload, // dataPayload
 		); errKafka != nil {
@@ -259,13 +260,13 @@ func (s *RoleService) UpdateRole(ctx context.Context, id string, req models.Upda
 		subjectRoleUpdated := updatedRoleForEvent.ID // ID is string
 		contentTypeJSON := "application/json"
 		// TODO: Determine correct topic
-		if errKafka := s.kafkaProducer.PublishCloudEvent(
+		if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
 			ctx,
 			"auth-events", // topic
-			string(models.AuthRoleUpdatedV1), // eventType, changed from eventModels
-			"auth-service", // source
+			kafkaEvents.EventType(models.AuthRoleUpdatedV1), // eventType, cast to kafkaEvents.EventType
+			// "auth-service", // source - removed
 			&subjectRoleUpdated, // subject
-			"", // eventID
+			// "", // eventID - removed
 			&contentTypeJSON, // dataContentType
 			roleUpdatePayload, // dataPayload
 		); errKafka != nil {
@@ -329,13 +330,13 @@ func (s *RoleService) DeleteRole(ctx context.Context, id string, actorID *uuid.U
 	subjectRoleDeleted := role.ID // ID is string
 	contentTypeJSON := "application/json"
 	// TODO: Determine correct topic
-	if errKafka := s.kafkaProducer.PublishCloudEvent(
+	if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
 		ctx,
 		"auth-events", // topic
-		string(models.AuthRoleDeletedV1), // eventType, changed from eventModels
-		"auth-service", // source
+		kafkaEvents.EventType(models.AuthRoleDeletedV1), // eventType, cast to kafkaEvents.EventType
+		// "auth-service", // source - removed
 		&subjectRoleDeleted, // subject
-		"", // eventID
+		// "", // eventID - removed
 		&contentTypeJSON, // dataContentType
 		roleDeletedPayload, // dataPayload
 	); errKafka != nil {
@@ -428,13 +429,13 @@ func (s *RoleService) AssignRoleToUser(ctx context.Context, userID uuid.UUID, ro
 	contentTypeJSON := "application/json"
 	// Publish CloudEvent
 	// TODO: Determine correct topic, using placeholder "auth-events" for now. Should be from cfg.
-	if errKafka := s.kafkaProducer.PublishCloudEvent(
+	if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
 		ctx,
 		"auth-events", // topic
-		string(models.AuthUserRoleAssignedV1), // eventType, changed from eventModels
-		"auth-service", // source
+		kafkaEvents.EventType(models.AuthUserRoleAssignedV1), // eventType, cast to kafkaEvents.EventType
+		// "auth-service", // source - removed
 		&subjectUserRoleAssigned, // subject
-		"", // eventID
+		// "", // eventID - removed
 		&contentTypeJSON, // dataContentType
 		assignedEventPayload, // dataPayload
 	); errKafka != nil {
@@ -520,13 +521,13 @@ func (s *RoleService) RemoveRoleFromUser(ctx context.Context, userID uuid.UUID, 
 	contentTypeJSON := "application/json"
 	// Publish CloudEvent
 	// TODO: Determine correct topic
-	if errKafka := s.kafkaProducer.PublishCloudEvent(
+	if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
 		ctx,
 		"auth-events", // topic
-		string(models.AuthUserRoleRevokedV1), // eventType, changed from eventModels
-		"auth-service", // source
+		kafkaEvents.EventType(models.AuthUserRoleRevokedV1), // eventType, cast to kafkaEvents.EventType
+		// "auth-service", // source - removed
 		&subjectUserRoleRevoked, // subject
-		"", // eventID
+		// "", // eventID - removed
 		&contentTypeJSON, // dataContentType
 		revokedEventPayload, // dataPayload
 	); errKafka != nil {

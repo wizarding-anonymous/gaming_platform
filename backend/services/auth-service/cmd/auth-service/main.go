@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/your-org/auth-service/internal/config"
+	"github.com/your-org/auth-service/internal/events/handlers" // For event handlers
 	"github.com/your-org/auth-service/internal/events/kafka"
+	"github.com/your-org/auth-service/internal/domain/models" // For EventType constants and CloudEventSource
 	grpcHandler "github.com/your-org/auth-service/internal/handler/grpc"
 	httpHandler "github.com/your-org/auth-service/internal/handler/http"
 	infraDbPostgres "github.com/your-org/auth-service/internal/infrastructure/database/postgres" // For NewDBPool
@@ -23,7 +25,9 @@ import (
 	"github.com/your-org/auth-service/internal/service"
 	"github.com/your-org/auth-service/internal/utils/telemetry"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	authv1 "github.com/your-org/auth-service/pkg/pb/auth/v1" // For gRPC server registration
 
+	"github.com/Shopify/sarama" // Added for Sarama config
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -116,12 +120,26 @@ func main() {
 	}
 	defer kafkaProducer.Close()
 
-	// Инициализация Kafka Consumer
-	kafkaConsumer, err := kafka.NewConsumer(cfg.Kafka.Brokers, cfg.Kafka.Consumer.Topics, cfg.Kafka.Consumer.GroupID)
-	if err != nil {
-		logger.Fatal("Failed to initialize Kafka consumer", zap.Error(err))
+	// Инициализация Kafka Consumer (Sarama-based ConsumerGroup)
+	saramaCfg := sarama.NewConfig()
+	saramaCfg.Version = sarama.V2_8_0_0 // Example: Use your Kafka version
+	saramaCfg.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
+	saramaCfg.Consumer.Offsets.Initial = sarama.OffsetOldest // Or from config
+	saramaCfg.Consumer.Return.Errors = true                  // Important for logging consumer errors
+
+	consumerGroupCfg := kafka.NewConsumerGroupConfig{
+		Brokers:       cfg.Kafka.Brokers,
+		Topics:        cfg.Kafka.Consumer.Topics,
+		GroupID:       cfg.Kafka.Consumer.GroupID,
+		SaramaConfig:  saramaCfg,
+		Logger:        logger, // Pass the main application logger
+		InitialOffset: sarama.OffsetOldest, // Or from cfg.Kafka.Consumer.InitialOffset if defined
 	}
-	defer kafkaConsumer.Close()
+	kafkaConsumer, err := kafka.NewConsumerGroup(consumerGroupCfg)
+	if err != nil {
+		logger.Fatal("Failed to initialize Kafka consumer group", zap.Error(err))
+	}
+	defer kafkaConsumer.Close() // This will call the new ConsumerGroup.Close()
 
 	// Инициализация PasswordService
 	argon2Params := security.Argon2idParams{
@@ -170,6 +188,7 @@ func main() {
 		APIKeyRepo:      apiKeyRepo,
 		PasswordService: passwordService,
 		AuditLogRecorder: auditLogService, // Added
+		KafkaProducer:   kafkaProducer,    // Added Sarama-based kafkaProducer
 	}
 	apiKeyService := domainService.NewAPIKeyService(apiKeyServiceConfig) // Changed: Use domainService.NewAPIKeyService
 
@@ -234,50 +253,63 @@ func main() {
 		auditLogService, // Added
 	)
 
-	telegramService := service.NewTelegramService(cfg.Telegram, logger)
+	telegramService := service.NewTelegramService(
+		userRepo,       // Added missing userRepo
+		tokenService,   // Added missing tokenService
+		kafkaProducer,  // Pass Sarama-based kafkaProducer
+		logger,
+		cfg.Telegram.BotToken, // Pass BotToken from config
+	)
 	// twoFactorService from previous setup is now replaced by mfaLogicService via AuthService
 	// var twoFactorService *service.TwoFactorService // This would be the old one
 
 
 	// Инициализация обработчиков событий
 	// Instantiate new event handlers
-	accountHandler := eventHandlers.NewAccountEventsHandler(
+	accountHandler := handlers.NewAccountEventsHandler( // Changed alias from eventHandlers to handlers
 		logger,
 		cfg,
 		userRepo,
 		verificationCodeRepo,
-		authService,
-		kafkaProducer,
-		sessionRepo,        // Added for HandleAccountUserDeleted
-		refreshTokenRepo,   // Added for HandleAccountUserDeleted
-		mfaSecretRepo,      // Added for HandleAccountUserDeleted
-		mfaBackupCodeRepo,  // Added for HandleAccountUserDeleted
-		apiKeyRepo,         // Added for HandleAccountUserDeleted
-		externalAccountRepo,// Added for HandleAccountUserDeleted
-		auditLogService,    // Added for HandleAccountUserDeleted (as AuditLogRecorder)
+		authService, // authService itself is AuthLogicService
+		// kafkaProducer, // AccountEventsHandler does not take kafkaProducer
+		sessionRepo,
+		refreshTokenRepo,
+		mfaSecretRepo,
+		mfaBackupCodeRepo,
+		apiKeyRepo,
+		externalAccountRepo,
+		auditLogService,
 	)
-	adminHandler := eventHandlers.NewAdminEventsHandler(
+	adminHandler := handlers.NewAdminEventsHandler( // Changed alias from eventHandlers to handlers
 		logger,
 		cfg,
 		userRepo,
-		authService,
-		kafkaProducer,
-		auditLogService,    // Added for AdminEventsHandler
+		authService, // authService itself is AuthLogicService
+		// kafkaProducer, // AdminEventsHandler does not take kafkaProducer
+		auditLogService,
 	)
 
 	// Register handlers with the consumer
-	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.account.user.profile_updated.v1"), accountHandler.HandleAccountUserProfileUpdated)
-	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.account.user.deleted.v1"), accountHandler.HandleAccountUserDeleted) // Added handler
-	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.admin.user.force_logout.v1"), adminHandler.HandleAdminUserForceLogout)
-	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.admin.user.block.v1"), adminHandler.HandleAdminUserBlock)
-	kafkaConsumer.RegisterHandler(eventModels.EventType("com.yourplatform.admin.user.unblock.v1"), adminHandler.HandleAdminUserUnblock)
+	// Assuming event type constants are defined in models package e.g. models.AccountUserProfileUpdatedV1Type
+	kafkaConsumer.RegisterHandler(string(models.AccountUserProfileUpdatedV1), accountHandler.HandleAccountUserProfileUpdated)
+	kafkaConsumer.RegisterHandler(string(models.AccountUserDeletedV1), accountHandler.HandleAccountUserDeleted)
+	kafkaConsumer.RegisterHandler(string(models.AdminUserForceLogoutV1), adminHandler.HandleAdminUserForceLogout)
+	kafkaConsumer.RegisterHandler(string(models.AdminUserBlockV1), adminHandler.HandleAdminUserBlock)
+	kafkaConsumer.RegisterHandler(string(models.AdminUserUnblockV1), adminHandler.HandleAdminUserUnblock)
 
 	// Start the consumer
+	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+	// Ensure consumerCancel is called to stop the consumer when main exits
+	// This defer should be after other defers that might panic or exit early,
+	// or more robustly, called explicitly before other cleanup.
+	// For now, simple defer is okay.
+	defer consumerCancel()
+
 	go func() {
-		if err := kafkaConsumer.Start(); err != nil {
-			logger.Error("Kafka consumer error", zap.Error(err))
-			// Optionally, decide if this should be fatal, e.g., panic(err)
-		}
+		logger.Info("Starting Kafka consumer group consuming...")
+		kafkaConsumer.StartConsuming(consumerCtx)
+		logger.Info("Kafka consumer group has stopped consuming.")
 	}()
 
 	// Инициализация HTTP сервера

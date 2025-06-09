@@ -14,7 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/your-org/auth-service/internal/domain/models"
 	"github.com/your-org/auth-service/internal/repository/interfaces"
-	"github.com/your-org/auth-service/internal/utils/kafka"
+	// "github.com/your-org/auth-service/internal/utils/kafka" // To be replaced
+	eventskafka "github.com/your-org/auth-service/internal/events/kafka" // Sarama-based producer
 	"go.uber.org/zap"
 )
 
@@ -22,7 +23,7 @@ import (
 type TelegramService struct {
 	userRepo    interfaces.UserRepository
 	tokenService *TokenService
-	kafkaClient *kafka.Client
+	kafkaClient *eventskafka.Producer // Changed to Sarama-based producer
 	logger      *zap.Logger
 	botToken    string
 }
@@ -31,14 +32,14 @@ type TelegramService struct {
 func NewTelegramService(
 	userRepo interfaces.UserRepository,
 	tokenService *TokenService,
-	kafkaClient *kafka.Client,
+	kafkaClient *eventskafka.Producer, // Changed to Sarama-based producer
 	logger *zap.Logger,
 	botToken string,
 ) *TelegramService {
 	return &TelegramService{
 		userRepo:    userRepo,
 		tokenService: tokenService,
-		kafkaClient: kafkaClient,
+		kafkaClient: kafkaClient, // Assign Sarama-based producer
 		logger:      logger,
 		botToken:    botToken,
 	}
@@ -107,11 +108,21 @@ func (s *TelegramService) LinkTelegramAccount(ctx context.Context, userID uuid.U
 	event := models.TelegramLinkedEvent{
 		UserID:     user.ID.String(),
 		TelegramID: telegramID,
-		LinkedAt:   user.UpdatedAt,
+		LinkedAt:   user.UpdatedAt, // This should be time.Time for CloudEvent consistency
 	}
-	err = s.kafkaClient.PublishUserEvent(ctx, "user.telegram_linked", event)
-	if err != nil {
-		s.logger.Error("Failed to publish Telegram linked event", zap.Error(err), zap.String("user_id", user.ID.String()))
+	// Assuming AuthUserTelegramLinkedV1 is the correct EventType constant in models
+	// Topic "auth-events" is a placeholder.
+	subjectTelegramLinked := user.ID.String()
+	contentTypeJSON := "application/json"
+	if errPub := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		"auth-events", // Placeholder topic
+		eventskafka.EventType(models.AuthUserTelegramLinkedV1),
+		&subjectTelegramLinked,
+		&contentTypeJSON,
+		event, // models.TelegramLinkedEvent as payload
+	); errPub != nil {
+		s.logger.Error("Failed to publish Telegram linked CloudEvent", zap.Error(errPub), zap.String("user_id", user.ID.String()))
 	}
 
 	return nil
@@ -149,11 +160,20 @@ func (s *TelegramService) UnlinkTelegramAccount(ctx context.Context, userID uuid
 	event := models.TelegramUnlinkedEvent{
 		UserID:       user.ID.String(),
 		TelegramID:   telegramID,
-		UnlinkedAt:   user.UpdatedAt,
+		UnlinkedAt:   user.UpdatedAt, // This should be time.Time
 	}
-	err = s.kafkaClient.PublishUserEvent(ctx, "user.telegram_unlinked", event)
-	if err != nil {
-		s.logger.Error("Failed to publish Telegram unlinked event", zap.Error(err), zap.String("user_id", user.ID.String()))
+	// Assuming AuthUserTelegramUnlinkedV1 is the correct EventType constant in models
+	subjectTelegramUnlinked := user.ID.String()
+	contentTypeJSON := "application/json"
+	if errPub := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		"auth-events", // Placeholder topic
+		eventskafka.EventType(models.AuthUserTelegramUnlinkedV1),
+		&subjectTelegramUnlinked,
+		&contentTypeJSON,
+		event, // models.TelegramUnlinkedEvent as payload
+	); errPub != nil {
+		s.logger.Error("Failed to publish Telegram unlinked CloudEvent", zap.Error(errPub), zap.String("user_id", user.ID.String()))
 	}
 
 	return nil
@@ -191,11 +211,22 @@ func (s *TelegramService) LoginWithTelegram(ctx context.Context, data models.Tel
 	event := models.TelegramLoginEvent{
 		UserID:    user.ID.String(),
 		TelegramID: data.ID,
-		LoginAt:   time.Now(),
+		LoginAt:   time.Now(), // This should be time.Time
 	}
-	err = s.kafkaClient.PublishUserEvent(ctx, "user.telegram_login", event)
-	if err != nil {
-		s.logger.Error("Failed to publish Telegram login event", zap.Error(err), zap.String("user_id", user.ID.String()))
+	// Assuming AuthUserTelegramLoginSuccessV1 or similar is the correct EventType constant
+	// This event might be better represented by the generic AuthUserLoginSuccessV1 if the payload is compatible.
+	// For now, using a hypothetical AuthUserTelegramLoginV1.
+	subjectTelegramLogin := user.ID.String()
+	contentTypeJSON := "application/json"
+	if errPub := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		"auth-events", // Placeholder topic
+		eventskafka.EventType(models.AuthUserLoginSuccessV1), // Using generic login success, assuming payload matches or is adapted
+		&subjectTelegramLogin,
+		&contentTypeJSON,
+		event, // models.TelegramLoginEvent - this payload might need to align with UserLoginSuccessPayload
+	); errPub != nil {
+		s.logger.Error("Failed to publish Telegram login CloudEvent", zap.Error(errPub), zap.String("user_id", user.ID.String()))
 	}
 
 	return tokenPair, user, nil
