@@ -446,13 +446,34 @@ type AuthServiceTestSuite struct {
 	mockMfaLogicService  *MockMFALogicService
 	mockUserRolesRepo    *MockUserRolesRepository
 	mockRoleService      *MockRoleService
-	mockExtAccRepo       *MockExternalAccountRepository
-	mockTelegramVerifier *MockTelegramVerifierService
-	mockAuditRecorder    *MockAuditLogRecorder
-	mockRateLimiter      *MockRateLimiter // Added
-	cfg                  *config.Config
-	logger               *zap.Logger
+	mockExtAccRepo            *MockExternalAccountRepository
+	// mockTelegramVerifier *MockTelegramVerifierService // Removed
+	mockAuditRecorder         *MockAuditLogRecorder
+	mockRateLimiter           *MockRateLimiter // Added
+	mockOAuthService          *MockOAuthServiceForAuthTest // Added
+	mockTelegramAuthService   *MockTelegramAuthServiceForAuthTest // Added
+	cfg                       *config.Config
+	logger                    *zap.Logger
 }
+
+// MockOAuthServiceForAuthTest is a minimal mock for OAuthService used in AuthService tests.
+type MockOAuthServiceForAuthTest struct {
+	mock.Mock
+	// We don't need to mock its methods if AuthService doesn't call them.
+	// This is primarily for DI.
+}
+// Implement methods if AuthService ever calls them, e.g.:
+// func (m *MockOAuthServiceForAuthTest) InitiateOAuth(...) (...) { ... }
+// func (m *MockOAuthServiceForAuthTest) HandleOAuthCallback(...) (...) { ... }
+
+
+// MockTelegramAuthServiceForAuthTest is a minimal mock for TelegramAuthService.
+type MockTelegramAuthServiceForAuthTest struct {
+	mock.Mock
+	// We don't need to mock its methods if AuthService doesn't call them.
+}
+// func (m *MockTelegramAuthServiceForAuthTest) AuthenticateViaTelegram(...) (...) { ... }
+
 
 func (s *AuthServiceTestSuite) SetupTest() {
 	s.mockUserRepo = new(MockUserRepository)
@@ -467,9 +488,12 @@ func (s *AuthServiceTestSuite) SetupTest() {
 	s.mockUserRolesRepo = new(MockUserRolesRepository)
 	s.mockRoleService = new(MockRoleService)
 	s.mockExtAccRepo = new(MockExternalAccountRepository)
-	s.mockTelegramVerifier = new(MockTelegramVerifierService)
+	// s.mockTelegramVerifier = new(MockTelegramVerifierService) // Removed
 	s.mockAuditRecorder = new(MockAuditLogRecorder)
 	s.mockRateLimiter = new(MockRateLimiter) // Added
+	s.mockOAuthService = new(MockOAuthServiceForAuthTest) // Added
+	s.mockTelegramAuthService = new(MockTelegramAuthServiceForAuthTest) // Added
+
 
 	// Initialize a default config
 	s.cfg = &config.Config{
@@ -509,9 +533,11 @@ func (s *AuthServiceTestSuite) SetupTest() {
 		s.mockUserRolesRepo,
 		s.mockRoleService,
 		s.mockExtAccRepo,
-		s.mockTelegramVerifier,
+		// s.mockTelegramVerifier, // Removed
 		s.mockAuditRecorder,
 		s.mockRateLimiter, // Added
+		s.mockOAuthService, // Added
+		s.mockTelegramAuthService, // Added
 	)
 }
 
