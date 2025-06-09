@@ -7,20 +7,22 @@ import (
 )
 
 // UserRegisteredEvent is published when a new user completes registration.
+// Corresponds to event type: auth.user.registered.v1
 type UserRegisteredEvent struct {
-	UserID        string    `json:"user_id"`
-	Email         string    `json:"email"`
-	Username      string    `json:"username"`
-	DisplayName   *string   `json:"display_name,omitempty"` // Optional
-	InitialStatus string    `json:"initial_status"`
-	CreatedAt     time.Time `json:"created_at"`
+	UserID                string    `json:"user_id"`
+	Username              string    `json:"username"`
+	Email                 string    `json:"email"`
+	DisplayName           *string   `json:"display_name,omitempty"`
+	RegistrationTimestamp time.Time `json:"registration_timestamp"`
+	InitialStatus         string    `json:"initial_status"`
 }
 
 // EmailVerifiedEvent is published when a user successfully verifies their email.
+// Corresponds to event type: auth.user.email_verified.v1
 type EmailVerifiedEvent struct {
-	UserID     string    `json:"user_id"`
-	Email      string    `json:"email"`
-	VerifiedAt time.Time `json:"verified_at"`
+	UserID                string    `json:"user_id"`
+	Email                 string    `json:"email"`
+	VerificationTimestamp time.Time `json:"verification_timestamp"`
 }
 
 // PasswordResetEvent is published when a user's password has been successfully reset.
@@ -39,20 +41,31 @@ type VerificationEmailResentEvent struct {
 }
 
 // PasswordResetRequestedEvent is published when a user requests a password reset.
+// Corresponds to event type: auth.user.password_reset_requested.v1
 type PasswordResetRequestedEvent struct {
-	UserID      string    `json:"user_id"`
-	Email       string    `json:"email"`
-	Token       string    `json:"token"` // The plain password reset token
-	RequestedAt time.Time `json:"requested_at"`
+	UserID                string    `json:"user_id"`
+	Email                 string    `json:"email"`
+	RequestTimestamp      time.Time `json:"request_timestamp"`
+	ResetTokenIdentifier *string   `json:"reset_token_identifier,omitempty"`
 }
 
-// UserLoginEvent is published upon successful user login.
-type UserLoginEvent struct {
-	UserID    string    `json:"user_id"`
-	Email     string    `json:"email"` // Included for context
-	IPAddress string    `json:"ip_address"`
-	UserAgent string    `json:"user_agent"`
-	LoginAt   time.Time `json:"login_at"`
+// DeviceInfoPayload for login success event (as per spec example)
+type DeviceInfoPayload struct {
+	Type        string `json:"type,omitempty"`
+	OS          string `json:"os,omitempty"`
+	AppVersion  string `json:"app_version,omitempty"`
+	DeviceName  string `json:"device_name,omitempty"`
+}
+
+// UserLoginSuccessPayload is published upon successful user login.
+// Corresponds to event type: auth.user.login_success.v1
+type UserLoginSuccessPayload struct {
+	UserID          string             `json:"user_id"`
+	SessionID       string             `json:"session_id"`
+	LoginTimestamp  time.Time          `json:"login_timestamp"`
+	IPAddress       string             `json:"ip_address"`
+	UserAgent       string             `json:"user_agent"`
+	DeviceInfo      *DeviceInfoPayload `json:"device_info,omitempty"`
 }
 
 // UserLogoutEvent is published upon user logout from a single session.
@@ -76,9 +89,11 @@ type TokenRefreshedEvent struct {
 }
 
 // PasswordChangedEvent is published when a user successfully changes their password while authenticated.
+// Corresponds to event type: auth.user.password_changed.v1
 type PasswordChangedEvent struct {
-	UserID    string    `json:"user_id"`
-	ChangedAt time.Time `json:"changed_at"`
+	UserID           string    `json:"user_id"`
+	ChangeTimestamp  time.Time `json:"change_timestamp"`
+	ChangeType       string    `json:"change_type"`
 }
 
 // --- RBAC Event Structs ---
@@ -126,11 +141,12 @@ type RoleRemovedEvent struct {
 
 // UserRolesChangedEvent is a more general event for when a user's role assignments change.
 // This can cover both assignment and removal.
+// Corresponds to event type: auth.user.roles_changed.v1
 type UserRolesChangedEvent struct {
 	UserID          string    `json:"user_id"`
-	OldRoleIDs      []string  `json:"old_role_ids"` // List of role IDs before the change
-	NewRoleIDs      []string  `json:"new_role_ids"` // List of role IDs after the change
-	ChangedByUserID *string   `json:"changed_by_user_id,omitempty"` // Admin/system ID, use pointer for optional
+	OldRoleIDs      []string  `json:"old_role_ids"`
+	NewRoleIDs      []string  `json:"new_role_ids"`
+	ChangedByUserID string    `json:"changed_by_user_id"` // Changed to string, removed omitempty
 	ChangeTimestamp time.Time `json:"change_timestamp"`
 }
 
@@ -139,41 +155,61 @@ type UserRolesChangedEvent struct {
 // ensuring they align with `auth_event_streaming.md`.
 
 // SessionCreatedEvent is published when a new session is created.
+// Corresponds to event type: auth.session.created.v1
 type SessionCreatedEvent struct {
-	SessionID string    `json:"session_id"`
-	UserID    string    `json:"user_id"`
-	IPAddress string    `json:"ip_address,omitempty"`
-	UserAgent string    `json:"user_agent,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	SessionID             string             `json:"session_id"`
+	UserID                string             `json:"user_id"`
+	IPAddress             string             `json:"ip_address"`
+	UserAgent             string             `json:"user_agent"`
+	CreationTimestamp     time.Time          `json:"creation_timestamp"`
+	DeviceInfo            *DeviceInfoPayload `json:"device_info,omitempty"`
+	RefreshTokenExpiresAt time.Time          `json:"refresh_token_expires_at"`
 }
 
-// SessionDeactivatedEvent is published when a session is deactivated (deleted).
-type SessionDeactivatedEvent struct {
-	SessionID     string    `json:"session_id"`
-	UserID        string    `json:"user_id"` // UserID associated with the session
-	DeactivatedAt time.Time `json:"deactivated_at"`
+// SessionRevokedEvent is published when a session is revoked.
+// Corresponds to event type: auth.session.revoked.v1
+type SessionRevokedEvent struct { // Renamed struct
+	SessionID            string    `json:"session_id"`
+	UserID               string    `json:"user_id"`
+	RevocationTimestamp  time.Time `json:"revocation_timestamp"`
+	Reason               string    `json:"reason"`
 }
 
 // --- User Security Event Payloads ---
 
 // UserLoginFailedPayload is published when a user login attempt fails.
+// Corresponds to event type: auth.user.login_failed.v1
 type UserLoginFailedPayload struct {
-	UserID         string    `json:"user_id,omitempty"` // Optional: might not be known if lookup failed by identifier
-	AttemptedAt    time.Time `json:"attempted_at"`
-	IPAddress      string    `json:"ip_address,omitempty"`
-	UserAgent      string    `json:"user_agent,omitempty"`
-	Reason         string    `json:"reason"` // e.g., "user_not_found", "invalid_credentials", "mfa_required", "mfa_failed"
-	FailedAttempts int       `json:"failed_attempts,omitempty"` // Current failed attempts count if applicable
+	AttemptedLoginIdentifier string    `json:"attempted_login_identifier"`
+	FailureReason            string    `json:"failure_reason"`
+	FailureTimestamp         time.Time `json:"failure_timestamp"`
+	IPAddress                string    `json:"ip_address"`
+	UserAgent                string    `json:"user_agent"`
 }
 
 // UserAccountLockedPayload is published when a user account is locked due to excessive failed login attempts.
+// Corresponds to event type: auth.user.account_locked.v1
 type UserAccountLockedPayload struct {
-	UserID         string     `json:"user_id"`
-	LockedAt       time.Time  `json:"locked_at"`
-	LockoutUntil   *time.Time `json:"lockout_until,omitempty"` // When the lockout automatically expires
-	TriggeringIP   string     `json:"triggering_ip,omitempty"`
-	TriggeringUA   string     `json:"triggering_ua,omitempty"`
-	FailedAttempts int        `json:"failed_attempts"` // Number of failed attempts that triggered the lockout
+	UserID                  string    `json:"user_id"`
+	LockTimestamp           time.Time `json:"lock_timestamp"`
+	Reason                  string    `json:"reason"`
+	LockoutDurationSeconds *int64    `json:"lockout_duration_seconds,omitempty"`
+}
+
+// User2FAEnabledEvent is published when a user successfully enables a 2FA method.
+// Corresponds to event type: auth.2fa.enabled.v1
+type User2FAEnabledEvent struct {
+	UserID           string    `json:"user_id"`
+	Method           string    `json:"method"` // e.g., "totp", "sms"
+	EnabledTimestamp time.Time `json:"enabled_timestamp"`
+}
+
+// User2FADisabledEvent is published when a user successfully disables a 2FA method.
+// Corresponds to event type: auth.2fa.disabled.v1
+type User2FADisabledEvent struct {
+	UserID            string    `json:"user_id"`
+	Method            string    `json:"method"` // e.g., "totp", "sms"
+	DisabledTimestamp time.Time `json:"disabled_timestamp"`
 }
 
 

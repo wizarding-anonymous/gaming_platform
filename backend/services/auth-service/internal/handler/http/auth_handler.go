@@ -77,44 +77,46 @@ func (h *AuthHandler) RegisterUser(c *gin.Context) {
 	})
 }
 
-// LoginUser handles user login.
-// POST /api/v1/auth/login
 func (h *AuthHandler) LoginUser(c *gin.Context) {
-	var req models.LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid request payload", err)
-		return
-	}
+    var req models.LoginRequest // This now uses models.LoginRequest with Identifier
+    if err := c.ShouldBindJSON(&req); err != nil {
+        ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid request payload", err)
+        return
+    }
 
-	tokenPair, user, challengeToken, err := h.authService.Login(c.Request.Context(), req)
-	if err != nil {
-		if errors.Is(err, domainErrors.Err2FARequired) {
-			h.logger.Info("2FA required for user", zap.String("email", req.Email))
-			c.JSON(http.StatusAccepted, gin.H{
-				"message":         "2FA_required",
-				"user_id":         user.ID,
-				"challenge_token": challengeToken,
-			})
-			return
-		}
-		if errors.Is(err, domainErrors.ErrInvalidCredentials) || errors.Is(err, domainErrors.ErrUserNotFound) {
-			ErrorResponse(c.Writer, h.logger, http.StatusUnauthorized, "Invalid credentials", err)
-		} else if errors.Is(err, domainErrors.ErrUserBlocked) {
-			ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is blocked", err)
-		} else if errors.Is(err, domainErrors.ErrUserLockedOut) {
-			ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is temporarily locked", err)
-		} else if errors.Is(err, domainErrors.ErrEmailNotVerified) {
-			ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "Email not verified", err)
-		} else {
-			ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Login failed", err)
-		}
-		return
-	}
+    // Pass req directly, AuthService.Login now handles the Identifier
+    tokenPair, user, challengeToken, err := h.authService.Login(c.Request.Context(), req)
+    if err != nil {
+        if errors.Is(err, domainErrors.Err2FARequired) {
+            h.logger.Info("2FA required for user", zap.String("identifier", req.Identifier)) // Logging identifier
+            c.JSON(http.StatusAccepted, gin.H{
+                "message":         "2FA_required",
+                "user_id":         user.ID, // user object is available here
+                "challenge_token": challengeToken,
+            })
+            return
+        }
+        // Standard error handling based on error type
+        if errors.Is(err, domainErrors.ErrInvalidCredentials) || errors.Is(err, domainErrors.ErrUserNotFound) {
+            ErrorResponse(c.Writer, h.logger, http.StatusUnauthorized, "Invalid credentials", err)
+        } else if errors.Is(err, domainErrors.ErrUserBlocked) {
+            ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is blocked", err)
+        } else if errors.Is(err, domainErrors.ErrUserLockedOut) {
+            ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is temporarily locked", err)
+        } else if errors.Is(err, domainErrors.ErrEmailNotVerified) {
+            ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "Email not verified", err)
+        } else if errors.Is(err, domainErrors.ErrRateLimitExceeded) {
+             ErrorResponse(c.Writer, h.logger, http.StatusTooManyRequests, "Too many login attempts. Please try again later.", err)
+        } else {
+            ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Login failed", err)
+        }
+        return
+    }
 
-	SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{
-		"user":   user.ToResponse(),
-		"tokens": tokenPair,
-	})
+    SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{
+        "user":   user.ToResponse(),
+        "tokens": tokenPair,
+    })
 }
 
 // TelegramLogin handles user login/registration via Telegram data.

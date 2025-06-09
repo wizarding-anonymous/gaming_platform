@@ -53,7 +53,7 @@ security:
   password_hash:
     memory: 65536
     iterations: 1
-    parallelism: 2
+    parallelism: 4
     salt_length: 16
     key_length: 32
   rate_limiting:
