@@ -34,7 +34,42 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+
+	// Import healthcheck interfaces (assuming checkers.go is in internal/utils/healthcheck)
+	// healthcheckUtils "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/healthcheck"
+	// No, the interfaces are used by the grpc service, not directly by main. Main provides concrete types.
+	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Path to your kafka producer/consumer wrappers
 )
+
+// KafkaProducerHealthChecker adapts kafka.Producer for health checks.
+type KafkaProducerHealthChecker struct {
+	Producer *kafkaEvents.Producer // Your wrapper around sarama.SyncProducer
+}
+
+func (kphc *KafkaProducerHealthChecker) Healthy(ctx context.Context) error {
+	if kphc.Producer == nil {
+		return fmt.Errorf("Kafka producer client is nil")
+	}
+	// TODO: A more thorough check might try to get metadata or ensure topic exists.
+	// For now, simply checking if the Producer object itself (wrapper) is not nil is a basic check.
+	// If the Producer wrapper has internal status or a way to check underlying client, that would be better.
+	return nil // Basic check: producer object exists
+}
+
+// KafkaConsumerHealthChecker adapts kafka.ConsumerGroup for health checks.
+type KafkaConsumerHealthChecker struct {
+	ConsumerGroup *kafkaEvents.ConsumerGroup // Your wrapper around sarama.ConsumerGroup
+}
+
+func (kchc *KafkaConsumerHealthChecker) Healthy(ctx context.Context) error {
+	if kchc.ConsumerGroup == nil {
+		return fmt.Errorf("Kafka consumer group client is nil")
+	}
+	// TODO: Actual health of a consumer group is complex.
+	// A simple check is that the object exists.
+	// If ConsumerGroup wrapper has an IsHealthy() or similar, use it.
+	return nil // Basic check: consumer group object exists
+}
 
 func main() {
 	// Инициализация конфигурации
@@ -114,7 +149,7 @@ func main() {
 	// Note: NewProducer signature changed: NewProducer(brokers []string, logger logger.Logger, cloudEventSource string)
 	// Assuming the logger (*zap.Logger) from telemetry.NewLogger satisfies the logger.Logger interface expected by NewProducer.
 	// The CloudEventSource constant is from internal/events/models/cloudevent.go
-	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers, logger, models.CloudEventSource)
+	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers, logger, "urn:service:auth")
 	if err != nil {
 		logger.Fatal("Failed to initialize Kafka producer", zap.Error(err))
 	}
@@ -353,12 +388,23 @@ func main() {
 	// authGRPCServer.RegisterServer(grpcServer)
 
 	// Инициализация и регистрация нового AuthV1Service (gRPC)
+
+	// Health Checkers
+	// dbPool (*pgxpool.Pool) directly implements healthcheck.DBPinger via its Ping method.
+	// redisClient (*redis.Client) directly implements healthcheck.RedisPinger via its Ping method.
+	kafkaProducerChecker := &KafkaProducerHealthChecker{Producer: kafkaProducer}
+	kafkaConsumerChecker := &KafkaConsumerHealthChecker{ConsumerGroup: kafkaConsumer}
+
 	authV1GrpcService := grpcHandler.NewAuthV1Service(
 		logger,
-		tokenManagementService,
-		authService, // AuthService provides CheckPermission, GetUserInfo (via UserService)
-		userService, // UserService provides GetUserByID for GetUserInfo
-		// rbacService, // If a separate RBACService was created and used by CheckPermission
+		authService,  // This is AuthLogicService
+		userService,
+		tokenService, // This is service.TokenService
+		roleService,  // This is service.RoleService acting as RBACService
+		dbPool,       // pgxpool.Pool directly usable as healthcheck.DBPinger
+		redisClient,  // redis.Client directly usable as healthcheck.RedisPinger
+		kafkaProducerChecker,
+		kafkaConsumerChecker,
 	)
 	// Registering with the generated function. This will only expose methods present in the
 	// currently (potentially incompletely) generated authv1.AuthServiceServer interface.

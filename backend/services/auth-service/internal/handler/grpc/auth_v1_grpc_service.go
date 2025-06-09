@@ -13,6 +13,7 @@ import (
 	// The module path used during protoc generation was "github.com/gameplatform/auth-service"
 	// and the go_package option was "github.com/gameplatform/auth-service/gen/go/auth/v1;authv1"
 	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/proto/auth/v1"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/healthcheck"
 )
 
 // AuthV1Service is the gRPC service for auth.v1 operations like HealthCheck and CheckPermission.
@@ -24,6 +25,10 @@ type AuthV1Service struct {
 	userService                           service.UserService      // For GetUserInfo
 	tokenService                          service.TokenService     // For GetJWKS directly and ValidateToken via AuthLogic
 	rbacService                           service.RBACService      // For CheckPermission
+	dbPinger                              healthcheck.DBPinger
+	redisPinger                           healthcheck.RedisPinger
+	kafkaProducerChecker                  healthcheck.KafkaProducerChecker
+	kafkaConsumerChecker                  healthcheck.KafkaConsumerChecker
 }
 
 // NewAuthV1Service creates a new AuthV1Service.
@@ -33,13 +38,21 @@ func NewAuthV1Service(
 	userService service.UserService,
 	tokenService service.TokenService,
 	rbacService service.RBACService,
+	dbPinger healthcheck.DBPinger,
+	redisPinger healthcheck.RedisPinger,
+	kafkaProducerChecker healthcheck.KafkaProducerChecker,
+	kafkaConsumerChecker healthcheck.KafkaConsumerChecker,
 ) *AuthV1Service {
 	return &AuthV1Service{
-		logger:       logger.Named("grpc_auth_v1_service"),
-		authLogic:    authLogic,
-		userService:  userService,
-		tokenService: tokenService,
-		rbacService:  rbacService,
+		logger:               logger.Named("grpc_auth_v1_service"),
+		authLogic:            authLogic,
+		userService:          userService,
+		tokenService:         tokenService,
+		rbacService:          rbacService,
+		dbPinger:             dbPinger,
+		redisPinger:          redisPinger,
+		kafkaProducerChecker: kafkaProducerChecker,
+		kafkaConsumerChecker: kafkaConsumerChecker,
 	}
 }
 
@@ -47,8 +60,63 @@ func NewAuthV1Service(
 // It returns the serving status of the service.
 func (s *AuthV1Service) HealthCheck(ctx context.Context, req *authv1.GoogleProtobufEmpty) (*authv1.HealthCheckResponse, error) {
 	s.logger.Info("gRPC HealthCheck called")
+	overallStatus := authv1.HealthCheckResponse_SERVING
+	// Individual component status can be logged or added to response if proto is extended.
+	// For now, we'll just determine the overall status.
+
+	// Check Database
+	if s.dbPinger != nil {
+		if err := s.dbPinger.Ping(ctx); err != nil {
+			s.logger.Error("HealthCheck: Database ping failed", zap.Error(err))
+			overallStatus = authv1.HealthCheckResponse_NOT_SERVING
+		}
+	} else {
+		s.logger.Warn("HealthCheck: dbPinger is nil")
+		overallStatus = authv1.HealthCheckResponse_UNKNOWN // Or NOT_SERVING if critical
+	}
+
+	// Check Redis
+	if s.redisPinger != nil {
+		if err := s.redisPinger.Ping(ctx); err != nil {
+			s.logger.Error("HealthCheck: Redis ping failed", zap.Error(err))
+			overallStatus = authv1.HealthCheckResponse_NOT_SERVING
+		}
+	} else {
+		s.logger.Warn("HealthCheck: redisPinger is nil")
+		// If overallStatus is already NOT_SERVING, keep it. Otherwise, set to UNKNOWN.
+		if overallStatus == authv1.HealthCheckResponse_SERVING {
+			overallStatus = authv1.HealthCheckResponse_UNKNOWN
+		}
+	}
+
+	// Check Kafka Producer
+	if s.kafkaProducerChecker != nil {
+		if err := s.kafkaProducerChecker.Healthy(ctx); err != nil {
+			s.logger.Error("HealthCheck: Kafka producer check failed", zap.Error(err))
+			overallStatus = authv1.HealthCheckResponse_NOT_SERVING
+		}
+	} else {
+		s.logger.Warn("HealthCheck: kafkaProducerChecker is nil")
+		if overallStatus == authv1.HealthCheckResponse_SERVING {
+			overallStatus = authv1.HealthCheckResponse_UNKNOWN
+		}
+	}
+
+	// Check Kafka Consumer
+	if s.kafkaConsumerChecker != nil {
+		if err := s.kafkaConsumerChecker.Healthy(ctx); err != nil {
+			s.logger.Error("HealthCheck: Kafka consumer check failed", zap.Error(err))
+			overallStatus = authv1.HealthCheckResponse_NOT_SERVING
+		}
+	} else {
+		s.logger.Warn("HealthCheck: kafkaConsumerChecker is nil")
+		if overallStatus == authv1.HealthCheckResponse_SERVING {
+			overallStatus = authv1.HealthCheckResponse_UNKNOWN
+		}
+	}
+
 	return &authv1.HealthCheckResponse{
-		Status: authv1.HealthCheckResponse_SERVING,
+		Status: overallStatus,
 	}, nil
 }
 
