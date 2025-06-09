@@ -188,9 +188,11 @@ func (h *AccountEventsHandler) HandleAccountUserDeleted(ctx context.Context, eve
 	// Cascade deletes are expected to handle most of this via DB foreign keys with ON DELETE CASCADE.
 	// Explicit deletion here is for thoroughness or if CASCADE is not set on all relations.
 	// The primary action is to delete/mark-as-deleted the user in this service's DB.
-	if err := h.authService.SystemDeleteUser(ctx, userID); err != nil { // Assuming SystemDeleteUser exists on AuthLogicService
+	// The adminUserID is nil here as this event typically originates from the account service due to user's own action or automated process.
+	if err := h.authService.SystemDeleteUser(ctx, userID, nil, payload.Reason); err != nil {
 		 h.logger.Error("Failed to complete all system deletions for user", zap.Error(err), zap.String("userID", userID.String()), zap.String("eventID", event.ID))
 		 // Decide if this is a critical error to NACK the message.
+		 // For now, we log the error and acknowledge the event to avoid reprocessing loops if a partial failure is acceptable.
 	}
 
 	h.auditRecorder.RecordEvent(ctx, nil, "user_deleted_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, map[string]interface{}{"event_payload": payload, "cloud_event_id": event.ID}, "", "")

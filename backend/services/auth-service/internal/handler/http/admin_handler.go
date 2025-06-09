@@ -72,29 +72,51 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	// The ListUsersParams in UserRepository is models.ListUsersParams
 	// which has: Page, PageSize, Status, UsernameContains, EmailContains
 	
-	// This requires UserService to have a ListUsers method that accepts these filters.
-	// This method does not exist on the current UserService stub.
-	// For now, this handler will be a placeholder for the call.
+	statusFilter := c.Query("status")
+	usernameFilter := c.Query("username_contains") // Changed from "username" to "username_contains"
+	emailFilter := c.Query("email_contains")       // Changed from "email" to "email_contains"
+
+	listParams := models.ListUsersParams{
+		Page:             page,
+		PageSize:         pageSize,
+		UsernameContains: usernameFilter,
+		EmailContains:    emailFilter,
+	}
+
+	if statusFilter != "" {
+		validStatus := models.UserStatus(statusFilter)
+		// Basic validation for UserStatus. More robust validation could check against a list of valid statuses.
+		switch validStatus {
+		case models.UserStatusActive, models.UserStatusInactive, models.UserStatusBlocked, models.UserStatusPendingVerification, models.UserStatusDeleted:
+			listParams.Status = validStatus
+		default:
+			h.logger.Warn("Invalid status filter provided", zap.String("status", statusFilter))
+			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid status filter value", nil)
+			return
+		}
+	}
 	
-	// Placeholder call:
-	// listParams := models.ListUsersParams{
-	// 	Page: page,
-	// 	PageSize: pageSize,
-	// 	Status: models.UserStatus(c.Query("status")), // Needs validation
-	// 	UsernameContains: c.Query("username"),
-	// 	EmailContains: c.Query("email"),
-	// 	// Role: c.Query("role"), // Filtering by role needs more complex logic
-	// }
-	// users, total, err := h.userService.ListUsers(c.Request.Context(), listParams)
-	// if err != nil {
-	// 	ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Failed to list users", err)
-	// 	return
-	// }
-	
-	// Mocked response for now as UserService.ListUsers is not fully implemented for these params
-	h.logger.Info("Admin ListUsers called (mocked response)", zap.Int("page", page), zap.Int("pageSize", pageSize))
-	users := []*models.User{} // Empty list
-	total := 0
+	logFields := []zap.Field{
+		zap.Int("page", page),
+		zap.Int("pageSize", pageSize),
+	}
+	if listParams.Status != "" {
+		logFields = append(logFields, zap.String("status", string(listParams.Status)))
+	}
+	if listParams.UsernameContains != "" {
+		logFields = append(logFields, zap.String("username_contains", listParams.UsernameContains))
+	}
+	if listParams.EmailContains != "" {
+		logFields = append(logFields, zap.String("email_contains", listParams.EmailContains))
+	}
+	h.logger.Info("Admin ListUsers called", logFields...)
+
+
+	users, total, err := h.userService.ListUsers(c.Request.Context(), listParams)
+	if err != nil {
+		ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Failed to list users", err)
+		return
+	}
 
 	userResponses := make([]models.UserResponse, len(users))
 	for i, u := range users {
@@ -253,23 +275,76 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 	targetTypeFilter := c.Query("target_type") // Optional string filter
 	targetIDFilter := c.Query("target_id")   // Optional string filter
 
-	// TODO: Add date_from, date_to, status, ip_address filters
+	dateFromStr := c.Query("date_from")
+	dateToStr := c.Query("date_to")
+	statusFilterStr := c.Query("status")
+	ipAddressFilter := c.Query("ip_address")
 
 	params := repository.ListAuditLogParams{
 		Page:       page,
 		PageSize:   pageSize,
 		UserID:     userIDFilter,
-		Action:     &actionFilter,      // Pass as pointer if field is *string
-		TargetType: &targetTypeFilter, // Pass as pointer
-		TargetID:   &targetIDFilter,   // Pass as pointer
 		SortBy:     c.DefaultQuery("sort_by", "created_at"),
 		SortOrder:  c.DefaultQuery("sort_order", "DESC"),
 	}
-	// Adjust if Action, TargetType, TargetID in ListAuditLogParams are not pointers
-	if actionFilter == "" { params.Action = nil }
-	if targetTypeFilter == "" { params.TargetType = nil }
-	if targetIDFilter == "" { params.TargetID = nil }
 
+	if actionFilter != "" {
+		params.Action = &actionFilter
+	}
+	if targetTypeFilter != "" {
+		params.TargetType = &targetTypeFilter
+	}
+	if targetIDFilter != "" {
+		params.TargetID = &targetIDFilter
+	}
+	if ipAddressFilter != "" {
+		params.IPAddress = &ipAddressFilter
+	}
+
+	if dateFromStr != "" {
+		t, err := time.Parse(time.RFC3339, dateFromStr)
+		if err != nil {
+			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid date_from format, use RFC3339 (YYYY-MM-DDTHH:MM:SSZ)", err)
+			return
+		}
+		params.DateFrom = &t
+	}
+	if dateToStr != "" {
+		t, err := time.Parse(time.RFC3339, dateToStr)
+		if err != nil {
+			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid date_to format, use RFC3339 (YYYY-MM-DDTHH:MM:SSZ)", err)
+			return
+		}
+		params.DateTo = &t
+	}
+
+	if statusFilterStr != "" {
+		validStatus := models.AuditLogStatus(statusFilterStr)
+		switch validStatus {
+		case models.AuditLogStatusSuccess, models.AuditLogStatusFailure:
+			params.Status = &validStatus
+		default:
+			h.logger.Warn("Invalid status filter for audit logs", zap.String("status", statusFilterStr))
+			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid status filter value for audit logs", nil)
+			return
+		}
+	}
+
+	logFields := []zap.Field{
+		zap.Int("page", params.Page),
+		zap.Int("pageSize", params.PageSize),
+		zap.String("sort_by", params.SortBy),
+		zap.String("sort_order", params.SortOrder),
+	}
+	if params.UserID != nil { logFields = append(logFields, zap.String("user_id", params.UserID.String())) }
+	if params.Action != nil { logFields = append(logFields, zap.String("action", *params.Action)) }
+	if params.TargetType != nil { logFields = append(logFields, zap.String("target_type", *params.TargetType)) }
+	if params.TargetID != nil { logFields = append(logFields, zap.String("target_id", *params.TargetID)) }
+	if params.DateFrom != nil { logFields = append(logFields, zap.Time("date_from", *params.DateFrom)) }
+	if params.DateTo != nil { logFields = append(logFields, zap.Time("date_to", *params.DateTo)) }
+	if params.Status != nil { logFields = append(logFields, zap.String("status", string(*params.Status))) }
+	if params.IPAddress != nil { logFields = append(logFields, zap.String("ip_address", *params.IPAddress)) }
+	h.logger.Info("Admin ListAuditLogs called", logFields...)
 
 	logs, total, err := h.auditLogService.ListAuditLogs(c.Request.Context(), params)
 	if err != nil {
@@ -277,14 +352,13 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 		return
 	}
 
-	// AuditLog model can be directly used if its JSON tags are appropriate for response
 	SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{
 		"data": logs,
 		"meta": models.PaginationMeta{
-			CurrentPage: page,
-			PageSize:    pageSize,
+			CurrentPage: params.Page,    // Use params.Page for consistency
+			PageSize:    params.PageSize, // Use params.PageSize
 			TotalItems:  total,
-			TotalPages:  (total + pageSize - 1) / pageSize,
+			TotalPages:  (total + params.PageSize - 1) / params.PageSize,
 		},
 	})
 }

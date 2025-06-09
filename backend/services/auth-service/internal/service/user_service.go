@@ -430,6 +430,29 @@ func (s *UserService) ChangePassword(ctx context.Context, id uuid.UUID, oldPassw
 	return nil
 }
 
+// ListUsers retrieves a paginated and filtered list of users.
+func (s *UserService) ListUsers(ctx context.Context, params models.ListUsersParams) ([]*models.User, int, error) {
+	s.logger.Debug("UserService: ListUsers called",
+		zap.Int("page", params.Page),
+		zap.Int("pageSize", params.PageSize),
+		zap.String("status", string(params.Status)),
+		zap.String("username_contains", params.UsernameContains),
+		zap.String("email_contains", params.EmailContains),
+	)
+
+	users, total, err := s.userRepo.List(ctx, params)
+	if err != nil {
+		s.logger.Error("UserService: Failed to list users from repository", zap.Error(err))
+		return nil, 0, err
+	}
+
+	// TODO: Potentially enrich user models here if needed (e.g., loading roles for each user)
+	// For now, returning as is from the repository. If roles are needed, it's often better
+	// to have a separate method or an option in ListUsersParams to include them to avoid N+1 queries.
+
+	return users, total, nil
+}
+
 // GetUserRoles получает роли пользователя
 func (s *UserService) GetUserRoles(ctx context.Context, id uuid.UUID) ([]*models.Role, error) {
 	// Получение ролей пользователя

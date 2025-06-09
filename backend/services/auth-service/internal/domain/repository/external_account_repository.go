@@ -39,6 +39,10 @@ type ExternalAccountRepository interface {
 
 	// DeleteByUserIDAndProvider removes a specific external account link for a user and provider.
 	DeleteByUserIDAndProvider(ctx context.Context, userID uuid.UUID, provider string) error
+
+	// DeleteByUserID removes all external account links for a specific user ID.
+	// Returns the number of accounts deleted and an error if any.
+	DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
 }
 
 // Note: domainErrors.ErrNotFound or a specific ErrExternalAccountNotFound should be used.

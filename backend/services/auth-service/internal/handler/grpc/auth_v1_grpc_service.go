@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"github.com/google/uuid" // Added for uuid.Parse
 
 	// Import the generated Go code for the auth/v1 proto
 	// The module path used during protoc generation was "github.com/gameplatform/auth-service"
@@ -189,20 +190,44 @@ func (s *AuthV1Service) GetJWKS(ctx context.Context, req *authv1.GetJWKSRequest)
 
 
 // CheckPermission implements the CheckPermission RPC method.
-// It uses RBACService to determine if the user has the specified permission.
+// It uses RBACService (which should wrap AuthService) to determine if the user has the specified permission.
 func (s *AuthV1Service) CheckPermission(ctx context.Context, req *authv1.CheckPermissionRequest) (*authv1.CheckPermissionResponse, error) {
 	if req == nil || req.UserId == "" || req.PermissionId == "" {
 		s.logger.Warn("CheckPermission called with invalid arguments", zap.Any("request", req))
 		return nil, status.Errorf(codes.InvalidArgument, "user_id and permission_id are required")
 	}
 
-	s.logger.Debug("gRPC CheckPermission called", zap.String("user_id", req.UserId), zap.String("permission_id", req.PermissionId))
-
-	hasPerm, err := s.rbacService.CheckUserPermission(ctx, req.UserId, req.PermissionId)
+	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		// Log the internal error from rbacService
-		s.logger.Error("RBACService.CheckUserPermission failed", zap.Error(err), zap.String("user_id", req.UserId), zap.String("permission_id", req.PermissionId))
-		// Return a generic error to the client
+		s.logger.Warn("CheckPermission called with invalid user_id format", zap.String("user_id", req.UserId), zap.Error(err))
+		return nil, status.Errorf(codes.InvalidArgument, "user_id format is invalid")
+	}
+
+	var resourceIDPtr *string
+	if req.ResourceId != "" {
+		resourceIDPtr = &req.ResourceId
+	}
+
+	s.logger.Debug("gRPC CheckPermission called",
+		zap.String("user_id", req.UserId),
+		zap.String("permission_id", req.PermissionId),
+		zap.Stringp("resource_id", resourceIDPtr),
+	)
+
+	// Assuming s.rbacService.CheckUserPermission is compatible with AuthService.CheckUserPermission signature
+	// (uuid.UUID, string, *string)
+	// If rbacService is an alias for AuthService or wraps it directly, this should work.
+	// If RBACService has a different signature (e.g. string for userID), this call would need adjustment
+	// or the rbacService needs to handle the UUID parsing and resourceID pointer logic.
+	// For this task, we assume rbacService directly uses or wraps the AuthService method with the updated signature.
+	hasPerm, err := s.rbacService.CheckUserPermission(ctx, userID, req.PermissionId, resourceIDPtr)
+	if err != nil {
+		s.logger.Error("RBACService.CheckUserPermission failed",
+			zap.Error(err),
+			zap.String("user_id", req.UserId),
+			zap.String("permission_id", req.PermissionId),
+			zap.Stringp("resource_id", resourceIDPtr),
+		)
 		return nil, status.Errorf(codes.Internal, "failed to check permission")
 	}
 
