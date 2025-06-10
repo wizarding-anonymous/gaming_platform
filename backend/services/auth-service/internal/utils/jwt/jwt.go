@@ -1,4 +1,4 @@
-// File: internal/utils/jwt/jwt.go
+// File: backend/services/auth-service/internal/utils/jwt/jwt.go
 
 package jwt
 
@@ -230,7 +230,6 @@ func (tm *TokenManager) ParseToken(tokenString string) (jwt.Claims, error) {
 	// The initial generic parse already checked for major errors like expiration or invalid signature.
 	return nil, ErrInvalidClaims // Or return the tempClaims if partial info is acceptable
 }
-
 
 // ParseAccessToken парсит и проверяет access токен
 func (tm *TokenManager) ParseAccessToken(tokenString string) (*AccessTokenClaims, error) {
