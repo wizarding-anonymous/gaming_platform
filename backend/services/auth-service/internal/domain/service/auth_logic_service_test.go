@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
@@ -175,7 +176,7 @@ type authLogicTestDeps struct {
 	kafkaProducer        *MockKafkaProducer
 }
 
-func setupAuthLogicService(t *testing.T) (service.AuthLogicService, *authLogicTestDeps) {
+func setupAuthLogicService(t *testing.T, lockout ...config.LockoutConfig) (service.AuthLogicService, *authLogicTestDeps) {
 	deps := &authLogicTestDeps{
 		userRepo:             new(MockUserRepository),
 		sessionRepo:          new(MockSessionRepository),
@@ -186,6 +187,11 @@ func setupAuthLogicService(t *testing.T) (service.AuthLogicService, *authLogicTe
 		tokenService:         new(MockTokenService),
 		notificationService:  new(MockNotificationService),
 		kafkaProducer:        new(MockKafkaProducer),
+	}
+
+	appCfg := &service.SimplifiedConfigForAuthLogic{}
+	if len(lockout) > 0 {
+		appCfg.Lockout = lockout[0]
 	}
 
 	cfg := service.AuthLogicServiceConfig{
@@ -201,7 +207,7 @@ func setupAuthLogicService(t *testing.T) (service.AuthLogicService, *authLogicTe
 		KafkaProducer:        deps.kafkaProducer,
 		TelegramVerifier:     nil,
 		RBACService:          nil,
-		AppConfig:            &service.SimplifiedConfigForAuthLogic{},
+		AppConfig:            appCfg,
 	}
 
 	return service.NewAuthLogicService(cfg), deps
@@ -260,4 +266,46 @@ func TestLoginUser_PublishesLoginEvent(t *testing.T) {
 	assert.Equal(t, "refToken", refresh)
 
 	d.kafkaProducer.AssertExpectations(t)
+}
+
+func TestLoginUser_InvalidPassword_IncrementsAttempts(t *testing.T) {
+	lockoutCfg := config.LockoutConfig{MaxFailedAttempts: 3, LockoutDuration: time.Minute}
+	svc, d := setupAuthLogicService(t, lockoutCfg)
+	ctx := context.Background()
+
+	hashed := "hashedPW"
+	user := &entity.User{ID: uuid.NewString(), Email: "test@example.com", Username: "user", PasswordHash: &hashed, Status: entity.UserStatusActive, FailedLoginAttempts: 1}
+
+	d.userRepo.On("FindByEmail", ctx, "test@example.com").Return(user, nil).Once()
+	d.passwordService.On("CheckPasswordHash", "wrong", hashed).Return(false, nil).Once()
+	d.userRepo.On("UpdateFailedLoginAttempts", ctx, mock.AnythingOfType("uuid.UUID"), 2, (*time.Time)(nil)).Return(nil).Once()
+
+	_, _, _, err := svc.LoginUser(ctx, "test@example.com", "wrong", nil)
+	require.Error(t, err)
+
+	d.userRepo.AssertExpectations(t)
+}
+
+func TestLoginUser_InvalidPassword_TriggersLockout(t *testing.T) {
+	lockoutCfg := config.LockoutConfig{MaxFailedAttempts: 3, LockoutDuration: time.Minute}
+	svc, d := setupAuthLogicService(t, lockoutCfg)
+	ctx := context.Background()
+
+	hashed := "hashedPW"
+	user := &entity.User{ID: uuid.NewString(), Email: "test@example.com", Username: "user", PasswordHash: &hashed, Status: entity.UserStatusActive, FailedLoginAttempts: 2}
+
+	d.userRepo.On("FindByEmail", ctx, "test@example.com").Return(user, nil).Once()
+	d.passwordService.On("CheckPasswordHash", "wrong", hashed).Return(false, nil).Once()
+	d.userRepo.On("UpdateFailedLoginAttempts", ctx, mock.AnythingOfType("uuid.UUID"), 3, mock.AnythingOfType("*time.Time")).Return(nil).Once()
+
+	_, _, _, err := svc.LoginUser(ctx, "test@example.com", "wrong", nil)
+	require.Error(t, err)
+
+	call := d.userRepo.Calls[len(d.userRepo.Calls)-1]
+	lockoutArg, ok := call.Arguments.Get(3).(*time.Time)
+	require.True(t, ok)
+	require.NotNil(t, lockoutArg)
+	assert.WithinDuration(t, time.Now().Add(lockoutCfg.LockoutDuration), *lockoutArg, time.Second*2)
+
+	d.userRepo.AssertExpectations(t)
 }

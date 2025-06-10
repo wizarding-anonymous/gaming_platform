@@ -9,6 +9,7 @@ import (
 
 	// Assuming entity and repository packages are within the same module structure
 	"github.com/google/uuid" // For generating IDs
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
 	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 	eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
@@ -35,6 +36,7 @@ type AuthLogicService interface {
 // It only contains fields directly needed by AuthLogicService for this example.
 type SimplifiedConfigForAuthLogic struct {
 	TelegramBotToken string
+	Lockout          config.LockoutConfig
 	// Add other relevant config fields like JWT issuer, audience, TTLs if TokenService is created here
 	// or if its config is not directly passed to it.
 }
@@ -215,9 +217,15 @@ func (s *authLogicServiceImpl) LoginUser(ctx context.Context, loginIdentifier, p
 		return nil, "", "", fmt.Errorf("error checking password: %w", err)
 	}
 	if !match {
-		// TODO: Increment failed login attempts, handle account lockout
-		_ = s.userRepo.UpdateFailedLoginAttempts(ctx, user.ID, user.FailedLoginAttempts+1, nil) // Basic increment, error handling omitted for brevity
-		return nil, "", "", errors.New("invalid credentials")                                   // Placeholder entity.ErrInvalidCredentials
+		attempts := user.FailedLoginAttempts + 1
+		var lockoutUntil *time.Time
+		if s.cfg != nil && s.cfg.Lockout.MaxFailedAttempts > 0 && attempts >= s.cfg.Lockout.MaxFailedAttempts {
+			t := time.Now().Add(s.cfg.Lockout.LockoutDuration)
+			lockoutUntil = &t
+		}
+		_ = s.userRepo.UpdateFailedLoginAttempts(ctx, user.ID, attempts, lockoutUntil)
+		return nil, "", "", errors.New("invalid credentials")
+		// Placeholder entity.ErrInvalidCredentials
 	}
 
 	// 4. Check if 2FA is enabled and verified for the user
