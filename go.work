@@ -1,0 +1,7 @@
+// File: go.work
+go 1.23.8
+
+use (
+	./backend/services/account-service
+	./backend/services/auth-service
+)
