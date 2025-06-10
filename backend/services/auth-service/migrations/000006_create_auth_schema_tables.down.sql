@@ -1,3 +1,4 @@
+-- File: backend/services/auth-service/migrations/000006_create_auth_schema_tables.down.sql
 -- Migration to drop tables created in 000006_create_auth_schema_tables.up.sql
 
 -- Drop tables in reverse order of creation to respect foreign key constraints

@@ -1,3 +1,4 @@
+# File: backend/services/auth-service/deployments/helm/auth-service/values.yaml
 name: auth-service
 namespace: gaiming
 

@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/docs/architecture.md -->
 # Архитектура Auth Service
 
 ## Содержание

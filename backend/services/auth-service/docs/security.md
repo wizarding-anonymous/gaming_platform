@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/docs/security.md -->
 # Безопасность Auth Service
 
 **Важно:** Этот документ описывает аспекты безопасности. Актуальным и исчерпывающим источником спецификаций безопасности, включая алгоритмы и конфигурации, является `auth_microservice_specification_final.md`.

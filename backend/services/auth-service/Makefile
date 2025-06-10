@@ -1,3 +1,4 @@
+# File: backend/services/auth-service/Makefile
 # Makefile для Auth Service
 
 # Переменные

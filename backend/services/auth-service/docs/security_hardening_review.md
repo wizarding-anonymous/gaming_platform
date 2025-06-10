@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/docs/security_hardening_review.md -->
 # Security Hardening Review & Recommendations
 
 Date: (Current Date)

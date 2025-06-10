@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/CONTRIBUTING.md -->
 # Руководство по внесению изменений
 
 Данное руководство описывает процесс внесения изменений в микросервис Auth Service.

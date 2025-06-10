@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/api/proto/v1/auth.proto
 syntax = "proto3";
 
 package auth.v1; // Используем package из "нового" proto

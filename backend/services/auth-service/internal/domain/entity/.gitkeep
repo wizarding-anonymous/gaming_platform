@@ -1,2 +1,3 @@
+# File: backend/services/auth-service/internal/domain/entity/.gitkeep
 # This directory will hold Go structs for database entities
 # based on the 000006_create_auth_schema_tables.up.sql migration.

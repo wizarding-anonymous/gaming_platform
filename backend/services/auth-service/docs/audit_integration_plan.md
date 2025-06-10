@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/docs/audit_integration_plan.md -->
 # Audit Log Integration Plan
 
 This document outlines the integration points for audit logging within the Auth microservice. The `AuditLogService.RecordAuditEvent` method will be called at these points.

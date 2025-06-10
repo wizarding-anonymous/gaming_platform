@@ -1,3 +1,4 @@
+# File: backend/services/auth-service/Dockerfile
 # Используем минимальный базовый образ для Go
 FROM golang:1.21-alpine AS builder
 

@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/docs/integration_points.md -->
 # Auth Microservice Integration Points
 
 Date: (Current Date)

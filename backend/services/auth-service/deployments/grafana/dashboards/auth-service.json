@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/deployments/grafana/dashboards/auth-service.json
 {
   "annotations": {
     "list": [

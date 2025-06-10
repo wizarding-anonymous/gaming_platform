@@ -1,3 +1,4 @@
+-- File: backend/services/auth-service/migrations/000008_align_schema_with_spec.up.sql
 -- Migration to align schema with auth_data_model.md specification
 -- Assumes migrations up to 000007 have been applied.
 

@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/auth_microservice_specification_final.md -->
 # Детализированная Спецификация Микросервиса Аутентификации (Auth Service)
 
 **Версия:** 2.0

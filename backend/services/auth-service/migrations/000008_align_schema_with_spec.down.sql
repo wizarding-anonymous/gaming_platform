@@ -1,3 +1,4 @@
+-- File: backend/services/auth-service/migrations/000008_align_schema_with_spec.down.sql
 -- Migration to revert schema changes made by 000008_align_schema_with_spec.up.sql
 -- This attempts to restore the schema to a state similar to after 000007 was applied.
 
