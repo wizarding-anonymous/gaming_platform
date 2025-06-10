@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gameplatform/auth-service/internal/domain/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 )
 
 type telegramVerifier struct{}

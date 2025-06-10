@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid" // Added for uuid.Parse
 
 	// Import the generated Go code for the auth/v1 proto
-	// The module path used during protoc generation was "github.com/gameplatform/auth-service"
+	// The module path used during protoc generation was "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service"
 	// and the go_package option was "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1;authv1"
 	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/healthcheck"
@@ -303,7 +303,7 @@ func (s *AuthV1Service) CheckPermission(ctx context.Context, req *authv1.CheckPe
 // Ensure AuthV1Service implements the interface.
 var _ authv1.AuthServiceServer = (*AuthV1Service)(nil)
 
-// Need to import "github.com/gameplatform/auth-service/internal/domain/service"
+// Need to import "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 // and "google.golang.org/grpc/status"
 // and "google.golang.org/grpc/codes"
 

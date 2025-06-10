@@ -8,8 +8,8 @@ import (
 	"time"
 
 	// Assuming entity and repository packages are within the same module structure
-	"github.com/gameplatform/auth-service/internal/domain/entity"
-	"github.com/gameplatform/auth-service/internal/domain/repository"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 	"github.com/google/uuid" // For generating IDs
 )
 

@@ -4,8 +4,8 @@ package service
 import (
 	"context"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
-	"github.com/gameplatform/auth-service/internal/domain/repository"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 )
 
 // UserService defines the interface for user-related operations.

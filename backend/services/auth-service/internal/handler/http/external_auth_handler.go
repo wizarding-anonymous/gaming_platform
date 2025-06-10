@@ -8,8 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity" // For LoginResponse structure if defined there
-	"github.com/gameplatform/auth-service/internal/domain/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity" // For LoginResponse structure if defined there
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 )
 
 // ExternalAuthHandler handles HTTP requests for external authentication (e.g., Telegram).
@@ -152,10 +152,10 @@ func (h *ExternalAuthHandler) respondWithJSON(w http.ResponseWriter, code int, p
 //
 // import (
 //   ...
-//   externalauthhandler "github.com/gameplatform/auth-service/internal/handler/http"
-//   authlogicservice "github.com/gameplatform/auth-service/internal/domain/service"
-//   telegramverifier "github.com/gameplatform/auth-service/internal/infrastructure/security"
-//   extAccRepo "github.com/gameplatform/auth-service/internal/infrastructure/database"
+//   externalauthhandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http"
+//   authlogicservice "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+//   telegramverifier "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
+//   extAccRepo "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/database"
 // )
 //
 // // In NewRouter or where services are initialized:

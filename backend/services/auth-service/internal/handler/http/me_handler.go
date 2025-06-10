@@ -13,7 +13,7 @@ import (
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // For service interfaces
 	appService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service" // For concrete service like AuthService
-	// "github.com/gameplatform/auth-service/internal/middleware" // For auth middleware
+	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/middleware" // For auth middleware
 )
 
 // ChangePasswordRequest defines the structure for the change password request body.
