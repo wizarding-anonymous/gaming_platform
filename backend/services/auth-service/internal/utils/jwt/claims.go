@@ -1,9 +1,9 @@
-// File: internal/utils/jwt/claims.go
+// File: backend/services/auth-service/internal/utils/jwt/claims.go
 
 package jwt
 
 import (
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // AccessTokenClaims представляет собой claims для access токена

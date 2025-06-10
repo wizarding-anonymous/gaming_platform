@@ -1,4 +1,4 @@
-// File: internal/utils/jwt/jwt_test.go
+// File: backend/services/auth-service/internal/utils/jwt/jwt_test.go
 package jwt_test
 
 import (
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
@@ -23,7 +23,7 @@ const (
 func newTestJWTConfig() *config.JWTConfig {
 	return &config.JWTConfig{
 		SecretKey:       testSecret,
-		AccessTokenTTL:  15, // minutes
+		AccessTokenTTL:  15,     // minutes
 		RefreshTokenTTL: 24 * 7, // hours
 		EmailVerificationToken: config.TokenConfig{
 			ExpiresIn: 24, // hours
@@ -215,7 +215,6 @@ func TestParseAccessToken_NotYetValid(t *testing.T) {
 	jwt.TimeFunc = time.Now
 }
 
-
 func TestParseAccessToken_WrongSecret(t *testing.T) {
 	cfg1 := newTestJWTConfig()
 	tm1 := jwtUtil.NewTokenManager(cfg1)
@@ -258,11 +257,9 @@ func TestParseAccessToken_InvalidSigningMethod(t *testing.T) {
 	header := `{"alg":"RS256","typ":"JWT"}`
 	badTokenString := fmt.Sprintf("%s.%s.%s", base64.RawURLEncoding.EncodeToString([]byte(header)), parts[1], parts[2])
 
-
 	_, err = tm.ParseAccessToken(badTokenString)
 	assert.ErrorIs(t, err, jwtUtil.ErrInvalidSigningMethod)
 }
-
 
 func TestParseAccessToken_WrongTokenTypeInClaim(t *testing.T) {
 	cfg := newTestJWTConfig()
@@ -342,7 +339,6 @@ func TestParseToken_Generic_Expired(t *testing.T) {
 	assert.ErrorIs(t, err, jwtUtil.ErrExpiredToken)
 }
 
-
 func TestGetRoleNames(t *testing.T) {
 	// Test with a slice of models.Role
 	roles := []models.Role{
@@ -383,5 +379,3 @@ func TestGetRoleNames(t *testing.T) {
 	// The current getRoleNames will produce an empty slice for nil input.
 	assert.Empty(t, parsedClaimsNil.Roles)
 }
-
-[end of backend/services/auth-service/internal/utils/jwt/jwt_test.go]
