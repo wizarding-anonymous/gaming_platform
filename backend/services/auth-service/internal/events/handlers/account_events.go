@@ -1,4 +1,4 @@
-// File: internal/events/account_events.go
+// File: backend/services/auth-service/internal/events/handlers/account_events.go
 
 package handlers
 
@@ -14,10 +14,10 @@ import (
 
 // AccountEventHandler обрабатывает события, связанные с аккаунтами
 type AccountEventHandler struct {
-	authService  *service.AuthService
-	tokenService *service.TokenService
+	authService    *service.AuthService
+	tokenService   *service.TokenService
 	sessionService *service.SessionService
-	logger       logger.Logger
+	logger         logger.Logger
 }
 
 // NewAccountEventHandler создает новый обработчик событий аккаунтов
@@ -28,10 +28,10 @@ func NewAccountEventHandler(
 	logger logger.Logger,
 ) *AccountEventHandler {
 	return &AccountEventHandler{
-		authService:  authService,
-		tokenService: tokenService,
+		authService:    authService,
+		tokenService:   tokenService,
 		sessionService: sessionService,
-		logger:       logger,
+		logger:         logger,
 	}
 }
 
@@ -50,12 +50,12 @@ func (h *AccountEventHandler) RegisterHandlers(consumer *kafka.Consumer) {
 
 // AccountLoginPayload представляет данные события входа в аккаунт
 type AccountLoginPayload struct {
-	UserID    string `json:"user_id"`
-	SessionID string `json:"session_id"`
-	IP        string `json:"ip"`
-	UserAgent string `json:"user_agent"`
-	LoginAt   int64  `json:"login_at"`
-	Success   bool   `json:"success"`
+	UserID     string `json:"user_id"`
+	SessionID  string `json:"session_id"`
+	IP         string `json:"ip"`
+	UserAgent  string `json:"user_agent"`
+	LoginAt    int64  `json:"login_at"`
+	Success    bool   `json:"success"`
 	FailReason string `json:"fail_reason,omitempty"`
 }
 
@@ -136,13 +136,13 @@ func (h *AccountEventHandler) HandleAccountTokenRefreshed(ctx context.Context, e
 
 // AccountPasswordResetRequestedPayload представляет данные события запроса сброса пароля
 type AccountPasswordResetRequestedPayload struct {
-	UserID    string `json:"user_id"`
-	Email     string `json:"email"`
-	ResetCode string `json:"reset_code"`
-	RequestedAt int64 `json:"requested_at"`
-	ExpiresAt int64  `json:"expires_at"`
-	IP        string `json:"ip"`
-	UserAgent string `json:"user_agent"`
+	UserID      string `json:"user_id"`
+	Email       string `json:"email"`
+	ResetCode   string `json:"reset_code"`
+	RequestedAt int64  `json:"requested_at"`
+	ExpiresAt   int64  `json:"expires_at"`
+	IP          string `json:"ip"`
+	UserAgent   string `json:"user_agent"`
 }
 
 // HandleAccountPasswordResetRequested обрабатывает событие запроса сброса пароля
@@ -165,13 +165,13 @@ func (h *AccountEventHandler) HandleAccountPasswordResetRequested(ctx context.Co
 
 // AccountPasswordResetCompletedPayload представляет данные события завершения сброса пароля
 type AccountPasswordResetCompletedPayload struct {
-	UserID     string `json:"user_id"`
-	Email      string `json:"email"`
-	CompletedAt int64 `json:"completed_at"`
-	IP         string `json:"ip"`
-	UserAgent  string `json:"user_agent"`
-	Success    bool   `json:"success"`
-	FailReason string `json:"fail_reason,omitempty"`
+	UserID      string `json:"user_id"`
+	Email       string `json:"email"`
+	CompletedAt int64  `json:"completed_at"`
+	IP          string `json:"ip"`
+	UserAgent   string `json:"user_agent"`
+	Success     bool   `json:"success"`
+	FailReason  string `json:"fail_reason,omitempty"`
 }
 
 // HandleAccountPasswordResetCompleted обрабатывает событие завершения сброса пароля
