@@ -17,8 +17,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service" // For concrete service types if needed
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/middleware"
@@ -30,27 +31,42 @@ import (
 type MockUserServiceForAdminHandler struct {
 	mock.Mock
 }
+
 func (m *MockUserServiceForAdminHandler) BlockUser(ctx context.Context, id uuid.UUID, actorID *uuid.UUID, reason string) error {
 	args := m.Called(ctx, id, actorID, reason)
 	return args.Error(0)
 }
-// Add other UserService methods called by AdminHandler as needed (e.g., GetUserByID, ListUsers, etc.)
-func (m *MockUserServiceForAdminHandler) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) { panic("not impl in mock") }
-func (m *MockUserServiceForAdminHandler) CreateUser(ctx context.Context, req models.CreateUserRequest, actorID *uuid.UUID) (*models.User, error) { panic("not impl in mock") }
-func (m *MockUserServiceForAdminHandler) UpdateUser(ctx context.Context, id uuid.UUID, req models.UpdateUserRequest, actorID *uuid.UUID) (*models.User, error) { panic("not impl in mock") }
-func (m *MockUserServiceForAdminHandler) DeleteUser(ctx context.Context, id uuid.UUID, actorID *uuid.UUID) error { panic("not impl in mock") }
-func (m *MockUserServiceForAdminHandler) ChangePassword(ctx context.Context, id uuid.UUID, oldPassword, newPassword string) error { panic("not impl in mock") }
-func (m *MockUserServiceForAdminHandler) UnblockUser(ctx context.Context, id uuid.UUID, actorID *uuid.UUID) error { panic("not impl in mock") }
 
+// Add other UserService methods called by AdminHandler as needed (e.g., GetUserByID, ListUsers, etc.)
+func (m *MockUserServiceForAdminHandler) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	panic("not impl in mock")
+}
+func (m *MockUserServiceForAdminHandler) CreateUser(ctx context.Context, req models.CreateUserRequest, actorID *uuid.UUID) (*models.User, error) {
+	panic("not impl in mock")
+}
+func (m *MockUserServiceForAdminHandler) UpdateUser(ctx context.Context, id uuid.UUID, req models.UpdateUserRequest, actorID *uuid.UUID) (*models.User, error) {
+	panic("not impl in mock")
+}
+func (m *MockUserServiceForAdminHandler) DeleteUser(ctx context.Context, id uuid.UUID, actorID *uuid.UUID) error {
+	panic("not impl in mock")
+}
+func (m *MockUserServiceForAdminHandler) ChangePassword(ctx context.Context, id uuid.UUID, oldPassword, newPassword string) error {
+	panic("not impl in mock")
+}
+func (m *MockUserServiceForAdminHandler) UnblockUser(ctx context.Context, id uuid.UUID, actorID *uuid.UUID) error {
+	panic("not impl in mock")
+}
 
 type MockRoleServiceForAdminHandler struct {
 	mock.Mock
 }
+
 // Add RoleService methods called by AdminHandler as needed
 
 type MockAuditLogServiceForAdminHandler struct {
 	mock.Mock
 }
+
 func (m *MockAuditLogServiceForAdminHandler) ListAuditLogs(ctx context.Context, params models.ListAuditLogParams) ([]*models.AuditLog, int64, error) {
 	args := m.Called(ctx, params)
 	if args.Get(0) == nil {
@@ -58,17 +74,48 @@ func (m *MockAuditLogServiceForAdminHandler) ListAuditLogs(ctx context.Context, 
 	}
 	return args.Get(0).([]*models.AuditLog), int64(args.Int(1)), args.Error(2)
 }
+
 // Add other AuditLogService methods if AdminHandler uses them.
 
+type MockAuditLogRepositoryForAdminHandler struct {
+	mock.Mock
+}
+
+func (m *MockAuditLogRepositoryForAdminHandler) Create(ctx context.Context, logEntry *models.AuditLog) error {
+	args := m.Called(ctx, logEntry)
+	return args.Error(0)
+}
+
+func (m *MockAuditLogRepositoryForAdminHandler) FindByID(ctx context.Context, id int64) (*models.AuditLog, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.AuditLog), args.Error(1)
+}
+
+func (m *MockAuditLogRepositoryForAdminHandler) List(ctx context.Context, params repository.ListAuditLogParams) ([]*models.AuditLog, int, error) {
+	args := m.Called(ctx, params)
+	if args.Get(0) == nil {
+		return nil, 0, args.Error(2)
+	}
+	return args.Get(0).([]*models.AuditLog), args.Int(1), args.Error(2)
+}
 
 // --- Test Suite Setup ---
 type AdminHandlerTestSuite struct {
-	router             *gin.Engine
-	mockUserService    domainService.UserService // Assuming AdminHandler uses interface
-	mockRoleService    domainService.RoleService   // Assuming AdminHandler uses interface
-	mockAuditLogSvc    domainService.AuditLogService // Assuming AdminHandler uses interface
-	adminHandler       *AdminHandler
-	logger             *zap.Logger
+	router           *gin.Engine
+	mockUserService  domainService.UserService     // Assuming AdminHandler uses interface
+	mockRoleService  domainService.RoleService     // Assuming AdminHandler uses interface
+	mockAuditLogSvc  domainService.AuditLogService // Assuming AdminHandler uses interface
+	mockAuditLogRepo repository.AuditLogRepository
+	adminHandler     *AdminHandler
+	logger           *zap.Logger
+}
+
+type ListAuditLogsResponse struct {
+	AuditLogs []*models.AuditLog    `json:"data"`
+	Meta      models.PaginationMeta `json:"meta"`
 }
 
 func setupAdminHandlerTestSuite(t *testing.T) *AdminHandlerTestSuite {
@@ -79,6 +126,7 @@ func setupAdminHandlerTestSuite(t *testing.T) *AdminHandlerTestSuite {
 	ts.mockUserService = new(MockUserServiceForAdminHandler)
 	ts.mockRoleService = new(MockRoleServiceForAdminHandler)
 	ts.mockAuditLogSvc = new(MockAuditLogServiceForAdminHandler)
+	ts.mockAuditLogRepo = new(MockAuditLogRepositoryForAdminHandler)
 
 	// NewAdminHandler signature from admin_handler.go:
 	// logger *zap.Logger, userService domain.UserService, roleService domain.RoleService, auditService domain.AuditLogService
@@ -87,6 +135,7 @@ func setupAdminHandlerTestSuite(t *testing.T) *AdminHandlerTestSuite {
 		ts.mockUserService,
 		ts.mockRoleService,
 		ts.mockAuditLogSvc,
+		ts.mockAuditLogRepo,
 	)
 
 	ts.router = gin.New()
@@ -120,14 +169,13 @@ func TestAdminHandler_BlockUser_Success(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Set(middleware.GinContextUserIDKey, adminUserID.String()) // Admin performing the action
+	c.Set(middleware.GinContextUserIDKey, adminUserID.String())          // Admin performing the action
 	c.Set(middleware.GinContextUserRolesKey, []string{models.RoleAdmin}) // Assuming RoleAdmin is a const string
 	c.Params = gin.Params{gin.Param{Key: "user_id", Value: targetUserID.String()}}
 
 	httpRequest, _ := http.NewRequest(http.MethodPost, "/api/v1/admin/users/"+targetUserID.String()+"/block", bytes.NewBuffer(jsonBody))
 	httpRequest.Header.Set("Content-Type", "application/json")
 	c.Request = httpRequest
-
 
 	ts.mockUserService.On("BlockUser", c.Request.Context(), targetUserID, &adminUserID, reqBody.Reason).Return(nil).Once()
 
@@ -235,7 +283,6 @@ func TestAdminHandler_BlockUser_ServiceError_Generic(t *testing.T) {
 	ts.mockUserService.AssertExpectations(t)
 }
 
-
 // --- Test ListAuditLogs ---
 func TestAdminHandler_ListAuditLogs_Success(t *testing.T) {
 	ts := setupAdminHandlerTestSuite(t)
@@ -253,7 +300,7 @@ func TestAdminHandler_ListAuditLogs_Success(t *testing.T) {
 	mockLogs := []*models.AuditLog{
 		{ID: uuid.New(), UserID: &adminUserID, Action: "test_action", Timestamp: time.Now()},
 	}
-	ts.mockAuditLogSvc.On("ListAuditLogs", c.Request.Context(), mock.AnythingOfType("models.ListAuditLogParams")).Return(mockLogs, int64(1), nil).Once()
+	ts.mockAuditLogRepo.On("List", c.Request.Context(), mock.AnythingOfType("repository.ListAuditLogParams")).Return(mockLogs, 1, nil).Once()
 
 	ts.adminHandler.ListAuditLogs(c)
 
@@ -262,11 +309,11 @@ func TestAdminHandler_ListAuditLogs_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &respBody)
 	require.NoError(t, err)
 	assert.Len(t, respBody.AuditLogs, 1)
-	assert.Equal(t, int64(1), respBody.TotalCount)
-	assert.Equal(t, 1, respBody.Page)
-	assert.Equal(t, 10, respBody.PageSize)
+	assert.Equal(t, 1, respBody.Meta.TotalItems)
+	assert.Equal(t, 1, respBody.Meta.CurrentPage)
+	assert.Equal(t, 10, respBody.Meta.PageSize)
 
-	ts.mockAuditLogSvc.AssertExpectations(t)
+	ts.mockAuditLogRepo.AssertExpectations(t)
 }
 
 func TestAdminHandler_ListAuditLogs_BadRequest_InvalidPage(t *testing.T) {
@@ -296,13 +343,12 @@ func TestAdminHandler_ListAuditLogs_ServiceError(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/audit-logs?page=1&page_size=10", nil)
 	c.Request = req
 
-	ts.mockAuditLogSvc.On("ListAuditLogs", c.Request.Context(), mock.AnythingOfType("models.ListAuditLogParams")).Return(nil, int64(0), errors.New("db query failed")).Once()
+	ts.mockAuditLogRepo.On("List", c.Request.Context(), mock.AnythingOfType("repository.ListAuditLogParams")).Return(nil, 0, errors.New("db query failed")).Once()
 
 	ts.adminHandler.ListAuditLogs(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	ts.mockAuditLogSvc.AssertExpectations(t)
+	ts.mockAuditLogRepo.AssertExpectations(t)
 }
-
 
 // --- Test GetUserByID ---
 func TestAdminHandler_GetUserByID_Success(t *testing.T) {
@@ -424,7 +470,6 @@ func TestAdminHandler_UnblockUser_NotFound(t *testing.T) {
 	mockUserSvc.AssertExpectations(t)
 }
 
-
 // --- Test UpdateUserRoles ---
 func TestAdminHandler_UpdateUserRoles_Success(t *testing.T) {
 	ts := setupAdminHandlerTestSuite(t)
@@ -502,7 +547,6 @@ func TestAdminHandler_UpdateUserRoles_BadRequest_InvalidPayload(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-
 func TestAdminHandler_UpdateUserRoles_RoleNotFound(t *testing.T) {
 	ts := setupAdminHandlerTestSuite(t)
 	targetUserID := uuid.New()
@@ -527,7 +571,6 @@ func TestAdminHandler_UpdateUserRoles_RoleNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code) // As per handler's error mapping
 	mockRoleSvc.AssertExpectations(t)
 }
-
 
 // --- Test ListUsers ---
 func TestAdminHandler_ListUsers_Success_Placeholder(t *testing.T) {
@@ -573,7 +616,6 @@ func TestAdminHandler_ListUsers_BadRequest_InvalidPageParam(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code) // It defaults page to 1
 }
 
-
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -582,20 +624,45 @@ func init() {
 var _ domainService.UserService = (*MockUserServiceForAdminHandler)(nil)
 var _ domainService.RoleService = (*MockRoleServiceForAdminHandler)(nil)
 var _ domainService.AuditLogService = (*MockAuditLogServiceForAdminHandler)(nil)
+var _ repository.AuditLogRepository = (*MockAuditLogRepositoryForAdminHandler)(nil)
 
 // Add methods for MockRoleServiceForAdminHandler if AdminHandler calls it
-func (m *MockRoleServiceForAdminHandler) CreateRole(ctx context.Context, req models.CreateRoleRequest, actorID *uuid.UUID) (*models.Role, error) {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) GetRoleByID(ctx context.Context, id string) (*models.Role, error) {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*models.Role, error) {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) AssignRoleToUser(ctx context.Context, userID uuid.UUID, roleID string, adminUserID *uuid.UUID) error {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) RemoveRoleFromUser(ctx context.Context, userID uuid.UUID, roleID string, adminUserID *uuid.UUID) error {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) AssignPermissionToRole(ctx context.Context, roleID string, permissionID string, actorID *uuid.UUID) error {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) RemovePermissionFromRole(ctx context.Context, roleID string, permissionID string, actorID *uuid.UUID) error {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) GetRoleByName(ctx context.Context, name string) (*models.Role, error) {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) GetRoles(ctx context.Context) ([]*models.Role, error) {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) UpdateRole(ctx context.Context, id string, req models.UpdateRoleRequest, actorID *uuid.UUID) (*models.Role, error) {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) DeleteRole(ctx context.Context, id string, actorID *uuid.UUID) error {panic("not impl")}
-func (m *MockRoleServiceForAdminHandler) GetRolePermissions(ctx context.Context, roleID string) ([]*models.Permission, error) {panic("not impl")}
+func (m *MockRoleServiceForAdminHandler) CreateRole(ctx context.Context, req models.CreateRoleRequest, actorID *uuid.UUID) (*models.Role, error) {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) GetRoleByID(ctx context.Context, id string) (*models.Role, error) {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*models.Role, error) {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) AssignRoleToUser(ctx context.Context, userID uuid.UUID, roleID string, adminUserID *uuid.UUID) error {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) RemoveRoleFromUser(ctx context.Context, userID uuid.UUID, roleID string, adminUserID *uuid.UUID) error {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) AssignPermissionToRole(ctx context.Context, roleID string, permissionID string, actorID *uuid.UUID) error {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) RemovePermissionFromRole(ctx context.Context, roleID string, permissionID string, actorID *uuid.UUID) error {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) GetRoleByName(ctx context.Context, name string) (*models.Role, error) {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) GetRoles(ctx context.Context) ([]*models.Role, error) {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) UpdateRole(ctx context.Context, id string, req models.UpdateRoleRequest, actorID *uuid.UUID) (*models.Role, error) {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) DeleteRole(ctx context.Context, id string, actorID *uuid.UUID) error {
+	panic("not impl")
+}
+func (m *MockRoleServiceForAdminHandler) GetRolePermissions(ctx context.Context, roleID string) ([]*models.Permission, error) {
+	panic("not impl")
+}
 func (m *MockRoleServiceForAdminHandler) UpdateUserRoles(ctx context.Context, targetUserID uuid.UUID, roleIDs []string, adminUserID *uuid.UUID) error {
 	args := m.Called(ctx, targetUserID, roleIDs, adminUserID)
 	return args.Error(0)

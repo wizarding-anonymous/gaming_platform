@@ -5,9 +5,10 @@ package http
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // Added for config.RateLimitRule
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Added for domainService.RateLimiter
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http/middleware"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
-	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Added for domainService.RateLimiter
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/telemetry"
 	"go.uber.org/zap"
 )
@@ -24,6 +25,7 @@ func SetupRouter(
 	mfaLogicService domainService.MFALogicService,
 	apiKeyService domainService.APIKeyService,
 	auditLogService domainService.AuditLogService, // Added for AdminHandler
+	auditLogRepo repository.AuditLogRepository,
 	tokenManagementService domainService.TokenManagementService,
 	cfg *config.Config,
 	logger *zap.Logger,
@@ -42,12 +44,11 @@ func SetupRouter(
 	// Создание обработчиков
 	authHandler := NewAuthHandler(logger, authService, mfaLogicService, tokenManagementService, cfg)
 	userHandler := NewUserHandler(userService, authService, sessionService, mfaLogicService, apiKeyService, logger)
-	roleHandler := NewRoleHandler(roleService, logger) // Assuming RoleService DI is stable
-	adminHandler := NewAdminHandler(logger, userService, roleService, auditLogService) // Instantiate AdminHandler
-	validationHandler := NewValidationHandler(logger, tokenManagementService, authService) // Updated NewValidationHandler call
+	roleHandler := NewRoleHandler(roleService, logger)                                                      // Assuming RoleService DI is stable
+	adminHandler := NewAdminHandler(logger, userService, roleService, auditLogService, auditLogRepo)        // Instantiate AdminHandler
+	validationHandler := NewValidationHandler(logger, tokenManagementService, authService)                  // Updated NewValidationHandler call
 	meHandler := NewMeHandler(logger, authService, userService, mfaLogicSvc, apiKeyService, sessionService) // Instantiate MeHandler, added sessionService
-	oauthHandler := NewOAuthHandler(authService, logger, cfg) // Инициализация OAuthHandler
-
+	oauthHandler := NewOAuthHandler(authService, logger, cfg)                                               // Инициализация OAuthHandler
 
 	// Настройка маршрутов для метрик и проверки работоспособности
 	router.GET("/metrics", gin.WrapF(telemetry.PrometheusHandler()))
@@ -62,7 +63,6 @@ func SetupRouter(
 	jwksHandler := NewJWKSHandler(tokenManagementService, logger)
 	// Standard path for JWKS. Can also be /api/v1/auth/jwks.json if preferred under API group.
 	router.GET("/.well-known/jwks.json", gin.WrapF(jwksHandler.GetJWKS))
-
 
 	// Группа маршрутов API
 	api := router.Group("/api/v1")
@@ -89,7 +89,7 @@ func SetupRouter(
 			auth.POST("/login/2fa/verify", authHandler.VerifyLogin2FA)
 
 			// OAuth and other external provider routes
-			auth.GET("/oauth/:provider", oauthHandler.InitiateOAuthHandler)     // Redirect to provider
+			auth.GET("/oauth/:provider", oauthHandler.InitiateOAuthHandler)          // Redirect to provider
 			auth.GET("/oauth/:provider/callback", oauthHandler.OAuthCallbackHandler) // Callback from provider
 			// TelegramLogin route auth.POST("/telegram-login", authHandler.TelegramLogin) is already present
 		}
@@ -148,12 +148,12 @@ func SetupRouter(
 				roles.GET("/:id", roleHandler.GetRole)
 				roles.PUT("/:id", roleHandler.UpdateRole)
 				roles.DELETE("/:id", roleHandler.DeleteRole)
-			// These might be part of RoleService or a more specific UserRoleService if complex
-			// For now, assuming roleHandler has these or similar if they are simple role property changes
-			// roles.POST("/assign", roleHandler.AssignRoleToUser) // This was likely for admin to assign role to any user
-			// roles.POST("/remove", roleHandler.RemoveRoleFromUser) // This too
-			// roles.GET("/user/:id", roleHandler.GetUserRoles) // This too
-			// The UpdateUserRoles in AdminHandler is now PUT /admin/users/{user_id}/roles
+				// These might be part of RoleService or a more specific UserRoleService if complex
+				// For now, assuming roleHandler has these or similar if they are simple role property changes
+				// roles.POST("/assign", roleHandler.AssignRoleToUser) // This was likely for admin to assign role to any user
+				// roles.POST("/remove", roleHandler.RemoveRoleFromUser) // This too
+				// roles.GET("/user/:id", roleHandler.GetUserRoles) // This too
+				// The UpdateUserRoles in AdminHandler is now PUT /admin/users/{user_id}/roles
 			}
 
 			// Admin User Management (already handled by adminHandler instance)

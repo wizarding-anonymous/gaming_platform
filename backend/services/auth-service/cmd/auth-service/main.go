@@ -369,6 +369,7 @@ func main() {
 		twoFactorServiceImpl, // Pass the refactored TwoFactorService here as well if httpHandler expects it directly
 		apiKeyService,
 		auditLogService,
+		auditLogRepo,
 		tokenManagementService,
 		cfg,
 		logger,
