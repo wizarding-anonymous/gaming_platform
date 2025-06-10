@@ -1,4 +1,4 @@
-// File: internal/events/handlers/user_events.go
+// File: internal/events/user_events.go
 
 package handlers
 

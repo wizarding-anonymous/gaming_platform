@@ -1,4 +1,4 @@
-// File: internal/events/kafka/consumer.go
+// File: internal/events/consumer.go
 
 package kafka
 
