@@ -1,4 +1,4 @@
-// File: internal/events/user_events.go
+// File: backend/services/auth-service/internal/events/handlers/user_events.go
 
 package handlers
 
@@ -133,10 +133,10 @@ func (h *UserEventHandler) HandleUserDeleted(ctx context.Context, event kafka.Ev
 
 // UserRoleAssignedPayload представляет данные события назначения роли пользователю
 type UserRoleAssignedPayload struct {
-	UserID    string `json:"user_id"`
-	RoleID    string `json:"role_id"`
-	RoleName  string `json:"role_name"`
-	AssignedAt int64 `json:"assigned_at"`
+	UserID     string `json:"user_id"`
+	RoleID     string `json:"role_id"`
+	RoleName   string `json:"role_name"`
+	AssignedAt int64  `json:"assigned_at"`
 	AssignedBy string `json:"assigned_by,omitempty"`
 }
 
