@@ -3,7 +3,9 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"time" // For time.Now() in one of the handlers, can be removed if not strictly needed here
 
 	"github.com/gin-gonic/gin"
@@ -11,8 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service" // For concrete AuthService
 )
@@ -88,45 +90,45 @@ func (h *AuthHandler) RegisterUser(c *gin.Context) {
 }
 
 func (h *AuthHandler) LoginUser(c *gin.Context) {
-    var req models.LoginRequest // This now uses models.LoginRequest with Identifier
-    if err := c.ShouldBindJSON(&req); err != nil {
-        ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid request payload", err)
-        return
-    }
+	var req models.LoginRequest // This now uses models.LoginRequest with Identifier
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Invalid request payload", err)
+		return
+	}
 
-    // Pass req directly, AuthService.Login now handles the Identifier
-    tokenPair, user, challengeToken, err := h.authService.Login(c.Request.Context(), req)
-    if err != nil {
-        if errors.Is(err, domainErrors.Err2FARequired) {
-            h.logger.Info("2FA required for user", zap.String("identifier", req.Identifier)) // Logging identifier
-            c.JSON(http.StatusAccepted, gin.H{
-                "message":         "2FA_required",
-                "user_id":         user.ID, // user object is available here
-                "challenge_token": challengeToken,
-            })
-            return
-        }
-        // Standard error handling based on error type
-        if errors.Is(err, domainErrors.ErrInvalidCredentials) || errors.Is(err, domainErrors.ErrUserNotFound) {
-            ErrorResponse(c.Writer, h.logger, http.StatusUnauthorized, "Invalid credentials", err)
-        } else if errors.Is(err, domainErrors.ErrUserBlocked) {
-            ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is blocked", err)
-        } else if errors.Is(err, domainErrors.ErrUserLockedOut) {
-            ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is temporarily locked", err)
-        } else if errors.Is(err, domainErrors.ErrEmailNotVerified) {
-            ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "Email not verified", err)
-        } else if errors.Is(err, domainErrors.ErrRateLimitExceeded) {
-             ErrorResponse(c.Writer, h.logger, http.StatusTooManyRequests, "Too many login attempts. Please try again later.", err)
-        } else {
-            ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Login failed", err)
-        }
-        return
-    }
+	// Pass req directly, AuthService.Login now handles the Identifier
+	tokenPair, user, challengeToken, err := h.authService.Login(c.Request.Context(), req)
+	if err != nil {
+		if errors.Is(err, domainErrors.Err2FARequired) {
+			h.logger.Info("2FA required for user", zap.String("identifier", req.Identifier)) // Logging identifier
+			c.JSON(http.StatusAccepted, gin.H{
+				"message":         "2FA_required",
+				"user_id":         user.ID, // user object is available here
+				"challenge_token": challengeToken,
+			})
+			return
+		}
+		// Standard error handling based on error type
+		if errors.Is(err, domainErrors.ErrInvalidCredentials) || errors.Is(err, domainErrors.ErrUserNotFound) {
+			ErrorResponse(c.Writer, h.logger, http.StatusUnauthorized, "Invalid credentials", err)
+		} else if errors.Is(err, domainErrors.ErrUserBlocked) {
+			ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is blocked", err)
+		} else if errors.Is(err, domainErrors.ErrUserLockedOut) {
+			ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is temporarily locked", err)
+		} else if errors.Is(err, domainErrors.ErrEmailNotVerified) {
+			ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "Email not verified", err)
+		} else if errors.Is(err, domainErrors.ErrRateLimitExceeded) {
+			ErrorResponse(c.Writer, h.logger, http.StatusTooManyRequests, "Too many login attempts. Please try again later.", err)
+		} else {
+			ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Login failed", err)
+		}
+		return
+	}
 
-    SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{
-        "user":   user.ToResponse(),
-        "tokens": tokenPair,
-    })
+	SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{
+		"user":   user.ToResponse(),
+		"tokens": tokenPair,
+	})
 }
 
 // TelegramLogin handles user login/registration via Telegram data.
@@ -221,7 +223,6 @@ func (h *AuthHandler) VerifyLogin2FA(c *gin.Context) {
 	})
 }
 
-
 // --- OAuth 2.0 Handlers ---
 
 // OAuthLogin initiates the OAuth 2.0 login flow by redirecting the user to the provider.
@@ -229,7 +230,7 @@ func (h *AuthHandler) VerifyLogin2FA(c *gin.Context) {
 func (h *AuthHandler) OAuthLogin(c *gin.Context) {
 	provider := c.Param("provider")
 	clientRedirectURI := c.Query("redirect_uri") // Optional: client can specify where to be redirected after our callback
-	clientState := c.Query("state")             // Optional: client can pass its own state
+	clientState := c.Query("state")              // Optional: client can pass its own state
 
 	// Service generates the actual auth URL and the state JWT to be stored in a cookie.
 	authURL, stateCookieJWT, err := h.authService.InitiateOAuthLogin(c.Request.Context(), provider, clientRedirectURI, clientState)
@@ -252,8 +253,8 @@ func (h *AuthHandler) OAuthLogin(c *gin.Context) {
 		Value:    stateCookieJWT,
 		Expires:  time.Now().Add(h.cfg.Security.OAuth.StateCookieTTL),
 		Path:     "/api/v1/auth/oauth/" + provider + "/callback", // Scope cookie to the callback path
-		Domain:   c.Request.URL.Host, // Set domain appropriately
-		Secure:   c.Request.TLS != nil, // True if HTTPS
+		Domain:   c.Request.URL.Host,                             // Set domain appropriately
+		Secure:   c.Request.TLS != nil,                           // True if HTTPS
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -265,8 +266,8 @@ func (h *AuthHandler) OAuthLogin(c *gin.Context) {
 // GET /api/v1/auth/oauth/{provider}/callback
 func (h *AuthHandler) OAuthCallback(c *gin.Context) {
 	provider := c.Param("provider")
-	authorizationCode := c.Query("code") // 'code' from provider
-	receivedStateCSRF := c.Query("state")   // This is the CSRF token from provider's 'state' param
+	authorizationCode := c.Query("code")  // 'code' from provider
+	receivedStateCSRF := c.Query("state") // This is the CSRF token from provider's 'state' param
 
 	providerError := c.Query("error")
 	errorDescription := c.Query("error_description")
@@ -277,12 +278,16 @@ func (h *AuthHandler) OAuthCallback(c *gin.Context) {
 			zap.String("error", providerError),
 			zap.String("description", errorDescription),
 		)
-		ErrorResponse(c.Writer, h.logger, http.StatusUnauthorized, fmt.Sprintf("OAuth provider error: %s", errorDescription), errors.New(providerError))
+		msg := fmt.Sprintf("OAuth provider error: %s", errorDescription)
+		v := url.Values{"error": []string{msg}}
+		c.Redirect(http.StatusTemporaryRedirect, h.cfg.OAuthErrorPageURL+"?"+v.Encode())
 		return
 	}
 
 	if authorizationCode == "" {
-		ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Authorization code missing in OAuth callback", nil)
+		msg := "Authorization code missing in OAuth callback"
+		v := url.Values{"error": []string{msg}}
+		c.Redirect(http.StatusTemporaryRedirect, h.cfg.OAuthErrorPageURL+"?"+v.Encode())
 		return
 	}
 
@@ -290,7 +295,9 @@ func (h *AuthHandler) OAuthCallback(c *gin.Context) {
 	stateCookieJWT, err := c.Cookie(h.cfg.Security.OAuth.StateCookieName)
 	if err != nil {
 		h.logger.Warn("OAuthCallback: State cookie not found or failed to read", zap.Error(err))
-		ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "OAuth state validation failed: missing state cookie", err)
+		msg := "OAuth state validation failed: missing state cookie"
+		v := url.Values{"error": []string{msg}}
+		c.Redirect(http.StatusTemporaryRedirect, h.cfg.OAuthErrorPageURL+"?"+v.Encode())
 		return
 	}
 	// Clear the state cookie immediately after reading
@@ -298,7 +305,7 @@ func (h *AuthHandler) OAuthCallback(c *gin.Context) {
 		Name:     h.cfg.Security.OAuth.StateCookieName,
 		Value:    "",
 		Path:     "/api/v1/auth/oauth/" + provider + "/callback",
-		Expires:  time.Unix(0,0),
+		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
 		Secure:   c.Request.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
@@ -312,13 +319,16 @@ func (h *AuthHandler) OAuthCallback(c *gin.Context) {
 	// Pass stateCookieJWT and receivedStateCSRF to AuthService for validation
 	tokenPair, user, err := h.authService.HandleOAuthCallback(c.Request.Context(), provider, authorizationCode, receivedStateCSRF, stateCookieJWT, deviceInfo)
 	if err != nil {
+		var msg string
 		if errors.Is(err, domainErrors.ErrOAuthStateMismatch) || errors.Is(err, domainErrors.ErrInvalidRequest) {
-			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "OAuth callback error: invalid state or request", err)
+			msg = "OAuth callback error: invalid state or request"
 		} else if errors.Is(err, domainErrors.ErrUserBlocked) {
-			ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is blocked", err)
+			msg = "User account is blocked"
 		} else {
-			ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "OAuth callback processing failed", err)
+			msg = "OAuth callback processing failed"
 		}
+		v := url.Values{"error": []string{msg}}
+		c.Redirect(http.StatusTemporaryRedirect, h.cfg.OAuthErrorPageURL+"?"+v.Encode())
 		return
 	}
 
@@ -330,10 +340,8 @@ func (h *AuthHandler) OAuthCallback(c *gin.Context) {
 	})
 }
 
-
 // Placeholder for other handlers from the old router.go that would need similar refactoring:
 // Enable2FA, VerifyAndActivate2FAHandler, Disable2FAHandler, RegenerateBackupCodesHandler (new MFA handlers)
-
 
 // RefreshToken handles token refresh requests.
 // POST /api/v1/auth/refresh-token
@@ -491,7 +499,6 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 	}
 	SuccessResponse(c.Writer, h.logger, http.StatusNoContent, nil)
 }
-
 
 // Helper functions for standard responses
 func SuccessResponse(w http.ResponseWriter, logger *zap.Logger, statusCode int, data interface{}) {
