@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/crypto/argon2"
 
-	"github.com/gameplatform/auth-service/internal/domain/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 )
 
 // Argon2idParams holds the parameters for Argon2id hashing.

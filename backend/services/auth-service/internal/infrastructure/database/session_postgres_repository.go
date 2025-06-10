@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
-	"github.com/gameplatform/auth-service/internal/domain/repository"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 )
 
 type pgxSessionRepository struct {

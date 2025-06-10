@@ -4,7 +4,7 @@ package repository
 import (
 	"context"
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
 )
 
 // RoleRepository defines the interface for interacting with role data

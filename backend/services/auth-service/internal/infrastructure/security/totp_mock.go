@@ -8,7 +8,7 @@ import (
 	"net/url"
 
 	// "github.com/pquerna/otp/totp" // Would be used in a real implementation
-	"github.com/gameplatform/auth-service/internal/domain/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 )
 
 // mockTOTPService provides a placeholder implementation for TOTPService.

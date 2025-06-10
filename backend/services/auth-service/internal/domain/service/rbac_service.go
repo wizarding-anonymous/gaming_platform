@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"sort" // For de-duplicating permissions
 
-	"github.com/gameplatform/auth-service/internal/domain/entity"
-	"github.com/gameplatform/auth-service/internal/domain/repository"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 )
 
 // RBACService defines the interface for Role-Based Access Control operations.
