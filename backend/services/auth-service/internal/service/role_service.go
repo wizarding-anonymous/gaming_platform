@@ -1,4 +1,4 @@
-// File: internal/service/role_service.go
+// File: backend/services/auth-service/internal/service/role_service.go
 
 package service
 
@@ -8,22 +8,24 @@ import (
 
 	"errors" // Added for errors.Is
 	"github.com/google/uuid"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // Added for domainErrors.ErrRoleNotFound
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Added for domainService.AuditLogRecorder
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka" // To be replaced
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Sarama-based producer
 	"go.uber.org/zap"
 )
 
 // RoleService предоставляет методы для работы с ролями
 type RoleService struct {
-	roleRepo      interfaces.RoleRepository
-	userRepo      interfaces.UserRepository // Still needed for validating user existence in some flows
-	userRolesRepo interfaces.UserRolesRepository // Added
-	kafkaClient   *kafkaEvents.Producer // Changed to Sarama-based producer
-	logger        *zap.Logger
+	roleRepo         interfaces.RoleRepository
+	userRepo         interfaces.UserRepository      // Still needed for validating user existence in some flows
+	userRolesRepo    interfaces.UserRolesRepository // Added
+	kafkaClient      *kafkaEvents.Producer          // Changed to Sarama-based producer
+	cfg              *config.Config
+	logger           *zap.Logger
 	auditLogRecorder domainService.AuditLogRecorder // Added for audit logging
 }
 
@@ -33,15 +35,17 @@ func NewRoleService(
 	userRepo interfaces.UserRepository,
 	userRolesRepo interfaces.UserRolesRepository, // Added
 	kafkaClient *kafkaEvents.Producer, // Changed to Sarama-based producer
+	cfg *config.Config,
 	logger *zap.Logger,
 	auditLogRecorder domainService.AuditLogRecorder, // Added
 ) *RoleService {
 	return &RoleService{
-		roleRepo:      roleRepo,
-		userRepo:      userRepo,
-		userRolesRepo: userRolesRepo, // Added
-		kafkaClient:   kafkaClient, // Assign Sarama-based producer
-		logger:        logger,
+		roleRepo:         roleRepo,
+		userRepo:         userRepo,
+		userRolesRepo:    userRolesRepo, // Added
+		kafkaClient:      kafkaClient,   // Assign Sarama-based producer
+		cfg:              cfg,
+		logger:           logger,
 		auditLogRecorder: auditLogRecorder, // Added
 	}
 }
@@ -82,8 +86,12 @@ func (s *RoleService) CreateRole(ctx context.Context, req models.CreateRoleReque
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	auditDetails["role_id_provided"] = req.ID // req.ID is string
@@ -106,7 +114,6 @@ func (s *RoleService) CreateRole(ctx context.Context, req models.CreateRoleReque
 		return nil, err
 	}
 
-
 	role := &models.Role{
 		ID:          req.ID,
 		Name:        req.Name,
@@ -120,7 +127,9 @@ func (s *RoleService) CreateRole(ctx context.Context, req models.CreateRoleReque
 		auditDetails["details"] = err.Error()
 		// Use role.ID (string) directly as targetID if available, even if creation failed mid-way or ID was client provided.
 		var targetRoleID *string
-		if role.ID != "" { targetRoleID = &role.ID}
+		if role.ID != "" {
+			targetRoleID = &role.ID
+		}
 		s.auditLogRecorder.RecordEvent(ctx, actorID, "role_create", models.AuditLogStatusFailure, targetRoleID, models.AuditTargetTypeRole, auditDetails, ipAddress, userAgent)
 		return nil, err
 	}
@@ -135,9 +144,9 @@ func (s *RoleService) CreateRole(ctx context.Context, req models.CreateRoleReque
 		// Map to new payload
 		// Assuming RoleCreatedPayload is now in models package
 		roleCreatedPayload := models.RoleCreatedPayload{
-			RoleID:      createdRoleForEvent.ID,
-			Name:        createdRoleForEvent.Name,
-			CreatedAt:   createdRoleForEvent.CreatedAt,
+			RoleID:    createdRoleForEvent.ID,
+			Name:      createdRoleForEvent.Name,
+			CreatedAt: createdRoleForEvent.CreatedAt,
 		}
 		if createdRoleForEvent.Description != "" { // Handle if description can be empty
 			roleCreatedPayload.Description = &createdRoleForEvent.Description
@@ -149,19 +158,20 @@ func (s *RoleService) CreateRole(ctx context.Context, req models.CreateRoleReque
 
 		subjectRoleCreated := createdRoleForEvent.ID // ID is string
 		contentTypeJSON := "application/json"
-		// TODO: Determine correct topic
-		if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
+		if errKafka := s.kafkaClient.PublishCloudEvent( // Publish to Kafka
 			ctx,
-			"auth-events", // topic
+			s.cfg.Kafka.Producer.RoleTopic,
 			kafkaEvents.EventType(models.AuthRoleCreatedV1), // eventType, cast to kafkaEvents.EventType
 			// "auth-service", // source - removed
 			&subjectRoleCreated, // subject
 			// "", // eventID - removed
-			&contentTypeJSON, // dataContentType
+			&contentTypeJSON,   // dataContentType
 			roleCreatedPayload, // dataPayload
 		); errKafka != nil {
 			s.logger.Error("Failed to publish CloudEvent for role created", zap.Error(errKafka), zap.String("role_id", role.ID))
-			if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+			if auditDetails == nil {
+				auditDetails = make(map[string]interface{})
+			}
 			auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 		}
 	}
@@ -176,8 +186,12 @@ func (s *RoleService) UpdateRole(ctx context.Context, id string, req models.Upda
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	var changedFields []string
@@ -242,8 +256,8 @@ func (s *RoleService) UpdateRole(ctx context.Context, id string, req models.Upda
 		// Map to new CloudEvent payload
 		// Assuming RoleUpdatedPayload is now in models package
 		roleUpdatePayload := models.RoleUpdatedPayload{
-			RoleID:    updatedRoleForEvent.ID,
-			UpdatedAt: updatedRoleForEvent.UpdatedAt,
+			RoleID:        updatedRoleForEvent.ID,
+			UpdatedAt:     updatedRoleForEvent.UpdatedAt,
 			ChangedFields: changedFields, // This was captured earlier in the method
 		}
 		// Only include Name and Description in payload if they were actually part of the update request
@@ -259,19 +273,20 @@ func (s *RoleService) UpdateRole(ctx context.Context, id string, req models.Upda
 		}
 		subjectRoleUpdated := updatedRoleForEvent.ID // ID is string
 		contentTypeJSON := "application/json"
-		// TODO: Determine correct topic
-		if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
+		if errKafka := s.kafkaClient.PublishCloudEvent(
 			ctx,
-			"auth-events", // topic
+			s.cfg.Kafka.Producer.RoleTopic,
 			kafkaEvents.EventType(models.AuthRoleUpdatedV1), // eventType, cast to kafkaEvents.EventType
 			// "auth-service", // source - removed
 			&subjectRoleUpdated, // subject
 			// "", // eventID - removed
-			&contentTypeJSON, // dataContentType
+			&contentTypeJSON,  // dataContentType
 			roleUpdatePayload, // dataPayload
 		); errKafka != nil {
 			s.logger.Error("Failed to publish CloudEvent for role updated", zap.Error(errKafka), zap.String("role_id", role.ID))
-			if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+			if auditDetails == nil {
+				auditDetails = make(map[string]interface{})
+			}
 			auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 		}
 	}
@@ -286,8 +301,12 @@ func (s *RoleService) DeleteRole(ctx context.Context, id string, actorID *uuid.U
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	targetRoleID := &id // id is string
@@ -329,19 +348,20 @@ func (s *RoleService) DeleteRole(ctx context.Context, id string, actorID *uuid.U
 
 	subjectRoleDeleted := role.ID // ID is string
 	contentTypeJSON := "application/json"
-	// TODO: Determine correct topic
-	if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
+	if errKafka := s.kafkaClient.PublishCloudEvent(
 		ctx,
-		"auth-events", // topic
+		s.cfg.Kafka.Producer.RoleTopic,
 		kafkaEvents.EventType(models.AuthRoleDeletedV1), // eventType, cast to kafkaEvents.EventType
 		// "auth-service", // source - removed
 		&subjectRoleDeleted, // subject
 		// "", // eventID - removed
-		&contentTypeJSON, // dataContentType
+		&contentTypeJSON,   // dataContentType
 		roleDeletedPayload, // dataPayload
 	); errKafka != nil {
 		s.logger.Error("Failed to publish CloudEvent for role deleted", zap.Error(errKafka), zap.String("role_id", role.ID))
-		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+		if auditDetails == nil {
+			auditDetails = make(map[string]interface{})
+		}
 		auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 	}
 
@@ -354,8 +374,12 @@ func (s *RoleService) AssignRoleToUser(ctx context.Context, userID uuid.UUID, ro
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	targetUserID := &userID
@@ -428,19 +452,20 @@ func (s *RoleService) AssignRoleToUser(ctx context.Context, userID uuid.UUID, ro
 	subjectUserRoleAssigned := userID.String()
 	contentTypeJSON := "application/json"
 	// Publish CloudEvent
-	// TODO: Determine correct topic, using placeholder "auth-events" for now. Should be from cfg.
-	if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
+	if errKafka := s.kafkaClient.PublishCloudEvent(
 		ctx,
-		"auth-events", // topic
+		s.cfg.Kafka.Producer.UserRoleTopic,
 		kafkaEvents.EventType(models.AuthUserRoleAssignedV1), // eventType, cast to kafkaEvents.EventType
 		// "auth-service", // source - removed
 		&subjectUserRoleAssigned, // subject
 		// "", // eventID - removed
-		&contentTypeJSON, // dataContentType
+		&contentTypeJSON,     // dataContentType
 		assignedEventPayload, // dataPayload
 	); errKafka != nil {
 		s.logger.Error("Failed to publish CloudEvent for user role assigned", zap.Error(errKafka), zap.String("user_id", userID.String()), zap.String("role_id", roleID))
-		if auditDetails == nil { auditDetails = make(map[string]interface{}) } // Ensure auditDetails is not nil
+		if auditDetails == nil {
+			auditDetails = make(map[string]interface{})
+		} // Ensure auditDetails is not nil
 		auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 	}
 
@@ -453,8 +478,12 @@ func (s *RoleService) RemoveRoleFromUser(ctx context.Context, userID uuid.UUID, 
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	targetUserID := &userID
@@ -520,19 +549,20 @@ func (s *RoleService) RemoveRoleFromUser(ctx context.Context, userID uuid.UUID, 
 	subjectUserRoleRevoked := userID.String()
 	contentTypeJSON := "application/json"
 	// Publish CloudEvent
-	// TODO: Determine correct topic
-	if errKafka := s.kafkaClient.PublishCloudEvent( // Changed s.kafkaProducer to s.kafkaClient
+	if errKafka := s.kafkaClient.PublishCloudEvent(
 		ctx,
-		"auth-events", // topic
+		s.cfg.Kafka.Producer.UserRoleTopic,
 		kafkaEvents.EventType(models.AuthUserRoleRevokedV1), // eventType, cast to kafkaEvents.EventType
 		// "auth-service", // source - removed
 		&subjectUserRoleRevoked, // subject
 		// "", // eventID - removed
-		&contentTypeJSON, // dataContentType
+		&contentTypeJSON,    // dataContentType
 		revokedEventPayload, // dataPayload
 	); errKafka != nil {
 		s.logger.Error("Failed to publish CloudEvent for user role revoked", zap.Error(errKafka), zap.String("user_id", userID.String()), zap.String("role_id", roleID))
-		if auditDetails == nil { auditDetails = make(map[string]interface{}) } // Ensure auditDetails is not nil
+		if auditDetails == nil {
+			auditDetails = make(map[string]interface{})
+		} // Ensure auditDetails is not nil
 		auditDetails["warning_cloudevent_publish"] = errKafka.Error()
 	}
 
@@ -596,8 +626,12 @@ func (s *RoleService) AssignPermissionToRole(ctx context.Context, roleID string,
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	targetRoleIDStr := &roleID
@@ -635,8 +669,12 @@ func (s *RoleService) RemovePermissionFromRole(ctx context.Context, roleID strin
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	targetRoleIDStr := &roleID

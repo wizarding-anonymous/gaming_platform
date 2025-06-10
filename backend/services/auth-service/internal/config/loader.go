@@ -74,6 +74,8 @@ func setDefaults() {
 	// Настройки Kafka
 	viper.SetDefault("kafka.brokers", []string{"localhost:9092"})
 	viper.SetDefault("kafka.producer.topic", "auth.events")
+	viper.SetDefault("kafka.producer.role_topic", "auth-role-events")
+	viper.SetDefault("kafka.producer.user_role_topic", "auth-user-role-events")
 	viper.SetDefault("kafka.consumer.topics", []string{"account.events"})
 	viper.SetDefault("kafka.consumer.group_id", "auth-service")
 

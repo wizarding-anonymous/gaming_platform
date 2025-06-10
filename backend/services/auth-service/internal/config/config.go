@@ -11,19 +11,19 @@ import (
 )
 
 type Config struct {
-	Server         ServerConfig                 `mapstructure:"server"`
-	Database       DatabaseConfig               `mapstructure:"database"`
-	Redis          RedisConfig                  `mapstructure:"redis"`
-	Kafka          KafkaConfig                  `mapstructure:"kafka"`
-	JWT            JWTConfig                    `mapstructure:"jwt"`
-	Security       SecurityConfig               `mapstructure:"security"`
-	MFA            MFAConfig                    `mapstructure:"mfa"`
-	Logging        LoggingConfig                `mapstructure:"logging"`
-	Telemetry      TelemetryConfig              `mapstructure:"telemetry"`
+	Server         ServerConfig                   `mapstructure:"server"`
+	Database       DatabaseConfig                 `mapstructure:"database"`
+	Redis          RedisConfig                    `mapstructure:"redis"`
+	Kafka          KafkaConfig                    `mapstructure:"kafka"`
+	JWT            JWTConfig                      `mapstructure:"jwt"`
+	Security       SecurityConfig                 `mapstructure:"security"`
+	MFA            MFAConfig                      `mapstructure:"mfa"`
+	Logging        LoggingConfig                  `mapstructure:"logging"`
+	Telemetry      TelemetryConfig                `mapstructure:"telemetry"`
 	OAuthProviders map[string]OAuthProviderConfig `mapstructure:"oauth_providers"`
-	Telegram       TelegramConfig               `mapstructure:"telegram"`
-	HIBP           HIBPConfig                   `mapstructure:"hibp"`
-	Captcha        CaptchaConfig                `mapstructure:"captcha"`
+	Telegram       TelegramConfig                 `mapstructure:"telegram"`
+	HIBP           HIBPConfig                     `mapstructure:"hibp"`
+	Captcha        CaptchaConfig                  `mapstructure:"captcha"`
 }
 
 type HIBPConfig struct {
@@ -65,7 +65,9 @@ type RedisConfig struct {
 }
 
 type KafkaProducerConfig struct {
-	Topic string `mapstructure:"topic"`
+	Topic         string `mapstructure:"topic"`
+	RoleTopic     string `mapstructure:"role_topic"`
+	UserRoleTopic string `mapstructure:"user_role_topic"`
 }
 
 type KafkaConsumerConfig struct {
@@ -74,7 +76,7 @@ type KafkaConsumerConfig struct {
 }
 
 type KafkaConfig struct {
-	Brokers  []string          `mapstructure:"brokers"`
+	Brokers  []string            `mapstructure:"brokers"`
 	Producer KafkaProducerConfig `mapstructure:"producer"`
 	Consumer KafkaConsumerConfig `mapstructure:"consumer"`
 }
@@ -125,17 +127,17 @@ type RateLimitConfig struct {
 	PasswordResetPerEmail    RateLimitRule `mapstructure:"password_reset_per_email"`
 	PasswordResetPerIP       RateLimitRule `mapstructure:"password_reset_per_ip"`
 	TwoFAVerificationPerUser RateLimitRule `mapstructure:"two_fa_verification_per_user"`
-	RegisterIP               RateLimitRule `mapstructure:"register_ip"` // Added for registration by IP
-	LoginEmailIP             RateLimitRule `mapstructure:"login_email_ip"` // Added for login by email and IP
+	RegisterIP               RateLimitRule `mapstructure:"register_ip"`               // Added for registration by IP
+	LoginEmailIP             RateLimitRule `mapstructure:"login_email_ip"`            // Added for login by email and IP
 	ResendVerificationEmail  RateLimitRule `mapstructure:"resend_verification_email"` // Added for resend verification email
-	ResetPasswordIP          RateLimitRule `mapstructure:"reset_password_ip"` // Added for reset password by IP
-	GeneralAuth              RateLimitRule `mapstructure:"general_auth"`    // For general public auth endpoints
+	ResetPasswordIP          RateLimitRule `mapstructure:"reset_password_ip"`         // Added for reset password by IP
+	GeneralAuth              RateLimitRule `mapstructure:"general_auth"`              // For general public auth endpoints
 }
 
 type SecurityConfig struct {
-	Lockout        LockoutConfig      `mapstructure:"lockout"`
-	PasswordHash   PasswordHashConfig `mapstructure:"password_hash"`
-	RateLimiting   RateLimitConfig    `mapstructure:"rate_limiting"` // Added
+	Lockout      LockoutConfig      `mapstructure:"lockout"`
+	PasswordHash PasswordHashConfig `mapstructure:"password_hash"`
+	RateLimiting RateLimitConfig    `mapstructure:"rate_limiting"` // Added
 }
 
 type MFAConfig struct {
@@ -169,13 +171,13 @@ type TelemetryConfig struct {
 }
 
 type OAuthProviderConfig struct {
-	ClientID       string            `mapstructure:"client_id"`
-	ClientSecret   string            `mapstructure:"client_secret"`
-	RedirectURL    string            `mapstructure:"redirect_url"`
-	AuthURL        string            `mapstructure:"auth_url"`
-	TokenURL       string            `mapstructure:"token_url"`
-	UserInfoURL    string            `mapstructure:"user_info_url"`
-	Scopes         []string          `mapstructure:"scopes"`
+	ClientID         string            `mapstructure:"client_id"`
+	ClientSecret     string            `mapstructure:"client_secret"`
+	RedirectURL      string            `mapstructure:"redirect_url"`
+	AuthURL          string            `mapstructure:"auth_url"`
+	TokenURL         string            `mapstructure:"token_url"`
+	UserInfoURL      string            `mapstructure:"user_info_url"`
+	Scopes           []string          `mapstructure:"scopes"`
 	ProviderSpecific map[string]string `mapstructure:"provider_specific"`
 }
 
