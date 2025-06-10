@@ -1,3 +1,4 @@
+// File: internal/handler/http/middleware/cors_test.go
 package middleware_test
 
 import (

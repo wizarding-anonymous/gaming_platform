@@ -1,3 +1,4 @@
+// File: internal/service/telegram_auth_service.go
 package service
 
 import (
@@ -12,10 +13,10 @@ import (
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
-	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // Using existing alias for event payloads
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafkaEvents"
 	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 )
@@ -121,7 +122,6 @@ func (s *TelegramAuthService) AuthenticateViaTelegram(ctx context.Context, teleg
 	}
 	profileDataRaw := json.RawMessage(profileDataBytes)
 
-
 	if existingExternalAccount != nil { // ExternalAccount exists
 		s.logger.Info("Existing Telegram external account found", zap.String("external_account_id", existingExternalAccount.ID.String()), zap.String("user_id", existingExternalAccount.UserID.String()))
 		appUser, err = userRepoTx.FindByID(txCtx, existingExternalAccount.UserID)
@@ -180,14 +180,14 @@ func (s *TelegramAuthService) AuthenticateViaTelegram(ctx context.Context, teleg
 		if s.kafkaClient != nil {
 			regSource := "telegram"
 			userRegisteredPayload := eventModels.UserRegisteredPayload{
-				UserID:                 appUser.ID.String(),
-				Username:               appUser.Username,
-				Email:                  "", // No email from Telegram
-				RegistrationTimestamp:  appUser.CreatedAt,
-				RegistrationMethod:     "telegram",
-				RegistrationSource:     &regSource,
-				IPAddress:              &ipAddress,
-				UserAgent:              &userAgent,
+				UserID:                appUser.ID.String(),
+				Username:              appUser.Username,
+				Email:                 "", // No email from Telegram
+				RegistrationTimestamp: appUser.CreatedAt,
+				RegistrationMethod:    "telegram",
+				RegistrationSource:    &regSource,
+				IPAddress:             &ipAddress,
+				UserAgent:             &userAgent,
 			}
 			subjectUserRegistered := appUser.ID.String()
 			contentType := "application/json"
@@ -246,7 +246,6 @@ func (s *TelegramAuthService) AuthenticateViaTelegram(ctx context.Context, teleg
 		return nil, nil, err
 	}
 
-
 	session, err = s.sessionService.CreateSession(ctx, appUser.ID, userAgent, ipAddress)
 	if err != nil {
 		s.logger.Error("Failed to create session for Telegram user", zap.Error(err), zap.String("user_id", appUser.ID.String()))
@@ -300,14 +299,13 @@ func (s *TelegramAuthService) AuthenticateViaTelegram(ctx context.Context, teleg
 
 	auditDetails := map[string]interface{}{
 		"telegram_user_id": verifiedProfile.ID,
-		"ip_address": ipAddress,
-		"user_agent": userAgent,
+		"ip_address":       ipAddress,
+		"user_agent":       userAgent,
 	}
 	// Pass txCtx to audit log recorder if it needs to participate in the transaction.
 	// If audit log is external and shouldn't fail the main transaction, call it after commit.
 	// For now, assuming it can be part of the transaction or is handled correctly by the recorder.
 	s.auditLogRecorder.RecordEvent(txCtx, userIDForAudit, auditAction, models.AuditLogStatusSuccess, userIDForAudit, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
-
 
 	s.logger.Info("Telegram authentication successful", zap.String("user_id", appUser.ID.String()), zap.Bool("is_new_user", isNewUser))
 	return appUser, tokenPair, nil // err will be nil if commit succeeds

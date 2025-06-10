@@ -1,3 +1,4 @@
+// File: internal/infrastructure/captcha/stub_captcha_service.go
 package captcha
 
 import (
