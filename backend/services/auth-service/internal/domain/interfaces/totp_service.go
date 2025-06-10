@@ -1,5 +1,5 @@
-// File: backend/services/auth-service/internal/domain/service/totp_service.go
-package service
+// File: backend/services/auth-service/internal/domain/interfaces/totp_service.go
+package interfaces
 
 // TOTPService defines the interface for Time-based One-Time Password generation and validation.
 type TOTPService interface {

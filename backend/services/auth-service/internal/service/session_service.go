@@ -8,12 +8,12 @@ import (
 
 	"errors" // Added for errors.Is
 	"github.com/google/uuid"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // For domainErrors.ErrSessionNotFound
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka" // To be replaced
-	eventskafka "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Sarama-based producer
-	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Added for TokenManagementService
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces" // Added for TokenManagementService
+	eventskafka "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"           // Sarama-based producer
 	"go.uber.org/zap"
 )
 
@@ -23,7 +23,7 @@ type SessionService struct {
 	userRepo         interfaces.UserRepository // To verify user exists before creating session
 	kafkaClient      *eventskafka.Producer     // Changed to Sarama-based producer
 	logger           *zap.Logger
-	tokenMgmtService domainService.TokenManagementService // Added
+	tokenMgmtService domainInterfaces.TokenManagementService // Added
 }
 
 // NewSessionService создает новый экземпляр SessionService
@@ -32,7 +32,7 @@ func NewSessionService(
 	userRepo interfaces.UserRepository,
 	kafkaClient *eventskafka.Producer, // Changed to Sarama-based producer
 	logger *zap.Logger,
-	tokenMgmtService domainService.TokenManagementService, // Added
+	tokenMgmtService domainInterfaces.TokenManagementService, // Added
 ) *SessionService {
 	return &SessionService{
 		sessionRepo:      sessionRepo,
@@ -57,13 +57,13 @@ func (s *SessionService) CreateSession(ctx context.Context, userID uuid.UUID, us
 	now := time.Now()
 	// Создание сессии
 	session := &models.Session{
-		ID:             uuid.New(),
-		UserID:         userID,
-		UserAgent:      &userAgent, // Assuming conversion to pointer
-		IPAddress:      &ipAddress, // Assuming conversion to pointer
+		ID:        uuid.New(),
+		UserID:    userID,
+		UserAgent: &userAgent, // Assuming conversion to pointer
+		IPAddress: &ipAddress, // Assuming conversion to pointer
 		// DeviceInfo:  deviceInfo, // Pass if available
-		CreatedAt:      now, // Will be set by DB default if not provided by repo.Create
-		LastActivityAt: now, // Initialize LastActivityAt
+		CreatedAt:      now,                                                 // Will be set by DB default if not provided by repo.Create
+		LastActivityAt: now,                                                 // Initialize LastActivityAt
 		ExpiresAt:      now.Add(s.tokenMgmtService.GetRefreshTokenExpiry()), // Use TokenManagementService for expiry
 	}
 
@@ -174,9 +174,9 @@ func (s *SessionService) DeactivateSession(ctx context.Context, sessionID uuid.U
 	// Отправка события о деактивации/удалении сессии
 	// Ensure models.SessionDeactivatedEvent is defined or use a generic SessionDeletedEvent
 	event := models.SessionDeactivatedEvent{ // Or SessionDeletedEvent
-		SessionID:    sessionID.String(), // Use sessionID from param as 'session' might be from before delete
-		UserID:       session.UserID.String(), // UserID from fetched session
-		DeactivatedAt: time.Now(), // This should be a time.Time type
+		SessionID:     sessionID.String(),      // Use sessionID from param as 'session' might be from before delete
+		UserID:        session.UserID.String(), // UserID from fetched session
+		DeactivatedAt: time.Now(),              // This should be a time.Time type
 	}
 	// Assuming SessionDeactivatedEvent is suitable as a CloudEvent data payload.
 	// The actual CloudEvent payload for "auth.session.revoked.v1" (as deactivation is a form of revocation)
@@ -216,11 +216,10 @@ func (s *SessionService) DeactivateAllUserSessions(ctx context.Context, userID u
 	}
 	s.logger.Info("Deleted all sessions for user", zap.String("user_id", userID.String()), zap.Int64("count", deletedCount))
 
-
 	// Отправка события о деактивации (удалении) всех сессий
 	// Ensure models.AllSessionsDeactivatedEvent is defined
 	event := models.AllSessionsDeactivatedEvent{ // Or AllSessionsDeletedEvent
-		UserID:       userID.String(),
+		UserID:        userID.String(),
 		DeactivatedAt: time.Now(), // Or DeletedAt, should be time.Time
 	}
 	// Assuming AllSessionsDeactivatedEvent is suitable as a CloudEvent data payload.

@@ -8,7 +8,7 @@ import (
 	"net/url"
 
 	// "github.com/pquerna/otp/totp" // Would be used in a real implementation
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+        domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 )
 
 // mockTOTPService provides a placeholder implementation for TOTPService.
@@ -19,7 +19,7 @@ type mockTOTPService struct {
 
 // NewMockTOTPService creates a new mockTOTPService.
 // issuerName would typically come from config.
-func NewMockTOTPService(issuerName string) service.TOTPService {
+func NewMockTOTPService(issuerName string) domainInterfaces.TOTPService {
 	return &mockTOTPService{issuerName: issuerName}
 }
 
@@ -93,7 +93,7 @@ func (s *mockTOTPService) ValidateCode(secretB32, code string) (bool, error) {
 	return false, nil
 }
 
-var _ service.TOTPService = (*mockTOTPService)(nil)
+var _ domainInterfaces.TOTPService = (*mockTOTPService)(nil)
 
 // Placeholder Encryption/Decryption functions
 // In a real application, these would use strong cryptographic libraries (e.g., AES-GCM)

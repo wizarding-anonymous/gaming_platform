@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // For MFAConfig
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"                     // For MFAConfig
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // For domain errors like ErrNotFound
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
-	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"     // For domain errors like ErrNotFound
-	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces" // Corrected path
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
 	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Assuming this is the Sarama producer
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces" // Corrected path
 )
 
 // MFALogicService defines the interface for Multi-Factor Authentication (MFA) business logic.
@@ -99,45 +100,44 @@ type MFALogicService interface {
 // (for MFA secrets and backup codes, users), specialized services (TOTP generation/validation,
 // password hashing, encryption), and event publishing.
 type mfaLogicService struct {
-	cfg                   *config.Config // Global application configuration.
-	totpService           TOTPService         // Service for TOTP generation and validation.
-	encryptionService     security.EncryptionService // Service for encrypting/decrypting sensitive data like TOTP secrets.
-	mfaSecretRepo         repoInterfaces.MFASecretRepository // Repository for storing and managing MFA secrets (e.g., TOTP keys).
-	mfaBackupCodeRepo     repoInterfaces.MFABackupCodeRepository // Repository for storing and managing MFA backup codes.
-	userRepo              repoInterfaces.UserRepository // Repository for user data access, needed for password verification.
-	passwordService       PasswordService // Service for hashing and checking passwords (used for backup code hashing and disabling 2FA via password).
-	auditLogRecorder      AuditLogRecorder      // Service for recording audit log events.
-	kafkaProducer         *kafkaPkg.Producer    // Kafka client for publishing events related to MFA status changes.
-	rateLimiter           RateLimiter           // Service for rate limiting 2FA verification attempts.
+	cfg               *config.Config                         // Global application configuration.
+	totpService       domainInterfaces.TOTPService           // Service for TOTP generation and validation.
+	encryptionService domainInterfaces.EncryptionService     // Service for encrypting/decrypting sensitive data like TOTP secrets.
+	mfaSecretRepo     repoInterfaces.MFASecretRepository     // Repository for storing and managing MFA secrets (e.g., TOTP keys).
+	mfaBackupCodeRepo repoInterfaces.MFABackupCodeRepository // Repository for storing and managing MFA backup codes.
+	userRepo          repoInterfaces.UserRepository          // Repository for user data access, needed for password verification.
+	passwordService   domainInterfaces.PasswordService       // Service for hashing and checking passwords (used for backup code hashing and disabling 2FA via password).
+	auditLogRecorder  AuditLogRecorder                       // Service for recording audit log events.
+	kafkaProducer     *kafkaPkg.Producer                     // Kafka client for publishing events related to MFA status changes.
+	rateLimiter       RateLimiter                            // Service for rate limiting 2FA verification attempts.
 }
-
 
 // NewMFALogicService creates a new instance of mfaLogicService with all its dependencies.
 // This constructor initializes the service with the necessary configuration, sub-services for
 // TOTP, encryption, password management, rate limiting, and repositories for data access.
 func NewMFALogicService(
 	cfg *config.Config, // Global application configuration.
-	totpService TOTPService,
-	encryptionService security.EncryptionService,
+	totpService domainInterfaces.TOTPService,
+	encryptionService domainInterfaces.EncryptionService,
 	mfaSecretRepo repoInterfaces.MFASecretRepository,
 	mfaBackupCodeRepo repoInterfaces.MFABackupCodeRepository,
 	userRepo repoInterfaces.UserRepository,
-	passwordService PasswordService,
-	auditLogRecorder AuditLogRecorder,      // Added
-	kafkaProducer *kafkaPkg.Producer,   // Added
-	rateLimiter RateLimiter,          // Added
+	passwordService domainInterfaces.PasswordService,
+	auditLogRecorder AuditLogRecorder, // Added
+	kafkaProducer *kafkaPkg.Producer, // Added
+	rateLimiter RateLimiter, // Added
 ) MFALogicService {
 	return &mfaLogicService{
-		cfg:                   cfg, // Will now be global Config
-		totpService:           totpService,
-		encryptionService:     encryptionService,
-		mfaSecretRepo:         mfaSecretRepo,
-		mfaBackupCodeRepo:     mfaBackupCodeRepo,
-		userRepo:              userRepo,
-		passwordService:       passwordService,
-		auditLogRecorder:      auditLogRecorder,      // Added
-		kafkaProducer:         kafkaProducer,   // Added
-		rateLimiter:           rateLimiter,           // Added
+		cfg:               cfg, // Will now be global Config
+		totpService:       totpService,
+		encryptionService: encryptionService,
+		mfaSecretRepo:     mfaSecretRepo,
+		mfaBackupCodeRepo: mfaBackupCodeRepo,
+		userRepo:          userRepo,
+		passwordService:   passwordService,
+		auditLogRecorder:  auditLogRecorder, // Added
+		kafkaProducer:     kafkaProducer,    // Added
+		rateLimiter:       rateLimiter,      // Added
 	}
 }
 
@@ -150,8 +150,12 @@ func (s *mfaLogicService) Enable2FAInitiate(ctx context.Context, userID uuid.UUI
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails map[string]interface{}
 
@@ -173,10 +177,10 @@ func (s *mfaLogicService) Enable2FAInitiate(ctx context.Context, userID uuid.UUI
 			// s.logger.Info("Deleted previous unverified MFA secret for user", zap.String("userID", userID.String()))
 		}
 	} else if !errors.Is(err, domainErrors.ErrNotFound) {
-        auditDetails = map[string]interface{}{"error": "error checking existing MFA secret", "details": err.Error()}
-        s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_initiate", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
-        return uuid.Nil, "", "", fmt.Errorf("error checking existing MFA secret: %w", err)
-    }
+		auditDetails = map[string]interface{}{"error": "error checking existing MFA secret", "details": err.Error()}
+		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_initiate", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
+		return uuid.Nil, "", "", fmt.Errorf("error checking existing MFA secret: %w", err)
+	}
 
 	secretBase32, otpAuthURL, err := s.totpService.GenerateSecret(accountName, s.cfg.MFA.TOTPIssuerName) // Adjusted: s.cfg.MFA
 	if err != nil {
@@ -216,8 +220,12 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails map[string]interface{}
 
@@ -229,7 +237,9 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 		}
 		auditDetails = map[string]interface{}{"error": errReason, "mfa_secret_id": mfaSecretID.String(), "details": err.Error()}
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_verify_code", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeMFASecret, auditDetails, ipAddress, userAgent)
-		if errors.Is(err, domainErrors.ErrNotFound) { return nil, domainErrors.ErrNotFound }
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			return nil, domainErrors.ErrNotFound
+		}
 		return nil, fmt.Errorf("failed to retrieve MFA secret %s: %w", mfaSecretID, err)
 	}
 
@@ -282,13 +292,17 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 		auditDetails = map[string]interface{}{"warning": "failed to delete old backup codes", "details": err.Error()}
 	}
 
-	plainBackupCodes := make([]string, s.cfg.MFA.TOTPBackupCodeCount) // Adjusted: s.cfg.MFA
+	plainBackupCodes := make([]string, s.cfg.MFA.TOTPBackupCodeCount)                  // Adjusted: s.cfg.MFA
 	backupCodesToStore := make([]*models.MFABackupCode, s.cfg.MFA.TOTPBackupCodeCount) // Adjusted: s.cfg.MFA
-	for i := 0; i < s.cfg.MFA.TOTPBackupCodeCount; i++ { // Adjusted: s.cfg.MFA
+	for i := 0; i < s.cfg.MFA.TOTPBackupCodeCount; i++ {                               // Adjusted: s.cfg.MFA
 		codeStr, errGen := security.GenerateSecureToken(6)
 		if errGen != nil {
 			logDetails := map[string]interface{}{"error": "failed to generate backup code string", "details": errGen.Error()}
-			if auditDetails != nil { for k,v := range auditDetails { logDetails[k] = v } } // merge
+			if auditDetails != nil {
+				for k, v := range auditDetails {
+					logDetails[k] = v
+				}
+			} // merge
 			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_complete", models.AuditLogStatusPartialSuccess, actorAndTargetID, models.AuditTargetTypeUser, logDetails, ipAddress, userAgent)
 			return nil, fmt.Errorf("failed to generate backup code string: %w", errGen)
 		}
@@ -296,7 +310,11 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 		hashedCode, errHash := s.passwordService.HashPassword(codeStr)
 		if errHash != nil {
 			logDetails := map[string]interface{}{"error": "failed to hash backup code", "details": errHash.Error()}
-			if auditDetails != nil { for k,v := range auditDetails { logDetails[k] = v } }
+			if auditDetails != nil {
+				for k, v := range auditDetails {
+					logDetails[k] = v
+				}
+			}
 			s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_complete", models.AuditLogStatusPartialSuccess, actorAndTargetID, models.AuditTargetTypeUser, logDetails, ipAddress, userAgent)
 			return nil, fmt.Errorf("failed to hash backup code %d: %w", i+1, errHash)
 		}
@@ -305,7 +323,11 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 
 	if err := s.mfaBackupCodeRepo.CreateMultiple(ctx, backupCodesToStore); err != nil {
 		logDetails := map[string]interface{}{"error": "2FA activated, but failed to store backup codes", "details": err.Error()}
-		if auditDetails != nil { for k,v := range auditDetails { logDetails[k] = v } } // merge
+		if auditDetails != nil {
+			for k, v := range auditDetails {
+				logDetails[k] = v
+			}
+		} // merge
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_complete", models.AuditLogStatusPartialSuccess, actorAndTargetID, models.AuditTargetTypeUser, logDetails, ipAddress, userAgent)
 		return nil, fmt.Errorf("2FA activated, but failed to store backup codes: %w", err)
 	}
@@ -326,24 +348,27 @@ func (s *mfaLogicService) VerifyAndActivate2FA(ctx context.Context, userID uuid.
 		ctx,
 		"auth-events", // topic
 		kafkaPkg.EventType(models.AuthMFAEnabledV1), // eventType
-		&subjectMFAEnabled,    // subject
-		&contentTypeJSON,      // dataContentType
-		mfaEnabledPayload,     // dataPayload
+		&subjectMFAEnabled,                          // subject
+		&contentTypeJSON,                            // dataContentType
+		mfaEnabledPayload,                           // dataPayload
 	); err != nil {
 		// s.logger.Error("Failed to publish CloudEvent for MFA enabled", zap.Error(err), zap.String("userID", userID.String()))
 		// Add to audit details as a warning, as core MFA activation succeeded.
-		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+		if auditDetails == nil {
+			auditDetails = make(map[string]interface{})
+		}
 		auditDetails["warning_cloudevent_publish"] = err.Error()
 	}
 
-	if auditDetails == nil { auditDetails = make(map[string]interface{})} // Ensure not nil
+	if auditDetails == nil {
+		auditDetails = make(map[string]interface{})
+	} // Ensure not nil
 	auditDetails["mfa_secret_id"] = mfaSecretID.String()
 	auditDetails["mfa_type"] = string(models.MFATypeTOTP)
 	auditDetails["backup_codes_generated"] = len(plainBackupCodes)
 	s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_enable_complete", models.AuditLogStatusSuccess, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
 	return plainBackupCodes, nil
 }
-
 
 // Verify2FACode implements MFALogicService.
 func (s *mfaLogicService) Verify2FACode(ctx context.Context, userID uuid.UUID, code string, codeType models.MFAType) (bool, error) {
@@ -352,8 +377,12 @@ func (s *mfaLogicService) Verify2FACode(ctx context.Context, userID uuid.UUID, c
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{}) // Initialize to avoid nil checks later
 	auditDetails["code_type"] = string(codeType)
@@ -491,8 +520,12 @@ func (s *mfaLogicService) Disable2FA(ctx context.Context, userID uuid.UUID, veri
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails map[string]interface{}
 
@@ -538,9 +571,9 @@ func (s *mfaLogicService) Disable2FA(ctx context.Context, userID uuid.UUID, veri
 			ctx,
 			"auth-events", // topic
 			kafkaPkg.EventType(models.AuthMFADisabledV1), // eventType
-			&subjectMFADisabled,   // subject
-			&contentTypeJSON,      // dataContentType
-			mfaDisabledPayload,    // dataPayload
+			&subjectMFADisabled,                          // subject
+			&contentTypeJSON,                             // dataContentType
+			mfaDisabledPayload,                           // dataPayload
 		); err != nil {
 			// s.logger.Error("Failed to publish CloudEvent for MFA disabled", zap.Error(err), zap.String("userID", userID.String()))
 			auditDetails["warning_cloudevent_publish"] = err.Error()
@@ -559,8 +592,12 @@ func (s *mfaLogicService) RegenerateBackupCodes(ctx context.Context, userID uuid
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails map[string]interface{}
 
@@ -579,10 +616,14 @@ func (s *mfaLogicService) RegenerateBackupCodes(ctx context.Context, userID uuid
 	mfaSecret, err := s.mfaSecretRepo.FindByUserIDAndType(ctx, userID, models.MFATypeTOTP)
 	if err != nil {
 		errReason := "error fetching mfa secret"
-		if errors.Is(err, domainErrors.ErrNotFound) { errReason = domainErrors.Err2FANotEnabled.Error() }
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			errReason = domainErrors.Err2FANotEnabled.Error()
+		}
 		auditDetails = map[string]interface{}{"error": errReason, "details": err.Error()}
 		s.auditLogRecorder.RecordEvent(ctx, actorAndTargetID, "mfa_backup_codes_regenerate", models.AuditLogStatusFailure, actorAndTargetID, models.AuditTargetTypeUser, auditDetails, ipAddress, userAgent)
-		if errors.Is(err, domainErrors.ErrNotFound) { return nil, domainErrors.Err2FANotEnabled }
+		if errors.Is(err, domainErrors.ErrNotFound) {
+			return nil, domainErrors.Err2FANotEnabled
+		}
 		return nil, fmt.Errorf("error fetching mfa secret: %w", err)
 	}
 	if !mfaSecret.Verified {
@@ -597,9 +638,9 @@ func (s *mfaLogicService) RegenerateBackupCodes(ctx context.Context, userID uuid
 		return nil, fmt.Errorf("could not delete old backup codes: %w", errDel)
 	}
 
-	plainBackupCodes := make([]string, s.cfg.MFA.TOTPBackupCodeCount) // Adjusted: s.cfg.MFA
+	plainBackupCodes := make([]string, s.cfg.MFA.TOTPBackupCodeCount)                  // Adjusted: s.cfg.MFA
 	backupCodesToStore := make([]*models.MFABackupCode, s.cfg.MFA.TOTPBackupCodeCount) // Adjusted: s.cfg.MFA
-	for i := 0; i < s.cfg.MFA.TOTPBackupCodeCount; i++ { // Adjusted: s.cfg.MFA
+	for i := 0; i < s.cfg.MFA.TOTPBackupCodeCount; i++ {                               // Adjusted: s.cfg.MFA
 		codeStr, errGen := security.GenerateSecureToken(6)
 		if errGen != nil {
 			auditDetails = map[string]interface{}{"error": "failed to generate backup code string", "details": errGen.Error()}
@@ -693,15 +734,18 @@ func (s *mfaLogicService) GetActiveBackupCodeCount(ctx context.Context, userID u
 // Helper function to extract IP and UserAgent from context metadata
 // This is a simplified example; actual implementation might vary based on how metadata is stored.
 func getIPAndUserAgentFromCtx(ctx context.Context) (string, string) {
-    ipAddress := "unknown"
-    userAgent := "unknown"
-    if md, ok := ctx.Value("metadata").(map[string]string); ok {
-        if val, exists := md["ip-address"]; exists { ipAddress = val }
-        if val, exists := md["user-agent"]; exists { userAgent = val }
-    }
-    return ipAddress, userAgent
+	ipAddress := "unknown"
+	userAgent := "unknown"
+	if md, ok := ctx.Value("metadata").(map[string]string); ok {
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
+	}
+	return ipAddress, userAgent
 }
-
 
 // Ensure mfaLogicService implements MFALogicService (compile-time check).
 var _ MFALogicService = (*mfaLogicService)(nil)

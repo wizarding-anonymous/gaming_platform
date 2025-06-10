@@ -15,16 +15,17 @@ import (
 	// Assuming models, eventModels, authDomainModels will be aliased or resolved to a common models package
 	// For now, let's assume a primary 'models' package for event payloads and types,
 	// and AuditLogStatus constants.
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For EventType, Payloads, Audit statuses
-	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Assuming this is the Sarama producer path
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics"      // Added metrics import
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 	"github.com/google/uuid"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For EventType, Payloads, Audit statuses
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
+	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Assuming this is the Sarama producer path
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics"         // Added metrics import
 )
 
 const (
-	apiKeyPrefix    = "pltfrm_sk_" // Platform Service Key prefix (example)
-	apiKeySecretLength = 32         // Bytes for the secret part
+	apiKeyPrefix       = "pltfrm_sk_" // Platform Service Key prefix (example)
+	apiKeySecretLength = 32           // Bytes for the secret part
 )
 
 // APIKeyService defines the interface for managing API keys.
@@ -36,16 +37,16 @@ type APIKeyService interface {
 }
 
 type apiKeyServiceImpl struct {
-	apiKeyRepo      repository.APIKeyRepository
-	passwordService PasswordService // For hashing the secret part of the key
-	auditLogRecorder AuditLogRecorder // Added
-	kafkaProducer   *kafkaPkg.Producer // Added for event publishing
+	apiKeyRepo       repository.APIKeyRepository
+	passwordService  domainInterfaces.PasswordService // For hashing the secret part of the key
+	auditLogRecorder AuditLogRecorder                 // Added
+	kafkaProducer    *kafkaPkg.Producer               // Added for event publishing
 }
 
 // APIKeyServiceConfig holds dependencies for APIKeyService.
 type APIKeyServiceConfig struct {
 	APIKeyRepo       repository.APIKeyRepository
-	PasswordService  PasswordService
+	PasswordService  domainInterfaces.PasswordService
 	AuditLogRecorder AuditLogRecorder   // Added for audit logging
 	KafkaProducer    *kafkaPkg.Producer // Added
 }
@@ -53,10 +54,10 @@ type APIKeyServiceConfig struct {
 // NewAPIKeyService creates a new apiKeyServiceImpl.
 func NewAPIKeyService(cfg APIKeyServiceConfig) APIKeyService {
 	return &apiKeyServiceImpl{
-		apiKeyRepo:      cfg.APIKeyRepo,
-		passwordService: cfg.PasswordService,
+		apiKeyRepo:       cfg.APIKeyRepo,
+		passwordService:  cfg.PasswordService,
 		auditLogRecorder: cfg.AuditLogRecorder, // Added
-		kafkaProducer:   cfg.KafkaProducer,    // Added
+		kafkaProducer:    cfg.KafkaProducer,    // Added
 	}
 }
 
@@ -66,8 +67,12 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	auditDetails["key_name"] = name
@@ -96,7 +101,7 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 	secretPart := base64.URLEncoding.EncodeToString(secretBytes)
 	// prefix := apiKeyPrefix // Original global prefix, not used for raw key anymore
 
-	newKeyID := uuid.NewString() // Generate ID before creating struct for logging
+	newKeyID := uuid.NewString()                // Generate ID before creating struct for logging
 	auditDetails["key_id_generated"] = newKeyID // Log the ID we intend to create
 
 	// Generate unique prefix using the first 8 characters of the newKeyID
@@ -143,7 +148,7 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 	if err := s.apiKeyRepo.Create(ctx, storedKey); err != nil {
 		auditDetails["error"] = "failed to store API key in DB"
 		auditDetails["details"] = err.Error()
-		targetIDStr := &newKeyID // Use the generated ID as target even on failure
+		targetIDStr := &newKeyID                                                                                                                                                         // Use the generated ID as target even on failure
 		s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_create", models.AuditLogStatusFailure, targetIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
 		return "", nil, fmt.Errorf("failed to store API key: %w", err)
 	}
@@ -154,19 +159,21 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 	// Publish CloudEvent
 	// Assuming APIKeyCreatedPayload is in models package
 	apiKeyCreatedPayload := models.APIKeyCreatedPayload{
-		APIKeyID:    storedKey.ID,
-		UserID:      storedKey.UserID, // UserID is string here
-		Name:        storedKey.Name,
-		KeyPrefix:   storedKey.KeyPrefix,
-		CreatedAt:   storedKey.CreatedAt,
-		ExpiresAt:   storedKey.ExpiresAt,
+		APIKeyID:  storedKey.ID,
+		UserID:    storedKey.UserID, // UserID is string here
+		Name:      storedKey.Name,
+		KeyPrefix: storedKey.KeyPrefix,
+		CreatedAt: storedKey.CreatedAt,
+		ExpiresAt: storedKey.ExpiresAt,
 	}
 	if storedKey.Permissions != nil {
 		var perms []string
 		if errUnmarshal := json.Unmarshal(storedKey.Permissions, &perms); errUnmarshal == nil {
 			apiKeyCreatedPayload.Permissions = perms
 		} else {
-			if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+			if auditDetails == nil {
+				auditDetails = make(map[string]interface{})
+			}
 			auditDetails["warning_unmarshal_permissions_for_event"] = errUnmarshal.Error()
 		}
 	}
@@ -179,11 +186,13 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 		ctx,
 		"auth-events", // topic
 		kafkaPkg.EventType(models.AuthAPIKeyCreatedV1), // eventType
-		&subjectAPIKeyCreated, // subject
-		&contentTypeJSON,      // dataContentType
-		apiKeyCreatedPayload,  // dataPayload
+		&subjectAPIKeyCreated,                          // subject
+		&contentTypeJSON,                               // dataContentType
+		apiKeyCreatedPayload,                           // dataPayload
 	); err != nil {
-		if auditDetails == nil { auditDetails = make(map[string]interface{}) }
+		if auditDetails == nil {
+			auditDetails = make(map[string]interface{})
+		}
 		auditDetails["warning_cloudevent_publish"] = err.Error()
 	}
 
@@ -204,8 +213,12 @@ func (s *apiKeyServiceImpl) RevokeUserAPIKey(ctx context.Context, userID string,
 	ipAddress := "unknown"
 	userAgent := "unknown"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	targetKeyIDStr := &keyID
@@ -230,7 +243,7 @@ func (s *apiKeyServiceImpl) RevokeUserAPIKey(ctx context.Context, userID string,
 		auditDetails["error"] = errReason
 		auditDetails["details"] = err.Error()
 		s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_revoke", models.AuditLogStatusFailure, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
-		if errReason == "API key not found or not owned by user" { // Return a cleaner error if it's a known domain issue
+		if errReason == "API key not found or not owned by user" {                                                                                                                          // Return a cleaner error if it's a known domain issue
 			return errors.New(errReason) // Placeholder for entity.ErrAPIKeyNotFound or similar
 		}
 		return fmt.Errorf("failed to revoke API key %s for user %s: %w", keyID, userID, err)
@@ -251,11 +264,13 @@ func (s *apiKeyServiceImpl) RevokeUserAPIKey(ctx context.Context, userID string,
 		ctx,
 		"auth-events", // topic
 		kafkaPkg.EventType(models.AuthAPIKeyRevokedV1), // eventType
-		&subjectAPIKeyRevoked, // subject
-		&contentTypeJSON,      // dataContentType
-		apiKeyRevokedPayload,  // dataPayload
+		&subjectAPIKeyRevoked,                          // subject
+		&contentTypeJSON,                               // dataContentType
+		apiKeyRevokedPayload,                           // dataPayload
 	); err != nil {
-		if auditDetails == nil { auditDetails = make(map[string]interface{})} // Ensure auditDetails is not nil
+		if auditDetails == nil {
+			auditDetails = make(map[string]interface{})
+		} // Ensure auditDetails is not nil
 		auditDetails["warning_cloudevent_publish"] = err.Error()
 	}
 
@@ -269,8 +284,12 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 	ipAddress := "unknown"
 	userAgent := "unknown" // UserAgent might not be available for API key auth typically
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 	var auditDetails = make(map[string]interface{})
 	var parsedPrefixForAudit string // For logging on failure
@@ -283,7 +302,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 	if lastUnderscore == -1 || lastUnderscore == len(rawAPIKey)-1 {
 		err = errors.New("invalid API key format: missing delimiter or secret")
 		auditDetails["error_reason"] = err.Error()
-		auditDetails["provided_key_snippet"] = truncateKey(rawAPIKey, 10) // Use helper
+		auditDetails["provided_key_snippet"] = truncateKey(rawAPIKey, 10)                                                                                                    // Use helper
 		s.auditLogRecorder.RecordEvent(ctx, nil, "apikey_auth_failure", models.AuditLogStatusFailure, nil, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
 		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc()
 		return "", nil, "", err
@@ -300,7 +319,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc()
 		return "", nil, "", err
 	}
-	
+
 	apiKeyEntity, err := s.apiKeyRepo.FindByKeyPrefix(ctx, parsedPrefix)
 	if err != nil {
 		// This includes "not found"
@@ -342,9 +361,9 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 		finalErr := errors.New("error verifying API key secret")
 		auditDetails["error_reason"] = finalErr.Error()
 		auditDetails["key_id"] = apiKeyEntity.ID
-		auditDetails["internal_error_details"] = err.Error() // Original error
+		auditDetails["internal_error_details"] = err.Error()                                                                                                                                      // Original error
 		s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_failure", models.AuditLogStatusFailure, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusFailure
-		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc() // Error during hash check implies invalid key/secret
+		metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_invalid_key").Inc()                                                                                                        // Error during hash check implies invalid key/secret
 		return "", nil, "", finalErr
 	}
 	if !match {
@@ -386,7 +405,7 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 	// metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_no_permission").Inc()
 	// return "", nil, apiKeyEntity.ID, errors.New("insufficient permissions for API key")
 
-	auditDetails["permissions_granted_count"] = len(perms) // Example of adding success detail
+	auditDetails["permissions_granted_count"] = len(perms)                                                                                                                                    // Example of adding success detail
 	s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_success", models.AuditLogStatusSuccess, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusSuccess
 	metrics.APIKeyValidationAttemptsTotal.WithLabelValues("success").Inc()
 	return apiKeyEntity.UserID, perms, apiKeyEntity.ID, nil

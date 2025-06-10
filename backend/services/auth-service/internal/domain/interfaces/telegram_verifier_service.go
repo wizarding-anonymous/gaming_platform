@@ -1,10 +1,10 @@
-// File: backend/services/auth-service/internal/domain/service/telegram_verifier_service.go
-package service
+// File: backend/services/auth-service/internal/domain/interfaces/telegram_verifier_service.go
+package interfaces
 
 import (
 	"context"
-	"time" // Keep for TelegramAuthMaxAge
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For TelegramLoginRequest DTO
+	"time"                                                                                                // Keep for TelegramAuthMaxAge
 )
 
 // TelegramVerifierService defines the interface for verifying Telegram authentication data.

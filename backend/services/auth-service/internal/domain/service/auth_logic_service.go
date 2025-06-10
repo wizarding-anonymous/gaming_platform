@@ -8,18 +8,19 @@ import (
 	"time"
 
 	// Assuming entity and repository packages are within the same module structure
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 	"github.com/google/uuid" // For generating IDs
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 )
 
 // AuthLogicService defines the interface for core authentication business logic.
 type AuthLogicService interface {
-	RegisterUser(ctx context.Context, username, email, password string) (*entity.User, string, error) // Returns user, verification token string, error
+	RegisterUser(ctx context.Context, username, email, password string) (*entity.User, string, error)                                    // Returns user, verification token string, error
 	LoginUser(ctx context.Context, loginIdentifier, password string, deviceInfo map[string]string) (*entity.User, string, string, error) // User, AccessToken, RefreshToken (value), error
 	LoginWithTelegram(ctx context.Context, telegramData TelegramAuthData, ipAddress string, userAgent string, clientDeviceInfo map[string]interface{}) (*entity.User, string, string, error)
 	LogoutUser(ctx context.Context, sessionID string, refreshTokenValue *string) error
-	LogoutAllUserSessions(ctx context.Context, userID string) error // Note: userID is string here, AuthService uses uuid.UUID
+	LogoutAllUserSessions(ctx context.Context, userID string) error                 // Note: userID is string here, AuthService uses uuid.UUID
 	ValidateAndParseToken(ctx context.Context, tokenString string) (*Claims, error) // Re-exposing from TokenService or calling it
 	// Other methods like RequestPasswordReset, ResetPassword, VerifyEmail etc. would go here
 
@@ -36,21 +37,20 @@ type SimplifiedConfigForAuthLogic struct {
 	// or if its config is not directly passed to it.
 }
 
-
 // authLogicServiceImpl implements AuthLogicService.
 type authLogicServiceImpl struct {
-	userRepo               repository.UserRepository
-	sessionRepo            repository.SessionRepository
-	refreshTokenRepo       repository.RefreshTokenRepository
-	verificationCodeRepo   repository.VerificationCodeRepository
-	mfaSecretRepo          repository.MFASecretRepository
-	externalAccountRepo    repository.ExternalAccountRepository // Added
-	passwordService        PasswordService
-	tokenService           TokenService
-	telegramVerifier       TelegramVerifierService // Added
-	rbacService            RBACService             // Added for RBAC
+	userRepo             repository.UserRepository
+	sessionRepo          repository.SessionRepository
+	refreshTokenRepo     repository.RefreshTokenRepository
+	verificationCodeRepo repository.VerificationCodeRepository
+	mfaSecretRepo        repository.MFASecretRepository
+	externalAccountRepo  repository.ExternalAccountRepository // Added
+	passwordService      domainInterfaces.PasswordService
+	tokenService         TokenService
+	telegramVerifier     domainInterfaces.TelegramVerifierService // Added
+	rbacService          RBACService                              // Added for RBAC
 	// roleRepository         repository.RoleRepository
-	cfg                    *SimplifiedConfigForAuthLogic // Added for Telegram Bot Token
+	cfg *SimplifiedConfigForAuthLogic // Added for Telegram Bot Token
 }
 
 // AuthLogicServiceConfig holds dependencies for AuthLogicService.
@@ -61,29 +61,29 @@ type AuthLogicServiceConfig struct {
 	VerificationCodeRepo repository.VerificationCodeRepository
 	MFASecretRepo        repository.MFASecretRepository
 	ExternalAccountRepo  repository.ExternalAccountRepository // Added
-	PasswordService      PasswordService
+	PasswordService      domainInterfaces.PasswordService
 	TokenService         TokenService
-	TelegramVerifier     TelegramVerifierService // Added
-	RBACService          RBACService             // Added for RBAC
+	TelegramVerifier     domainInterfaces.TelegramVerifierService // Added
+	RBACService          RBACService                              // Added for RBAC
 	// RoleRepository       repository.RoleRepository
-	AppConfig            *SimplifiedConfigForAuthLogic // Added for Telegram Bot Token
+	AppConfig *SimplifiedConfigForAuthLogic // Added for Telegram Bot Token
 }
 
 // NewAuthLogicService creates a new authLogicServiceImpl.
 func NewAuthLogicService(cfg AuthLogicServiceConfig) AuthLogicService {
 	return &authLogicServiceImpl{
-		userRepo:               cfg.UserRepo,
-		sessionRepo:            cfg.SessionRepo,
-		refreshTokenRepo:       cfg.RefreshTokenRepo,
-		verificationCodeRepo:   cfg.VerificationCodeRepo,
-		mfaSecretRepo:          cfg.MFASecretRepo,
-		externalAccountRepo:    cfg.ExternalAccountRepo,  // Added
-		passwordService:        cfg.PasswordService,
-		tokenService:           cfg.TokenService,
-		telegramVerifier:       cfg.TelegramVerifier,     // Added
-		rbacService:            cfg.RBACService,          // Added
+		userRepo:             cfg.UserRepo,
+		sessionRepo:          cfg.SessionRepo,
+		refreshTokenRepo:     cfg.RefreshTokenRepo,
+		verificationCodeRepo: cfg.VerificationCodeRepo,
+		mfaSecretRepo:        cfg.MFASecretRepo,
+		externalAccountRepo:  cfg.ExternalAccountRepo, // Added
+		passwordService:      cfg.PasswordService,
+		tokenService:         cfg.TokenService,
+		telegramVerifier:     cfg.TelegramVerifier, // Added
+		rbacService:          cfg.RBACService,      // Added
 		// roleRepository:         cfg.RoleRepository,
-		cfg:                    cfg.AppConfig,            // Added
+		cfg: cfg.AppConfig, // Added
 	}
 }
 
@@ -108,7 +108,6 @@ func (s *authLogicServiceImpl) RegisterUser(ctx context.Context, username, email
 		return nil, "", fmt.Errorf("error checking email existence: %w", err)
 	}
 
-
 	// 3. Hash password
 	hashedPassword, err := s.passwordService.HashPassword(password)
 	if err != nil {
@@ -131,10 +130,9 @@ func (s *authLogicServiceImpl) RegisterUser(ctx context.Context, username, email
 	if err := s.userRepo.Create(ctx, newUser); err != nil {
 		return nil, "", fmt.Errorf("failed to create user: %w", err)
 	}
-	
+
 	// (Optional: Assign default role, e.g., "user")
 	// if s.roleRepository != nil { ... s.roleRepository.AssignToUser(ctx, newUser.ID, "user", nil) ... }
-
 
 	// 5. Generate email verification code (simplified: using a random string as code, hash it for storage)
 	verificationTokenValue, err := s.tokenService.GenerateRefreshTokenValue() // Re-use for opaque string generation
@@ -207,7 +205,7 @@ func (s *authLogicServiceImpl) LoginUser(ctx context.Context, loginIdentifier, p
 	if !match {
 		// TODO: Increment failed login attempts, handle account lockout
 		_ = s.userRepo.UpdateFailedLoginAttempts(ctx, user.ID, user.FailedLoginAttempts+1, nil) // Basic increment, error handling omitted for brevity
-		return nil, "", "", errors.New("invalid credentials") // Placeholder entity.ErrInvalidCredentials
+		return nil, "", "", errors.New("invalid credentials")                                   // Placeholder entity.ErrInvalidCredentials
 	}
 
 	// 4. Check if 2FA is enabled and verified for the user
@@ -228,11 +226,10 @@ func (s *authLogicServiceImpl) LoginUser(ctx context.Context, loginIdentifier, p
 		// Depending on policy, might deny login. For now, proceeding as if 2FA not enabled.
 	}
 
-
 	// 5. Create session (if 2FA not required or passed - for now, assuming not required if we reach here)
 	session := &entity.Session{
-		ID:             uuid.NewString(),
-		UserID:         user.ID,
+		ID:     uuid.NewString(),
+		UserID: user.ID,
 		// IPAddress, UserAgent, DeviceInfo from deviceInfo map (needs parsing)
 		ExpiresAt:      time.Now().Add(s.tokenService.GetRefreshTokenExpiry()), // Session expiry tied to refresh token
 		CreatedAt:      time.Now(),
@@ -280,27 +277,25 @@ func (s *authLogicServiceImpl) LoginUser(ctx context.Context, loginIdentifier, p
 	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
 		// Log error
 	}
-	
+
 	// TODO: Publish login event to Kafka
 
 	return user, accessTokenString, refreshTokenValue, nil
 }
 
-
 // LoginWithTelegram handles user login or registration via Telegram.
 // Returns User, AccessToken, RefreshTokenValue, Error
 func (s *authLogicServiceImpl) LoginWithTelegram(
-	ctx context.Context, 
-	telegramData TelegramAuthData, 
-	ipAddress string, 
-	userAgent string, 
+	ctx context.Context,
+	telegramData TelegramAuthData,
+	ipAddress string,
+	userAgent string,
 	clientDeviceInfo map[string]string,
 ) (*entity.User, string, string, error) {
-	
+
 	botToken := s.cfg.TelegramBotToken // Assuming cfg is added to authLogicServiceImpl or fetched globally
 	// For this example, let's assume botToken is available directly in the service for simplicity
 	// if s.telegramBotToken == "" { return nil, "", "", errors.New("telegram bot token not configured") }
-
 
 	isValid, telegramUserID, err := s.telegramVerifier.VerifyTelegramAuth(telegramData, botToken)
 	if err != nil {
@@ -323,7 +318,7 @@ func (s *authLogicServiceImpl) LoginWithTelegram(
 		}
 	} else if errors.Is(err, errors.New("external account not found")) { // Placeholder for repo's not-found error
 		// ExternalAccount does not exist, create new user and external account
-		
+
 		// Generate username from Telegram data (example logic)
 		var username string
 		if tgUsername, ok := telegramData["username"].(string); ok && tgUsername != "" {
@@ -338,14 +333,13 @@ func (s *authLogicServiceImpl) LoginWithTelegram(
 			username = fmt.Sprintf("%s_%s", username, uuid.NewString()[:6])
 		}
 
-
 		now := time.Now()
 		newUser := &entity.User{
-			ID:                  uuid.NewString(),
-			Username:            username,
+			ID:       uuid.NewString(),
+			Username: username,
 			// Email might not be available from Telegram, or could be placeholder
 			Status:              entity.UserStatusActive, // Telegram users are active by default
-			EmailVerifiedAt:     nil, // No email to verify typically
+			EmailVerifiedAt:     nil,                     // No email to verify typically
 			FailedLoginAttempts: 0,
 			CreatedAt:           now,
 		}
@@ -383,7 +377,7 @@ func (s *authLogicServiceImpl) LoginWithTelegram(
 		// This might happen if a previously linked account was deactivated
 		return nil, "", "", errors.New("user account not active")
 	}
-	
+
 	// Proceed with session creation and token generation (similar to LoginUser)
 	session := &entity.Session{
 		ID:             uuid.NewString(),
@@ -454,7 +448,6 @@ func (s *authLogicServiceImpl) LoginWithTelegram(
 	return user, accessTokenString, refreshTokenValue, nil
 }
 
-
 // ValidateAndParseToken validates the access token.
 func (s *authLogicServiceImpl) ValidateAndParseToken(ctx context.Context, tokenString string) (*Claims, error) {
 	return s.tokenService.ValidateAccessToken(tokenString)
@@ -491,7 +484,7 @@ func (s *authLogicServiceImpl) LogoutUser(ctx context.Context, sessionID string,
 	if err := s.sessionRepo.Delete(ctx, sessionID); err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
-	
+
 	// TODO: Publish logout event
 
 	return nil
@@ -516,12 +509,11 @@ func (s *authLogicServiceImpl) LogoutAllUserSessions(ctx context.Context, userID
 	if err := s.sessionRepo.DeleteByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("failed to delete user sessions: %w", err)
 	}
-	
+
 	// TODO: Publish relevant events
 
 	return nil
 }
-
 
 var _ AuthLogicService = (*authLogicServiceImpl)(nil)
 
@@ -561,17 +553,17 @@ var _ AuthLogicService = (*authLogicServiceImpl)(nil)
 // Let's assume it's added to a simplified `s.cfg` for now.
 
 type authLogicServiceImplExtended struct { // For diff tool, need to define the struct being changed
-	userRepo               repository.UserRepository
-	sessionRepo            repository.SessionRepository
-	refreshTokenRepo       repository.RefreshTokenRepository
-	verificationCodeRepo   repository.VerificationCodeRepository
-	mfaSecretRepo          repository.MFASecretRepository 
-	passwordService        PasswordService                
-	tokenService           TokenService                   
-	externalAccountRepo    repository.ExternalAccountRepository // Added
-	telegramVerifier       TelegramVerifierService            // Added
-	// roleRepository         repository.RoleRepository 
-	cfg                    *SimplifiedConfig // Placeholder for actual config
+	userRepo             repository.UserRepository
+	sessionRepo          repository.SessionRepository
+	refreshTokenRepo     repository.RefreshTokenRepository
+	verificationCodeRepo repository.VerificationCodeRepository
+	mfaSecretRepo        repository.MFASecretRepository
+	passwordService      PasswordService
+	tokenService         TokenService
+	externalAccountRepo  repository.ExternalAccountRepository // Added
+	telegramVerifier     TelegramVerifierService              // Added
+	// roleRepository         repository.RoleRepository
+	cfg *SimplifiedConfig // Placeholder for actual config
 }
 type SimplifiedConfig struct { // Placeholder
 	TelegramBotToken string

@@ -11,12 +11,12 @@ import (
 	"github.com/google/uuid"
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // Not directly used by TokenService, but by TokenManagementService
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces" // For TokenManagementService
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis" // Used by TokenService for blacklist
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"              // For HashToken
 	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces" // For new repo dependencies
-	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"     // For TokenManagementService
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"      // For HashToken
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics"                   // Added metrics import
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis"                     // Used by TokenService for blacklist
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics"                        // Added metrics import
 	"go.uber.org/zap"
 )
 
@@ -25,36 +25,36 @@ import (
 
 // TokenService представляет сервис для работы с токенами
 type TokenService struct {
-	redisClient          *redis.RedisClient
-	logger               *zap.Logger
-	tokenMgmtService     domainService.TokenManagementService
-	refreshTokenRepo     repoInterfaces.RefreshTokenRepository
-	userRepo             repoInterfaces.UserRepository     // For fetching user details if needed during refresh
-	sessionRepo          repoInterfaces.SessionRepository  // For validating session during refresh
-	userRolesRepo        repoInterfaces.UserRolesRepository  // Added for JWT enrichment
-	roleRepo             repoInterfaces.RoleRepository     // Added for JWT enrichment (permissions per role)
+	redisClient      *redis.RedisClient
+	logger           *zap.Logger
+	tokenMgmtService domainInterfaces.TokenManagementService
+	refreshTokenRepo repoInterfaces.RefreshTokenRepository
+	userRepo         repoInterfaces.UserRepository      // For fetching user details if needed during refresh
+	sessionRepo      repoInterfaces.SessionRepository   // For validating session during refresh
+	userRolesRepo    repoInterfaces.UserRolesRepository // Added for JWT enrichment
+	roleRepo         repoInterfaces.RoleRepository      // Added for JWT enrichment (permissions per role)
 }
 
 // NewTokenService создает новый экземпляр TokenService
 func NewTokenService(
 	redisClient *redis.RedisClient,
 	logger *zap.Logger,
-	tokenMgmtService domainService.TokenManagementService,
+	tokenMgmtService domainInterfaces.TokenManagementService,
 	refreshTokenRepo repoInterfaces.RefreshTokenRepository,
 	userRepo repoInterfaces.UserRepository,
 	sessionRepo repoInterfaces.SessionRepository,
 	userRolesRepo repoInterfaces.UserRolesRepository, // Added
-	roleRepo repoInterfaces.RoleRepository,       // Added
+	roleRepo repoInterfaces.RoleRepository, // Added
 ) *TokenService {
 	return &TokenService{
-		redisClient:          redisClient,
-		logger:               logger,
-		tokenMgmtService:     tokenMgmtService,
-		refreshTokenRepo:     refreshTokenRepo,
-		userRepo:             userRepo,
-		sessionRepo:          sessionRepo,
-		userRolesRepo:        userRolesRepo, // Added
-		roleRepo:             roleRepo,       // Added
+		redisClient:      redisClient,
+		logger:           logger,
+		tokenMgmtService: tokenMgmtService,
+		refreshTokenRepo: refreshTokenRepo,
+		userRepo:         userRepo,
+		sessionRepo:      sessionRepo,
+		userRolesRepo:    userRolesRepo, // Added
+		roleRepo:         roleRepo,      // Added
 	}
 }
 
@@ -138,7 +138,7 @@ func (s *TokenService) CreateTokenPairWithSession(ctx context.Context, user *mod
 
 	return models.TokenPair{
 		AccessToken:  accessTokenString,
-		RefreshToken: opaqueRefreshTokenValue, // Return plain opaque token to client
+		RefreshToken: opaqueRefreshTokenValue,                              // Return plain opaque token to client
 		ExpiresIn:    int(s.tokenMgmtService.cfg.AccessTokenTTL.Seconds()), // Access token TTL from new service
 		TokenType:    "Bearer",
 	}, nil
@@ -208,7 +208,6 @@ func (s *TokenService) RefreshTokens(ctx context.Context, plainOpaqueRefreshToke
 	// roles, _ := s.userRepo.GetRolesForUser(ctx, user.ID) // Example if userRepo had this method
 	// for _, r := range roles { rolesForToken = append(rolesForToken, r.Name) }
 
-
 	newAccessTokenString, newClaims, err := s.tokenMgmtService.GenerateAccessToken(user.ID.String(), user.Username, rolesForToken, nil, storedRefreshToken.SessionID.String())
 	if err != nil {
 		return models.TokenPair{}, fmt.Errorf("failed to generate new access token: %w", err)
@@ -243,9 +242,8 @@ func (s *TokenService) RefreshTokens(ctx context.Context, plainOpaqueRefreshToke
 	}, nil
 }
 
-
 // ValidateAccessToken проверяет валидность access токена
-func (s *TokenService) ValidateAccessToken(ctx context.Context, tokenString string) (*service.Claims, error) {
+func (s *TokenService) ValidateAccessToken(ctx context.Context, tokenString string) (*domainInterfaces.Claims, error) {
 	// Проверка, находится ли токен в черном списке
 	isBlacklisted, err := s.redisClient.IsBlacklisted(ctx, tokenString)
 	if err != nil {
@@ -264,7 +262,6 @@ func (s *TokenService) ValidateAccessToken(ctx context.Context, tokenString stri
 	}
 	return claims, nil
 }
-
 
 // RevokeToken отзывает access токен (adds to blacklist)
 func (s *TokenService) RevokeToken(ctx context.Context, tokenString string) error {
@@ -299,7 +296,6 @@ func (s *TokenService) RevokeToken(ctx context.Context, tokenString string) erro
 	return nil
 }
 
-
 // RevokeRefreshToken отзывает refresh токен (from PostgreSQL)
 func (s *TokenService) RevokeRefreshToken(ctx context.Context, plainOpaqueRefreshToken string) error {
 	hashedToken := security.HashToken(plainOpaqueRefreshToken)
@@ -314,7 +310,6 @@ func (s *TokenService) RevokeRefreshToken(ctx context.Context, plainOpaqueRefres
 	revokeReason := "user_revoked"
 	return s.refreshTokenRepo.Revoke(ctx, storedToken.ID, &revokeReason)
 }
-
 
 // --- Removed HMAC specific token generation methods ---
 // generateAccessToken(user models.User) (string, error)

@@ -14,6 +14,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // Using existing alias for event payloads
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
@@ -30,7 +31,7 @@ type TelegramAuthService struct {
 	externalAccountRepo repoInterfaces.ExternalAccountRepository
 	sessionService      *SessionService
 	tokenService        *TokenService
-	telegramVerifier    domainService.TelegramVerifierService
+	telegramVerifier    domainInterfaces.TelegramVerifierService
 	transactionManager  domainService.TransactionManager
 	kafkaClient         *kafkaEvents.Producer
 	auditLogRecorder    domainService.AuditLogRecorder
@@ -43,7 +44,7 @@ func NewTelegramAuthService(
 	externalAccountRepo repoInterfaces.ExternalAccountRepository,
 	sessionService *SessionService,
 	tokenService *TokenService,
-	telegramVerifier domainService.TelegramVerifierService,
+	telegramVerifier domainInterfaces.TelegramVerifierService,
 	transactionManager domainService.TransactionManager,
 	kafkaClient *kafkaEvents.Producer,
 	auditLogRecorder domainService.AuditLogRecorder,
@@ -66,7 +67,7 @@ func (s *TelegramAuthService) AuthenticateViaTelegram(ctx context.Context, teleg
 	verifiedProfile, err := s.telegramVerifier.Verify(ctx, telegramData)
 	if err != nil {
 		s.logger.Warn("Telegram authentication failed: verification error", zap.Error(err), zap.Int64("telegram_id", telegramData.ID))
-		// It's important that domainService.TelegramVerifierService.Verify returns a typed error
+		// It's important that domainInterfaces.TelegramVerifierService.Verify returns a typed error
 		// that can be checked here, e.g. if it's domainErrors.ErrTelegramAuthInvalidHash
 		// For now, wrapping it generally.
 		return nil, nil, fmt.Errorf("%w: %v", domainErrors.ErrTelegramAuthFailed, err)

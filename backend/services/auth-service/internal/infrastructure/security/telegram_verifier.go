@@ -12,18 +12,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 )
 
 type telegramVerifier struct{}
 
 // NewTelegramVerifier creates a new TelegramVerifierService implementation.
-func NewTelegramVerifier() service.TelegramVerifierService {
+func NewTelegramVerifier() domainInterfaces.TelegramVerifierService {
 	return &telegramVerifier{}
 }
 
 // VerifyTelegramAuth validates the data received from Telegram.
-func (v *telegramVerifier) VerifyTelegramAuth(data service.TelegramAuthData, botToken string) (bool, int64, error) {
+func (v *telegramVerifier) VerifyTelegramAuth(data domainInterfaces.TelegramAuthData, botToken string) (bool, int64, error) {
 	if data == nil {
 		return false, 0, errors.New("telegram data cannot be nil")
 	}
@@ -52,7 +52,7 @@ func (v *telegramVerifier) VerifyTelegramAuth(data service.TelegramAuthData, bot
 	}
 
 	authTimestamp := time.Unix(int64(authDateUnix), 0)
-	if time.Since(authTimestamp) > service.TelegramAuthMaxAge {
+	if time.Since(authTimestamp) > domainInterfaces.TelegramAuthMaxAge {
 		return false, 0, errors.New("telegram auth_date is too old")
 	}
 
@@ -101,4 +101,4 @@ func (v *telegramVerifier) VerifyTelegramAuth(data service.TelegramAuthData, bot
 	return true, telegramUserID, nil
 }
 
-var _ service.TelegramVerifierService = (*telegramVerifier)(nil)
+var _ domainInterfaces.TelegramVerifierService = (*telegramVerifier)(nil)
