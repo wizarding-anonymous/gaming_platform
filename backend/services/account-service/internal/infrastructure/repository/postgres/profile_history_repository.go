@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/gaiming/account-service/internal/domain/entity"
-	"github.com/gaiming/account-service/internal/domain/errors"
-	"github.com/gaiming/account-service/internal/domain/repository"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/repository"
 )
 
 // ProfileHistoryRepository реализация репозитория для работы с историей изменений профиля в PostgreSQL

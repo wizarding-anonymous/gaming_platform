@@ -11,7 +11,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 
-	"github.com/gaiming/account-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
 )
 
 // SettingCache реализует кэш для настроек в Redis

@@ -11,8 +11,8 @@ import (
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 
-	"github.com/gaiming/account-service/internal/domain/entity"
-	"github.com/gaiming/account-service/pkg/metrics"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/metrics"
 )
 
 const (
@@ -41,7 +41,7 @@ func NewAccountCache(client *redis.Client, metrics *metrics.Registry, logger *za
 // Get получает аккаунт из кэша по ID
 func (c *AccountCache) Get(ctx context.Context, id string) (*entity.Account, error) {
 	key := AccountKeyPrefix + id
-	
+
 	// Получение данных из Redis
 	data, err := c.client.Get(ctx, key).Bytes()
 	if err != nil {
@@ -53,7 +53,7 @@ func (c *AccountCache) Get(ctx context.Context, id string) (*entity.Account, err
 		c.metrics.TrackCacheMiss("account", "by_id")
 		return nil, err
 	}
-	
+
 	// Десериализация данных
 	var account entity.Account
 	if err := json.Unmarshal(data, &account); err != nil {
@@ -61,7 +61,7 @@ func (c *AccountCache) Get(ctx context.Context, id string) (*entity.Account, err
 		c.metrics.TrackCacheMiss("account", "by_id")
 		return nil, err
 	}
-	
+
 	c.metrics.TrackCacheHit("account", "by_id")
 	return &account, nil
 }
@@ -69,32 +69,32 @@ func (c *AccountCache) Get(ctx context.Context, id string) (*entity.Account, err
 // Set сохраняет аккаунт в кэш
 func (c *AccountCache) Set(ctx context.Context, account *entity.Account) error {
 	key := AccountKeyPrefix + account.ID
-	
+
 	// Сериализация данных
 	data, err := json.Marshal(account)
 	if err != nil {
 		c.logger.Errorw("Failed to marshal account for cache", "account", account, "error", err)
 		return err
 	}
-	
+
 	// Сохранение в Redis с TTL
 	if err := c.client.Set(ctx, key, data, AccountTTL).Err(); err != nil {
 		c.logger.Errorw("Failed to set account in cache", "account", account, "error", err)
 		return err
 	}
-	
+
 	return nil
 }
 
 // Delete удаляет аккаунт из кэша
 func (c *AccountCache) Delete(ctx context.Context, id string) error {
 	key := AccountKeyPrefix + id
-	
+
 	// Удаление из Redis
 	if err := c.client.Del(ctx, key).Err(); err != nil {
 		c.logger.Errorw("Failed to delete account from cache", "id", id, "error", err)
 		return err
 	}
-	
+
 	return nil
 }

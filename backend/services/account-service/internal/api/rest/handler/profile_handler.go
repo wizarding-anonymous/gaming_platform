@@ -10,11 +10,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/gaiming/account-service/internal/app/usecase"
-	"github.com/gaiming/account-service/internal/domain/entity"
-	"github.com/gaiming/account-service/internal/domain/errors"
-	"github.com/gaiming/account-service/internal/api/rest/middleware"
-	"github.com/gaiming/account-service/internal/api/rest/presenter"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest/middleware"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest/presenter"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/app/usecase"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
 )
 
 // ProfileHandler обработчик HTTP-запросов для работы с профилями

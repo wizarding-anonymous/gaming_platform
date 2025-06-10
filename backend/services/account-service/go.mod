@@ -1,4 +1,5 @@
-module github.com/steamclone/account-service
+// File: backend/services/account-service/go.mod
+module github.com/wizarding-anonymous/gaming_platform/backend/services/account-service
 
 go 1.21
 

@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/gaiming/account-service/internal/domain/errors"
-	"github.com/gaiming/account-service/internal/infrastructure/client/auth"
-	"github.com/gaiming/account-service/pkg/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/client/auth"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/logger"
 )
 
 type contextKey string
@@ -178,7 +178,7 @@ func GetUserRolesFromRequest(r *http.Request) []string {
 // respondWithError отправляет ошибку в ответе
 func respondWithError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	var statusCode int
 	switch err.(type) {
 	case *errors.ValidationError:
@@ -194,7 +194,7 @@ func respondWithError(w http.ResponseWriter, err error) {
 	default:
 		statusCode = http.StatusInternalServerError
 	}
-	
+
 	w.WriteHeader(statusCode)
 	w.Write([]byte(`{"status":"error","error":{"message":"` + err.Error() + `"}}`))
 }

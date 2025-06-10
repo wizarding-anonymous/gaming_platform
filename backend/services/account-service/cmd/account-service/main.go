@@ -23,15 +23,15 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
-	"github.com/gaiming/account-service/config"
-	"github.com/gaiming/account-service/internal/api/rest"
-	"github.com/gaiming/account-service/internal/api/grpc/server"
-	"github.com/gaiming/account-service/internal/app/usecase"
-	"github.com/gaiming/account-service/internal/infrastructure/kafka"
-	"github.com/gaiming/account-service/internal/infrastructure/repository/postgres"
-	"github.com/gaiming/account-service/internal/infrastructure/repository/redis"
-	"github.com/gaiming/account-service/pkg/logger"
-	"github.com/gaiming/account-service/pkg/metrics"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/config"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/grpc/server"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/app/usecase"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/kafka"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/repository/postgres"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/repository/redis"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/metrics"
 )
 
 func main() {
@@ -143,11 +143,11 @@ func main() {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
-	
+
 	// Middleware для логирования, метрик, трассировки
 	router.Use(logger.GinMiddleware(zapLogger))
 	router.Use(metrics.GinMiddleware(metricsRegistry))
-	
+
 	// Эндпоинты для мониторинга
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

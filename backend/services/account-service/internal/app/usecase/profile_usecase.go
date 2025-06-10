@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/gaiming/account-service/internal/domain/entity"
-	"github.com/gaiming/account-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
 )
 
 // ProfileRepository интерфейс для работы с репозиторием профилей
@@ -195,9 +195,9 @@ func (uc *ProfileUseCase) UpdateProfile(
 
 	// Обновляем профиль
 	profileVisibility := entity.ProfileVisibility(visibility)
-	if visibility != "" && profileVisibility != entity.ProfileVisibilityPublic && 
-	   profileVisibility != entity.ProfileVisibilityFriends && 
-	   profileVisibility != entity.ProfileVisibilityPrivate {
+	if visibility != "" && profileVisibility != entity.ProfileVisibilityPublic &&
+		profileVisibility != entity.ProfileVisibilityFriends &&
+		profileVisibility != entity.ProfileVisibilityPrivate {
 		return nil, errors.ErrInvalidProfileData
 	}
 

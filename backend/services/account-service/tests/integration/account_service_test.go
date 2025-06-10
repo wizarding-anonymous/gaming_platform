@@ -20,18 +20,18 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 
-	"github.com/gaiming/account-service/internal/app/usecase"
-	"github.com/gaiming/account-service/internal/domain/entity"
-	"github.com/gaiming/account-service/internal/infrastructure/repository/postgres"
-	redisRepo "github.com/gaiming/account-service/internal/infrastructure/repository/redis"
-	"github.com/gaiming/account-service/pkg/metrics"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/app/usecase"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/repository/postgres"
+	redisRepo "github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/repository/redis"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/metrics"
 )
 
 var (
-	db          *sqlx.DB
-	redisClient *redis.Client
-	pool        *dockertest.Pool
-	pgResource  *dockertest.Resource
+	db            *sqlx.DB
+	redisClient   *redis.Client
+	pool          *dockertest.Pool
+	pgResource    *dockertest.Resource
 	redisResource *dockertest.Resource
 )
 

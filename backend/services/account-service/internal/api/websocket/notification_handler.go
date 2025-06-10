@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/gaiming/account-service/internal/api/rest/middleware"
-	"github.com/gaiming/account-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest/middleware"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
 )
 
 const (
@@ -39,13 +39,13 @@ var upgrader = websocket.Upgrader{
 
 // Client представляет клиента WebSocket
 type Client struct {
-	hub      *NotificationHub
-	conn     *websocket.Conn
-	send     chan []byte
-	userID   uuid.UUID
-	roles    []string
-	mu       sync.Mutex
-	topics   map[string]bool
+	hub    *NotificationHub
+	conn   *websocket.Conn
+	send   chan []byte
+	userID uuid.UUID
+	roles  []string
+	mu     sync.Mutex
+	topics map[string]bool
 }
 
 // NotificationHub управляет всеми активными WebSocket соединениями
@@ -352,7 +352,7 @@ func (c *Client) readPump() {
 				c.mu.Lock()
 				c.topics[clientMsg.Topic] = true
 				c.mu.Unlock()
-				
+
 				// Отправляем подтверждение подписки
 				c.send <- c.hub.serializeMessage(&NotificationMessage{
 					Type:      "subscription_confirmed",
@@ -365,7 +365,7 @@ func (c *Client) readPump() {
 				c.mu.Lock()
 				delete(c.topics, clientMsg.Topic)
 				c.mu.Unlock()
-				
+
 				// Отправляем подтверждение отписки
 				c.send <- c.hub.serializeMessage(&NotificationMessage{
 					Type:      "unsubscription_confirmed",
@@ -412,7 +412,7 @@ func (h *NotificationHandler) NotifyAccountUpdated(ctx context.Context, accountI
 		"account_id": accountID,
 		"action":     "updated",
 	})
-	
+
 	// Отправляем уведомление администраторам
 	h.hub.SendToRoles([]string{"admin"}, "account_updated", "accounts", map[string]interface{}{
 		"account_id": accountID,
