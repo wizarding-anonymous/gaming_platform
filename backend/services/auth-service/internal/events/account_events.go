@@ -1,4 +1,4 @@
-// File: internal/events/handlers/account_events.go
+// File: internal/events/account_events.go
 
 package handlers
 
