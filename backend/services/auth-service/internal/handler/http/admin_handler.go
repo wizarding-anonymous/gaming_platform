@@ -14,19 +14,20 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository" // For ListAuditLogParams
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	appService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service" // For concrete services
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository" // For ListAuditLogParams
 )
 
 // AdminHandler handles HTTP requests for administrative actions.
 type AdminHandler struct {
 	logger          *zap.Logger
-	userService     *appService.UserService     // Using concrete service
-	roleService     *appService.RoleService     // Using concrete service
+	userService     *appService.UserService // Using concrete service
+	roleService     *appService.RoleService // Using concrete service
 	auditLogService domainService.AuditLogService
+	auditLogRepo    repository.AuditLogRepository
 	// authService     *appService.AuthService
 }
 
@@ -36,6 +37,7 @@ func NewAdminHandler(
 	userService *appService.UserService,
 	roleService *appService.RoleService,
 	auditLogService domainService.AuditLogService,
+	auditLogRepo repository.AuditLogRepository,
 	// authService *appService.AuthService,
 ) *AdminHandler {
 	return &AdminHandler{
@@ -43,6 +45,7 @@ func NewAdminHandler(
 		userService:     userService,
 		roleService:     roleService,
 		auditLogService: auditLogService,
+		auditLogRepo:    auditLogRepo,
 		// authService:     authService,
 	}
 }
@@ -52,26 +55,31 @@ func NewAdminHandler(
 // type AdminUserResponse models.UserResponse
 
 type AdminListUsersResponse struct {
-	Data  []models.UserResponse `json:"data"`
-	Meta  models.PaginationMeta `json:"meta"` // Assuming a generic PaginationMeta model
+	Data []models.UserResponse `json:"data"`
+	Meta models.PaginationMeta `json:"meta"` // Assuming a generic PaginationMeta model
 }
-
 
 // ListUsers handles fetching a paginated list of users.
 // GET /admin/users
 func (h *AdminHandler) ListUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
-	if page <= 0 { page = 1 }
-	if pageSize <= 0 { pageSize = 20 }
-	if pageSize > 100 { pageSize = 100 } // Max page size
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	} // Max page size
 
 	// Extract filters from query parameters
 	// This should map to ListUsersParams in the UserRepository/UserService
 	// For now, assuming UserService.ListUsers takes these directly or a similar struct.
 	// The ListUsersParams in UserRepository is models.ListUsersParams
 	// which has: Page, PageSize, Status, UsernameContains, EmailContains
-	
+
 	statusFilter := c.Query("status")
 	usernameFilter := c.Query("username_contains") // Changed from "username" to "username_contains"
 	emailFilter := c.Query("email_contains")       // Changed from "email" to "email_contains"
@@ -95,7 +103,7 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 			return
 		}
 	}
-	
+
 	logFields := []zap.Field{
 		zap.Int("page", page),
 		zap.Int("pageSize", pageSize),
@@ -110,7 +118,6 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 		logFields = append(logFields, zap.String("email_contains", listParams.EmailContains))
 	}
 	h.logger.Info("Admin ListUsers called", logFields...)
-
 
 	users, total, err := h.userService.ListUsers(c.Request.Context(), listParams)
 	if err != nil {
@@ -204,7 +211,6 @@ func (h *AdminHandler) BlockUser(c *gin.Context) {
 	} else if adminUserIDRaw != nil {
 		h.logger.Error("AdminUserID from context is of unexpected type for audit log", zap.Any("adminUserIDRaw", adminUserIDRaw))
 	}
-
 
 	auditDetails := map[string]interface{}{"reason": req.Reason, "target_user_id": targetUserID.String()}
 
@@ -329,7 +335,7 @@ func (h *AdminHandler) UpdateUserRoles(c *gin.Context) {
 	}
 
 	auditDetails := map[string]interface{}{
-		"target_user_id": targetUserID.String(),
+		"target_user_id":   targetUserID.String(),
 		"updated_role_ids": req.RoleIDs,
 	}
 
@@ -355,9 +361,15 @@ func (h *AdminHandler) UpdateUserRoles(c *gin.Context) {
 func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
-	if page <= 0 { page = 1 }
-	if pageSize <= 0 { pageSize = 20 }
-	if pageSize > 100 { pageSize = 100 }
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
 
 	var userIDFilter *uuid.UUID
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
@@ -368,9 +380,9 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 			return
 		}
 	}
-	actionFilter := c.Query("action")      // Optional string filter
+	actionFilter := c.Query("action")          // Optional string filter
 	targetTypeFilter := c.Query("target_type") // Optional string filter
-	targetIDFilter := c.Query("target_id")   // Optional string filter
+	targetIDFilter := c.Query("target_id")     // Optional string filter
 
 	dateFromStr := c.Query("date_from")
 	dateToStr := c.Query("date_to")
@@ -378,11 +390,11 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 	ipAddressFilter := c.Query("ip_address")
 
 	params := repository.ListAuditLogParams{
-		Page:       page,
-		PageSize:   pageSize,
-		UserID:     userIDFilter,
-		SortBy:     c.DefaultQuery("sort_by", "created_at"),
-		SortOrder:  c.DefaultQuery("sort_order", "DESC"),
+		Page:      page,
+		PageSize:  pageSize,
+		UserID:    userIDFilter,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "DESC"),
 	}
 
 	if actionFilter != "" {
@@ -433,17 +445,33 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 		zap.String("sort_by", params.SortBy),
 		zap.String("sort_order", params.SortOrder),
 	}
-	if params.UserID != nil { logFields = append(logFields, zap.String("user_id", params.UserID.String())) }
-	if params.Action != nil { logFields = append(logFields, zap.String("action", *params.Action)) }
-	if params.TargetType != nil { logFields = append(logFields, zap.String("target_type", *params.TargetType)) }
-	if params.TargetID != nil { logFields = append(logFields, zap.String("target_id", *params.TargetID)) }
-	if params.DateFrom != nil { logFields = append(logFields, zap.Time("date_from", *params.DateFrom)) }
-	if params.DateTo != nil { logFields = append(logFields, zap.Time("date_to", *params.DateTo)) }
-	if params.Status != nil { logFields = append(logFields, zap.String("status", string(*params.Status))) }
-	if params.IPAddress != nil { logFields = append(logFields, zap.String("ip_address", *params.IPAddress)) }
+	if params.UserID != nil {
+		logFields = append(logFields, zap.String("user_id", params.UserID.String()))
+	}
+	if params.Action != nil {
+		logFields = append(logFields, zap.String("action", *params.Action))
+	}
+	if params.TargetType != nil {
+		logFields = append(logFields, zap.String("target_type", *params.TargetType))
+	}
+	if params.TargetID != nil {
+		logFields = append(logFields, zap.String("target_id", *params.TargetID))
+	}
+	if params.DateFrom != nil {
+		logFields = append(logFields, zap.Time("date_from", *params.DateFrom))
+	}
+	if params.DateTo != nil {
+		logFields = append(logFields, zap.Time("date_to", *params.DateTo))
+	}
+	if params.Status != nil {
+		logFields = append(logFields, zap.String("status", string(*params.Status)))
+	}
+	if params.IPAddress != nil {
+		logFields = append(logFields, zap.String("ip_address", *params.IPAddress))
+	}
 	h.logger.Info("Admin ListAuditLogs called", logFields...)
 
-	logs, total, err := h.auditLogService.ListAuditLogs(c.Request.Context(), params)
+	logs, total, err := h.auditLogRepo.List(c.Request.Context(), params)
 	if err != nil {
 		ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Failed to retrieve audit logs", err)
 		return
@@ -452,7 +480,7 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 	SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{
 		"data": logs,
 		"meta": models.PaginationMeta{
-			CurrentPage: params.Page,    // Use params.Page for consistency
+			CurrentPage: params.Page,     // Use params.Page for consistency
 			PageSize:    params.PageSize, // Use params.PageSize
 			TotalItems:  total,
 			TotalPages:  (total + params.PageSize - 1) / params.PageSize,
@@ -460,12 +488,11 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 	})
 }
 
-
 // RegisterAdminRoutes registers /admin related HTTP routes.
 // All routes in this group should be protected by authentication and authorization middleware.
 func RegisterAdminRoutes(
-	router *gin.RouterGroup, 
-	adminHandler *AdminHandler, 
+	router *gin.RouterGroup,
+	adminHandler *AdminHandler,
 	/* authMiddleware gin.HandlerFunc, rbacMiddleware func(requiredPermission string) gin.HandlerFunc */
 ) {
 	admin := router.Group("/admin")
