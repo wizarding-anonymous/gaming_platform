@@ -9,25 +9,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 	"strings" // Added for strings.Join in SystemDeleteUser/SystemLogoutAllUserSessions
+	"time"
 	"unsafe" // Added for unsafe.Pointer in SystemDeleteUser logging (will be removed)
 
 	"github.com/google/uuid"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
-	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 	appSecurity "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka" // Replaced by events/kafka
 	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Sarama-based producer
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics" // Added metrics import
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics"            // Added metrics import
 	"go.uber.org/zap"
 	// "golang.org/x/oauth2" // Removed, moved to OAuthService
 	// "net/http"            // Removed, moved to OAuthService or handlers
+	"encoding/json"                                                                                                   // For marshalling ExternalAccount profile data
 	eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For event payloads like UserRegisteredPayload
-	"encoding/json" // For marshalling ExternalAccount profile data
 	// "net/url" // Removed, moved to OAuthService
 	"strconv" // For converting Telegram UserID
 	// "github.com/golang-jwt/jwt/v5" // Removed, assuming only for OAuth state, re-add if needed elsewhere
@@ -38,31 +39,31 @@ import (
 // It encapsulates the core business logic related to user identity, sessions, tokens,
 // multi-factor authentication (MFA), password management, and external authentication providers.
 type AuthService struct {
-	userRepo               repoInterfaces.UserRepository // Handles user data persistence.
+	userRepo               repoInterfaces.UserRepository             // Handles user data persistence.
 	verificationCodeRepo   repoInterfaces.VerificationCodeRepository // Manages verification codes (e.g., email, password reset).
-	tokenService           *TokenService // Manages creation and validation of access/refresh token pairs with sessions.
-	sessionService         *SessionService // Handles user session lifecycle.
-	kafkaClient            *kafkaEvents.Producer // Kafka client for publishing events - Switched to Sarama Producer
-	logger                 *zap.Logger // Application logger.
-	passwordService        domainService.PasswordService // Service for hashing and verifying passwords.
-	tokenManagementService domainService.TokenManagementService // Core service for JWT generation and validation (RS256).
-	mfaSecretRepo          repoInterfaces.MFASecretRepository // Repository for MFA secrets.
-	mfaLogicService        domainService.MFALogicService // Business logic for MFA operations.
-	userRolesRepo          repoInterfaces.UserRolesRepository // Manages user-role assignments.
-	roleService            *RoleService // Service for role and permission related logic, used for enriching JWTs.
-	externalAccountRepo    repoInterfaces.ExternalAccountRepository // Repository for external (OAuth, Telegram) account links.
+	tokenService           *TokenService                             // Manages creation and validation of access/refresh token pairs with sessions.
+	sessionService         *SessionService                           // Handles user session lifecycle.
+	kafkaClient            *kafkaEvents.Producer                     // Kafka client for publishing events - Switched to Sarama Producer
+	logger                 *zap.Logger                               // Application logger.
+	passwordService        domainInterfaces.PasswordService          // Service for hashing and verifying passwords.
+	tokenManagementService domainInterfaces.TokenManagementService   // Core service for JWT generation and validation (RS256).
+	mfaSecretRepo          repoInterfaces.MFASecretRepository        // Repository for MFA secrets.
+	mfaLogicService        domainService.MFALogicService             // Business logic for MFA operations.
+	userRolesRepo          repoInterfaces.UserRolesRepository        // Manages user-role assignments.
+	roleService            *RoleService                              // Service for role and permission related logic, used for enriching JWTs.
+	externalAccountRepo    repoInterfaces.ExternalAccountRepository  // Repository for external (OAuth, Telegram) account links.
 	// telegramVerifier       domainService.TelegramVerifierService    // Removed, logic moved to TelegramAuthService
-	auditLogRecorder       domainService.AuditLogRecorder           // Service for recording audit log events.
-	mfaBackupCodeRepo      repoInterfaces.MFABackupCodeRepository   // Added for SystemDeleteUser
-	apiKeyRepo             repoInterfaces.APIKeyRepository          // Added for SystemDeleteUser
-	cfg                    *config.Config // Application configuration.
+	auditLogRecorder  domainService.AuditLogRecorder         // Service for recording audit log events.
+	mfaBackupCodeRepo repoInterfaces.MFABackupCodeRepository // Added for SystemDeleteUser
+	apiKeyRepo        repoInterfaces.APIKeyRepository        // Added for SystemDeleteUser
+	cfg               *config.Config                         // Application configuration.
 	// httpClient             *http.Client                          // To be removed if only used for OAuth
-	rateLimiter            domainService.RateLimiter                // Service for rate limiting operations.
+	rateLimiter domainService.RateLimiter // Service for rate limiting operations.
 	// oauth2Configs          map[string]*oauth2.Config             // Removed, moved to OAuthService
-	hibpService            domainService.HIBPService                // Added for HIBP checks
-	captchaService         domainService.CaptchaService             // Added for CAPTCHA verification
-	oauthService           *OAuthService                            // Service for OAuth operations
-	telegramAuthService    *TelegramAuthService                     // Service for Telegram Auth operations
+	hibpService         domainInterfaces.HIBPService // Added for HIBP checks
+	captchaService      domainService.CaptchaService // Added for CAPTCHA verification
+	oauthService        *OAuthService                // Service for OAuth operations
+	telegramAuthService *TelegramAuthService         // Service for Telegram Auth operations
 }
 
 // NewAuthService creates a new instance of AuthService with all its dependencies.
@@ -76,19 +77,19 @@ func NewAuthService(
 	kafkaClient *kafkaEvents.Producer, // Switched to Sarama Producer
 	cfg *config.Config,
 	logger *zap.Logger,
-	passwordService domainService.PasswordService,
-	tokenManagementService domainService.TokenManagementService,
+	passwordService domainInterfaces.PasswordService,
+	tokenManagementService domainInterfaces.TokenManagementService,
 	mfaSecretRepo repoInterfaces.MFASecretRepository,
 	mfaLogicService domainService.MFALogicService,
 	userRolesRepo repoInterfaces.UserRolesRepository,
 	roleService *RoleService, // Added
 	externalAccountRepo repoInterfaces.ExternalAccountRepository, // Added
 	// telegramVerifier domainService.TelegramVerifierService, // Removed, moved to TelegramAuthService
-	auditLogRecorder domainService.AuditLogRecorder,           // Added
+	auditLogRecorder domainService.AuditLogRecorder, // Added
 	mfaBackupCodeRepo repoInterfaces.MFABackupCodeRepository, // Added
-	apiKeyRepo repoInterfaces.APIKeyRepository,             // Added
+	apiKeyRepo repoInterfaces.APIKeyRepository, // Added
 	rateLimiter domainService.RateLimiter, // Added
-	hibpService domainService.HIBPService, // Added
+	hibpService domainInterfaces.HIBPService, // Added
 	captchaService domainService.CaptchaService, // Added
 	oauthService *OAuthService, // Added
 	telegramAuthService *TelegramAuthService, // Added
@@ -106,19 +107,19 @@ func NewAuthService(
 		mfaSecretRepo:          mfaSecretRepo,
 		mfaLogicService:        mfaLogicService,
 		userRolesRepo:          userRolesRepo,
-		roleService:            roleService, // Added
+		roleService:            roleService,         // Added
 		externalAccountRepo:    externalAccountRepo, // Added
 		auditLogRecorder:       auditLogRecorder,    // Added
-		mfaBackupCodeRepo:      mfaBackupCodeRepo,     // Added
-		apiKeyRepo:             apiKeyRepo,            // Added
+		mfaBackupCodeRepo:      mfaBackupCodeRepo,   // Added
+		apiKeyRepo:             apiKeyRepo,          // Added
 		cfg:                    cfg,
 		// httpClient:             httpClient,       // Removed
-		rateLimiter:            rateLimiter,         // Added
+		rateLimiter: rateLimiter, // Added
 		// oauth2Configs:       make(map[string]*oauth2.Config), // Removed
-		hibpService:            hibpService,         // Added
-		captchaService:         captchaService,      // Added
-		oauthService:           oauthService,        // Added
-		telegramAuthService:    telegramAuthService, // Added
+		hibpService:         hibpService,         // Added
+		captchaService:      captchaService,      // Added
+		oauthService:        oauthService,        // Added
+		telegramAuthService: telegramAuthService, // Added
 	}
 
 	// OAuth2 providers initialization removed, handled by OAuthService
@@ -143,263 +144,269 @@ func (s *AuthService) TelegramAuthService() *TelegramAuthService {
 
 // Login method with new event publishing (ensure it's only present once)
 func (s *AuthService) Login(ctx context.Context, req models.LoginRequest) (*models.TokenPair, *models.User, string, error) {
-    var auditErrorDetails map[string]interface{}
-    var userIDForAudit *uuid.UUID
-    var user *models.User
-    var err error
+	var auditErrorDetails map[string]interface{}
+	var userIDForAudit *uuid.UUID
+	var user *models.User
+	var err error
 
-    ipAddress := "unknown"
-    userAgent := "unknown"
-    if md, ok := ctx.Value("metadata").(map[string]string); ok {
-        if val, exists := md["ip-address"]; exists { ipAddress = val }
-        if val, exists := md["user-agent"]; exists { userAgent = val }
-    }
+	ipAddress := "unknown"
+	userAgent := "unknown"
+	if md, ok := ctx.Value("metadata").(map[string]string); ok {
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
+	}
 
-    // Determine if identifier is likely an email to prioritize search, or simply try both.
-    // For simplicity here, try email first, then username.
-    // A common approach is to check for "@" in the identifier.
-    isLikelyEmail := strings.Contains(req.Identifier, "@")
+	// Determine if identifier is likely an email to prioritize search, or simply try both.
+	// For simplicity here, try email first, then username.
+	// A common approach is to check for "@" in the identifier.
+	isLikelyEmail := strings.Contains(req.Identifier, "@")
 
-    if isLikelyEmail {
-        user, err = s.userRepo.FindByEmail(ctx, req.Identifier)
-    } else {
-        user, err = s.userRepo.FindByUsername(ctx, req.Identifier)
-    }
+	if isLikelyEmail {
+		user, err = s.userRepo.FindByEmail(ctx, req.Identifier)
+	} else {
+		user, err = s.userRepo.FindByUsername(ctx, req.Identifier)
+	}
 
-    if err != nil {
-        if errors.Is(err, domainErrors.ErrUserNotFound) {
-            // If first attempt failed, try the other method
-            if isLikelyEmail {
-                user, err = s.userRepo.FindByUsername(ctx, req.Identifier)
-            } else {
-                user, err = s.userRepo.FindByEmail(ctx, req.Identifier)
-            }
-        }
-        // If still not found or other error
-        if err != nil {
-            if errors.Is(err, domainErrors.ErrUserNotFound) {
-                s.logger.Warn("Login attempt: User not found by identifier", zap.String("identifier", req.Identifier))
-                loginFailedPayload := models.UserLoginFailedPayload{
-                    AttemptedLoginIdentifier: req.Identifier,
-                    FailureReason:            "user_not_found",
-                    FailureTimestamp:         time.Now().UTC(),
-                    IPAddress:                ipAddress,
-                    UserAgent:                userAgent,
-                }
-                subjectUserNotFound := "unknown_user_" + req.Identifier
-                contentType := "application/json"
-                if errPub := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserLoginFailedV1), &subjectUserNotFound, &contentType, loginFailedPayload); errPub != nil {
-                    s.logger.Error("Failed to publish CloudEvent for user_not_found login failure", zap.Error(errPub))
-                }
-                auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrInvalidCredentials.Error(), "attempted_identifier": req.Identifier}
-                s.auditLogRecorder.RecordEvent(ctx, nil, "user_login", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
-            } else {
-                s.logger.Error("Login attempt: Error fetching user by identifier", zap.Error(err), zap.String("identifier", req.Identifier))
-                auditErrorDetails = map[string]interface{}{"reason": "db error fetching user", "error": err.Error(), "attempted_identifier": req.Identifier}
-                s.auditLogRecorder.RecordEvent(ctx, nil, "user_login", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
-            }
+	if err != nil {
+		if errors.Is(err, domainErrors.ErrUserNotFound) {
+			// If first attempt failed, try the other method
+			if isLikelyEmail {
+				user, err = s.userRepo.FindByUsername(ctx, req.Identifier)
+			} else {
+				user, err = s.userRepo.FindByEmail(ctx, req.Identifier)
+			}
+		}
+		// If still not found or other error
+		if err != nil {
+			if errors.Is(err, domainErrors.ErrUserNotFound) {
+				s.logger.Warn("Login attempt: User not found by identifier", zap.String("identifier", req.Identifier))
+				loginFailedPayload := models.UserLoginFailedPayload{
+					AttemptedLoginIdentifier: req.Identifier,
+					FailureReason:            "user_not_found",
+					FailureTimestamp:         time.Now().UTC(),
+					IPAddress:                ipAddress,
+					UserAgent:                userAgent,
+				}
+				subjectUserNotFound := "unknown_user_" + req.Identifier
+				contentType := "application/json"
+				if errPub := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserLoginFailedV1), &subjectUserNotFound, &contentType, loginFailedPayload); errPub != nil {
+					s.logger.Error("Failed to publish CloudEvent for user_not_found login failure", zap.Error(errPub))
+				}
+				auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrInvalidCredentials.Error(), "attempted_identifier": req.Identifier}
+				s.auditLogRecorder.RecordEvent(ctx, nil, "user_login", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+			} else {
+				s.logger.Error("Login attempt: Error fetching user by identifier", zap.Error(err), zap.String("identifier", req.Identifier))
+				auditErrorDetails = map[string]interface{}{"reason": "db error fetching user", "error": err.Error(), "attempted_identifier": req.Identifier}
+				s.auditLogRecorder.RecordEvent(ctx, nil, "user_login", models.AuditLogStatusFailure, nil, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+			}
 			metrics.LoginAttemptsTotal.WithLabelValues("failure_user_not_found").Inc()
-            return nil, nil, "", domainErrors.ErrInvalidCredentials
-        }
-    }
+			return nil, nil, "", domainErrors.ErrInvalidCredentials
+		}
+	}
 
-    // From here, 'user' object is available. The rest of the logic remains similar.
-    userIDForAudit = &user.ID
+	// From here, 'user' object is available. The rest of the logic remains similar.
+	userIDForAudit = &user.ID
 
-    // Rate limit check (using identifier instead of email)
-    rateLimitKey := "login_identifier_ip:" + req.Identifier + ":" + ipAddress
-    allowed, rlErr := s.rateLimiter.Allow(ctx, rateLimitKey, s.cfg.Security.RateLimiting.LoginEmailIP) // Assuming LoginEmailIP config is general enough
-    if rlErr != nil {
-        s.logger.Error("Rate limiter failed for login_identifier_ip", zap.Error(rlErr), zap.String("identifier", req.Identifier), zap.String("ipAddress", ipAddress))
-    }
-    if !allowed {
-        s.logger.Warn("Rate limit exceeded for login_identifier_ip", zap.String("identifier", req.Identifier), zap.String("ipAddress", ipAddress))
-        // Consider if an event should be published here for rate limiting.
+	// Rate limit check (using identifier instead of email)
+	rateLimitKey := "login_identifier_ip:" + req.Identifier + ":" + ipAddress
+	allowed, rlErr := s.rateLimiter.Allow(ctx, rateLimitKey, s.cfg.Security.RateLimiting.LoginEmailIP) // Assuming LoginEmailIP config is general enough
+	if rlErr != nil {
+		s.logger.Error("Rate limiter failed for login_identifier_ip", zap.Error(rlErr), zap.String("identifier", req.Identifier), zap.String("ipAddress", ipAddress))
+	}
+	if !allowed {
+		s.logger.Warn("Rate limit exceeded for login_identifier_ip", zap.String("identifier", req.Identifier), zap.String("ipAddress", ipAddress))
+		// Consider if an event should be published here for rate limiting.
 		// metrics.LoginAttemptsTotal.WithLabelValues("failure_rate_limit").Inc(); // Optional: if you want a specific metric for rate limit
-        return nil, nil, "", domainErrors.ErrRateLimitExceeded
-    }
+		return nil, nil, "", domainErrors.ErrRateLimitExceeded
+	}
 
-
-    if user.LockoutUntil != nil && time.Now().Before(*user.LockoutUntil) {
-        s.logger.Warn("Login attempt for locked out user", zap.String("user_id", user.ID.String()), zap.Time("lockout_until", *user.LockoutUntil))
-        auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserLockedOut.Error(), "attempted_identifier": req.Identifier}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+	if user.LockoutUntil != nil && time.Now().Before(*user.LockoutUntil) {
+		s.logger.Warn("Login attempt for locked out user", zap.String("user_id", user.ID.String()), zap.Time("lockout_until", *user.LockoutUntil))
+		auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserLockedOut.Error(), "attempted_identifier": req.Identifier}
+		s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
 		metrics.LoginAttemptsTotal.WithLabelValues("failure_account_locked").Inc()
-        return nil, nil, "", domainErrors.ErrUserLockedOut
-    }
+		return nil, nil, "", domainErrors.ErrUserLockedOut
+	}
 
-    passwordMatch, err := s.passwordService.CheckPasswordHash(req.Password, user.PasswordHash)
-    if err != nil {
-        s.logger.Error("Error checking password hash", zap.Error(err), zap.String("user_id", user.ID.String()))
-        auditErrorDetails = map[string]interface{}{"reason": "password check error", "error": err.Error(), "attempted_identifier": req.Identifier}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
-        return nil, nil, "", domainErrors.ErrInternal
-    }
+	passwordMatch, err := s.passwordService.CheckPasswordHash(req.Password, user.PasswordHash)
+	if err != nil {
+		s.logger.Error("Error checking password hash", zap.Error(err), zap.String("user_id", user.ID.String()))
+		auditErrorDetails = map[string]interface{}{"reason": "password check error", "error": err.Error(), "attempted_identifier": req.Identifier}
+		s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+		return nil, nil, "", domainErrors.ErrInternal
+	}
 
-    if !passwordMatch {
-        s.logger.Warn("Invalid password attempt", zap.String("user_id", user.ID.String()))
-        if errInc := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); errInc != nil {
-            s.logger.Error("Failed to increment failed login attempts", zap.Error(errInc), zap.String("user_id", user.ID.String()))
-        }
-        // Fetch user again to get updated FailedLoginAttempts
-        updatedUser, fetchErr := s.userRepo.FindByID(ctx, user.ID)
-        if fetchErr != nil {
-            s.logger.Error("Failed to fetch user after failed attempt", zap.Error(fetchErr), zap.String("user_id", user.ID.String()))
-            loginFailedPayload := models.UserLoginFailedPayload{
-                AttemptedLoginIdentifier: req.Identifier,
-                FailureReason:            "invalid_credentials",
-                FailureTimestamp:         time.Now().UTC(),
-                IPAddress:                ipAddress,
-                UserAgent:                userAgent,
-            }
-            subjectInvalidCreds := user.ID.String()
-            contentType := "application/json"
-            if errPub := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserLoginFailedV1), &subjectInvalidCreds, &contentType, loginFailedPayload); errPub != nil {
-                s.logger.Error("Failed to publish CloudEvent for invalid_credentials (user fetch failed)", zap.Error(errPub))
-            }
-            auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrInvalidCredentials.Error(), "attempted_identifier": req.Identifier}
-            s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
-            return nil, nil, "", domainErrors.ErrInvalidCredentials
-        }
-        user = updatedUser // Use the updated user object
+	if !passwordMatch {
+		s.logger.Warn("Invalid password attempt", zap.String("user_id", user.ID.String()))
+		if errInc := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); errInc != nil {
+			s.logger.Error("Failed to increment failed login attempts", zap.Error(errInc), zap.String("user_id", user.ID.String()))
+		}
+		// Fetch user again to get updated FailedLoginAttempts
+		updatedUser, fetchErr := s.userRepo.FindByID(ctx, user.ID)
+		if fetchErr != nil {
+			s.logger.Error("Failed to fetch user after failed attempt", zap.Error(fetchErr), zap.String("user_id", user.ID.String()))
+			loginFailedPayload := models.UserLoginFailedPayload{
+				AttemptedLoginIdentifier: req.Identifier,
+				FailureReason:            "invalid_credentials",
+				FailureTimestamp:         time.Now().UTC(),
+				IPAddress:                ipAddress,
+				UserAgent:                userAgent,
+			}
+			subjectInvalidCreds := user.ID.String()
+			contentType := "application/json"
+			if errPub := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserLoginFailedV1), &subjectInvalidCreds, &contentType, loginFailedPayload); errPub != nil {
+				s.logger.Error("Failed to publish CloudEvent for invalid_credentials (user fetch failed)", zap.Error(errPub))
+			}
+			auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrInvalidCredentials.Error(), "attempted_identifier": req.Identifier}
+			s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+			return nil, nil, "", domainErrors.ErrInvalidCredentials
+		}
+		user = updatedUser // Use the updated user object
 
-        loginFailedPayload := models.UserLoginFailedPayload{
-            AttemptedLoginIdentifier: req.Identifier,
-            FailureReason:            "invalid_credentials",
-            FailureTimestamp:         time.Now().UTC(),
-            IPAddress:                ipAddress,
-            UserAgent:                userAgent,
-        }
-        subjectFailedLogin := user.ID.String()
-        contentType := "application/json"
-        if errPub := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserLoginFailedV1), &subjectFailedLogin, &contentType, loginFailedPayload); errPub != nil {
-            s.logger.Error("Failed to publish CloudEvent for invalid_credentials login failure", zap.Error(errPub))
-        }
+		loginFailedPayload := models.UserLoginFailedPayload{
+			AttemptedLoginIdentifier: req.Identifier,
+			FailureReason:            "invalid_credentials",
+			FailureTimestamp:         time.Now().UTC(),
+			IPAddress:                ipAddress,
+			UserAgent:                userAgent,
+		}
+		subjectFailedLogin := user.ID.String()
+		contentType := "application/json"
+		if errPub := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserLoginFailedV1), &subjectFailedLogin, &contentType, loginFailedPayload); errPub != nil {
+			s.logger.Error("Failed to publish CloudEvent for invalid_credentials login failure", zap.Error(errPub))
+		}
 
-        if user.FailedLoginAttempts >= s.cfg.Security.Lockout.MaxFailedAttempts {
-            lockoutUntil := time.Now().Add(s.cfg.Security.Lockout.LockoutDuration)
-            if errLock := s.userRepo.UpdateLockout(ctx, user.ID, &lockoutUntil); errLock != nil {
-                s.logger.Error("Failed to update lockout status for user", zap.Error(errLock), zap.String("user_id", user.ID.String()))
-            } else {
-                var durationSecs *int64
-                dur := lockoutUntil.Sub(time.Now().UTC())
-                if dur.Seconds() > 0 {
-                    val := int64(dur.Seconds())
-                    durationSecs = &val
-                }
-                accountLockedPayload := models.UserAccountLockedPayload{
-                    UserID:                  user.ID.String(),
-                    LockTimestamp:           time.Now().UTC(),
-                    Reason:                  "too_many_failed_login_attempts",
-                    LockoutDurationSeconds: durationSecs,
-                }
-                subjectAccountLocked := user.ID.String()
-                if errPub := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserAccountLockedV1), &subjectAccountLocked, &contentType, accountLockedPayload); errPub != nil {
-                    s.logger.Error("Failed to publish CloudEvent for account locked", zap.Error(errPub))
-                }
-            }
-            s.logger.Warn("User account locked", zap.String("user_id", user.ID.String()))
-            auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserLockedOut.Error(), "attempted_identifier": req.Identifier, "lockout_triggered": true, "failed_attempts": user.FailedLoginAttempts}
-            s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+		if user.FailedLoginAttempts >= s.cfg.Security.Lockout.MaxFailedAttempts {
+			lockoutUntil := time.Now().Add(s.cfg.Security.Lockout.LockoutDuration)
+			if errLock := s.userRepo.UpdateLockout(ctx, user.ID, &lockoutUntil); errLock != nil {
+				s.logger.Error("Failed to update lockout status for user", zap.Error(errLock), zap.String("user_id", user.ID.String()))
+			} else {
+				var durationSecs *int64
+				dur := lockoutUntil.Sub(time.Now().UTC())
+				if dur.Seconds() > 0 {
+					val := int64(dur.Seconds())
+					durationSecs = &val
+				}
+				accountLockedPayload := models.UserAccountLockedPayload{
+					UserID:                 user.ID.String(),
+					LockTimestamp:          time.Now().UTC(),
+					Reason:                 "too_many_failed_login_attempts",
+					LockoutDurationSeconds: durationSecs,
+				}
+				subjectAccountLocked := user.ID.String()
+				if errPub := s.kafkaClient.PublishCloudEvent(ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserAccountLockedV1), &subjectAccountLocked, &contentType, accountLockedPayload); errPub != nil {
+					s.logger.Error("Failed to publish CloudEvent for account locked", zap.Error(errPub))
+				}
+			}
+			s.logger.Warn("User account locked", zap.String("user_id", user.ID.String()))
+			auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserLockedOut.Error(), "attempted_identifier": req.Identifier, "lockout_triggered": true, "failed_attempts": user.FailedLoginAttempts}
+			s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
 			metrics.LoginAttemptsTotal.WithLabelValues("failure_account_locked").Inc() // Duplicated for this path
-            return nil, nil, "", domainErrors.ErrUserLockedOut
-        }
-        auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrInvalidCredentials.Error(), "attempted_identifier": req.Identifier, "failed_attempts": user.FailedLoginAttempts}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+			return nil, nil, "", domainErrors.ErrUserLockedOut
+		}
+		auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrInvalidCredentials.Error(), "attempted_identifier": req.Identifier, "failed_attempts": user.FailedLoginAttempts}
+		s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
 		metrics.LoginAttemptsTotal.WithLabelValues("failure_credentials").Inc()
-        return nil, nil, "", domainErrors.ErrInvalidCredentials
-    }
+		return nil, nil, "", domainErrors.ErrInvalidCredentials
+	}
 
-    if user.Status == models.UserStatusBlocked {
-        s.logger.Warn("Login attempt for blocked user", zap.String("user_id", user.ID.String()))
-        auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserBlocked.Error(), "attempted_identifier": req.Identifier}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+	if user.Status == models.UserStatusBlocked {
+		s.logger.Warn("Login attempt for blocked user", zap.String("user_id", user.ID.String()))
+		auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrUserBlocked.Error(), "attempted_identifier": req.Identifier}
+		s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
 		metrics.LoginAttemptsTotal.WithLabelValues("failure_account_blocked").Inc() // Specific status for blocked
-        return nil, nil, "", domainErrors.ErrUserBlocked
-    }
+		return nil, nil, "", domainErrors.ErrUserBlocked
+	}
 
-    if user.EmailVerifiedAt == nil {
-        s.logger.Warn("Login attempt for unverified email", zap.String("user_id", user.ID.String()))
-        auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrEmailNotVerified.Error(), "attempted_identifier": req.Identifier}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+	if user.EmailVerifiedAt == nil {
+		s.logger.Warn("Login attempt for unverified email", zap.String("user_id", user.ID.String()))
+		auditErrorDetails = map[string]interface{}{"reason": domainErrors.ErrEmailNotVerified.Error(), "attempted_identifier": req.Identifier}
+		s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
 		metrics.LoginAttemptsTotal.WithLabelValues("failure_email_not_verified").Inc()
-        return nil, nil, "", domainErrors.ErrEmailNotVerified
-    }
+		return nil, nil, "", domainErrors.ErrEmailNotVerified
+	}
 
-    mfaSecret, errMFA := s.mfaSecretRepo.FindByUserIDAndType(ctx, user.ID, models.MFATypeTOTP)
-    if errMFA == nil && mfaSecret != nil && mfaSecret.Verified {
-        s.logger.Info("2FA required for user", zap.String("user_id", user.ID.String()))
-        challengeToken, errChallenge := s.tokenManagementService.Generate2FAChallengeToken(user.ID.String())
-        if errChallenge != nil {
-            s.logger.Error("Failed to generate 2FA challenge token", zap.Error(errChallenge), zap.String("user_id", user.ID.String()))
-            auditErrorDetails = map[string]interface{}{"reason": "2FA challenge token generation failed", "error": errChallenge.Error(), "attempted_identifier": req.Identifier}
-            s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+	mfaSecret, errMFA := s.mfaSecretRepo.FindByUserIDAndType(ctx, user.ID, models.MFATypeTOTP)
+	if errMFA == nil && mfaSecret != nil && mfaSecret.Verified {
+		s.logger.Info("2FA required for user", zap.String("user_id", user.ID.String()))
+		challengeToken, errChallenge := s.tokenManagementService.Generate2FAChallengeToken(user.ID.String())
+		if errChallenge != nil {
+			s.logger.Error("Failed to generate 2FA challenge token", zap.Error(errChallenge), zap.String("user_id", user.ID.String()))
+			auditErrorDetails = map[string]interface{}{"reason": "2FA challenge token generation failed", "error": errChallenge.Error(), "attempted_identifier": req.Identifier}
+			s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
 			// This path is tricky, it's a failure for immediate login, but success for primary auth.
 			// The subtask asks for "success_2fa_required" for this case.
-            return nil, nil, "", domainErrors.ErrInternal // Not incrementing login failure here, as it's a 2FA path.
-        }
-        auditErrorDetails = map[string]interface{}{"reason": domainErrors.Err2FARequired.Error(), "attempted_identifier": req.Identifier}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent) // Logged as failure for this step
+			return nil, nil, "", domainErrors.ErrInternal // Not incrementing login failure here, as it's a 2FA path.
+		}
+		auditErrorDetails = map[string]interface{}{"reason": domainErrors.Err2FARequired.Error(), "attempted_identifier": req.Identifier}
+		s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent) // Logged as failure for this step
 		metrics.LoginAttemptsTotal.WithLabelValues("success_2fa_required").Inc()
-        return nil, user, challengeToken, domainErrors.Err2FARequired
-    }
-    if errMFA != nil && !errors.Is(errMFA, domainErrors.ErrNotFound) {
-        s.logger.Error("Error checking MFA status for user", zap.Error(errMFA), zap.String("user_id", user.ID.String()))
-    }
+		return nil, user, challengeToken, domainErrors.Err2FARequired
+	}
+	if errMFA != nil && !errors.Is(errMFA, domainErrors.ErrNotFound) {
+		s.logger.Error("Error checking MFA status for user", zap.Error(errMFA), zap.String("user_id", user.ID.String()))
+	}
 
-    if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
-        s.logger.Error("Failed to reset failed login attempts", zap.Error(err), zap.String("user_id", user.ID.String()))
-        auditErrorDetails = map[string]interface{}{"warning": "failed to reset failed login attempts", "error": err.Error()}
-    }
-    if err := s.userRepo.UpdateLastLogin(ctx, user.ID, time.Now()); err != nil {
-        s.logger.Error("Failed to update last login time", zap.Error(err), zap.String("user_id", user.ID.String()))
-        if auditErrorDetails == nil { auditErrorDetails = make(map[string]interface{}) }
-        auditErrorDetails["warning_update_last_login"] = err.Error()
-    }
+	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+		s.logger.Error("Failed to reset failed login attempts", zap.Error(err), zap.String("user_id", user.ID.String()))
+		auditErrorDetails = map[string]interface{}{"warning": "failed to reset failed login attempts", "error": err.Error()}
+	}
+	if err := s.userRepo.UpdateLastLogin(ctx, user.ID, time.Now()); err != nil {
+		s.logger.Error("Failed to update last login time", zap.Error(err), zap.String("user_id", user.ID.String()))
+		if auditErrorDetails == nil {
+			auditErrorDetails = make(map[string]interface{})
+		}
+		auditErrorDetails["warning_update_last_login"] = err.Error()
+	}
 
-    session, errSession := s.sessionService.CreateSession(ctx, user.ID, userAgent, ipAddress)
-    if errSession != nil {
-        s.logger.Error("Failed to create session during login", zap.Error(errSession), zap.String("user_id", user.ID.String()))
-        logDetails := map[string]interface{}{"reason": "session creation failed", "error": errSession.Error(), "attempted_identifier": req.Identifier}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, logDetails, ipAddress, userAgent)
-        return nil, nil, "", errSession // Return specific error
-    }
+	session, errSession := s.sessionService.CreateSession(ctx, user.ID, userAgent, ipAddress)
+	if errSession != nil {
+		s.logger.Error("Failed to create session during login", zap.Error(errSession), zap.String("user_id", user.ID.String()))
+		logDetails := map[string]interface{}{"reason": "session creation failed", "error": errSession.Error(), "attempted_identifier": req.Identifier}
+		s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, logDetails, ipAddress, userAgent)
+		return nil, nil, "", errSession // Return specific error
+	}
 
-    tokenPair, errToken := s.tokenService.CreateTokenPairWithSession(ctx, user, session.ID)
-    if errToken != nil {
-        s.logger.Error("Failed to create token pair", zap.Error(errToken), zap.String("user_id", user.ID.String()))
-        logDetails := map[string]interface{}{"reason": "token pair creation failed", "error": errToken.Error(), "attempted_identifier": req.Identifier}
-        s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, logDetails, ipAddress, userAgent)
-        return nil, nil, "", errToken // Return specific error
-    }
+	tokenPair, errToken := s.tokenService.CreateTokenPairWithSession(ctx, user, session.ID)
+	if errToken != nil {
+		s.logger.Error("Failed to create token pair", zap.Error(errToken), zap.String("user_id", user.ID.String()))
+		logDetails := map[string]interface{}{"reason": "token pair creation failed", "error": errToken.Error(), "attempted_identifier": req.Identifier}
+		s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusFailure, userIDForAudit, models.AuditTargetTypeUser, logDetails, ipAddress, userAgent)
+		return nil, nil, "", errToken // Return specific error
+	}
 
-    loginSuccessPayload := models.UserLoginSuccessPayload{
-        UserID:          user.ID.String(),
-        SessionID:       session.ID.String(),
-        LoginTimestamp:  time.Now().UTC(),
-        IPAddress:       ipAddress,
-        UserAgent:       userAgent,
-    }
-    subjectUserIDLogin := user.ID.String()
-    contentTypeJSONLogin := "application/json"
-    if err := s.kafkaClient.PublishCloudEvent(
-        ctx,
-        s.cfg.Kafka.Producer.Topic,
-        kafkaEvents.EventType(models.AuthUserLoginSuccessV1),
-        &subjectUserIDLogin,
-        &contentTypeJSONLogin,
-        loginSuccessPayload,
-    ); err != nil {
-        s.logger.Error("Failed to publish CloudEvent for user login success", zap.Error(err), zap.String("user_id", user.ID.String()))
-        if auditErrorDetails == nil { auditErrorDetails = make(map[string]interface{}) }
-        auditErrorDetails["warning_cloudevent_publish"] = err.Error()
-    }
+	loginSuccessPayload := models.UserLoginSuccessPayload{
+		UserID:         user.ID.String(),
+		SessionID:      session.ID.String(),
+		LoginTimestamp: time.Now().UTC(),
+		IPAddress:      ipAddress,
+		UserAgent:      userAgent,
+	}
+	subjectUserIDLogin := user.ID.String()
+	contentTypeJSONLogin := "application/json"
+	if err := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.Topic,
+		kafkaEvents.EventType(models.AuthUserLoginSuccessV1),
+		&subjectUserIDLogin,
+		&contentTypeJSONLogin,
+		loginSuccessPayload,
+	); err != nil {
+		s.logger.Error("Failed to publish CloudEvent for user login success", zap.Error(err), zap.String("user_id", user.ID.String()))
+		if auditErrorDetails == nil {
+			auditErrorDetails = make(map[string]interface{})
+		}
+		auditErrorDetails["warning_cloudevent_publish"] = err.Error()
+	}
 
-    s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusSuccess, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
+	s.auditLogRecorder.RecordEvent(ctx, userIDForAudit, "user_login", models.AuditLogStatusSuccess, userIDForAudit, models.AuditTargetTypeUser, auditErrorDetails, ipAddress, userAgent)
 	metrics.LoginAttemptsTotal.WithLabelValues("success").Inc()
-    return tokenPair, user, "", nil
+	return tokenPair, user, "", nil
 }
-
 
 // ... (rest of AuthService methods like CompleteLoginAfter2FA, RefreshToken, etc.)
 // ... (SystemDeleteUser and SystemLogoutAllUserSessions - ensure they are present only once at the end)
@@ -493,7 +500,6 @@ func (s *AuthService) SystemDeleteUser(ctx context.Context, userID uuid.UUID, ad
 	//    }
 	// }
 
-
 	auditStatus := models.AuditLogStatusSuccess
 	if len(errorsCollected) > 0 {
 		auditStatus = models.AuditLogStatusPartialSuccess
@@ -518,8 +524,12 @@ func (s *AuthService) SystemDeleteUser(ctx context.Context, userID uuid.UUID, ad
 	ipAddress := "system"
 	userAgent := "system"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 
 	s.auditLogRecorder.RecordEvent(ctx, adminActorIDStr, "system_user_delete", auditStatus, &userID, models.AuditTargetTypeUser, auditDetails, &ipAddress, &userAgent)
@@ -597,17 +607,21 @@ func (s *AuthService) SystemLogoutAllUserSessions(ctx context.Context, userID uu
 		currentReason = *reason
 	}
 	auditDetails := map[string]interface{}{
-		"reason": currentReason,
-		"sessions_deleted": deletedSessionsCount,
+		"reason":                 currentReason,
+		"sessions_deleted":       deletedSessionsCount,
 		"refresh_tokens_revoked": revokedTokensCount,
-		"errors": strings.Join(errorsCollected, "; "),
+		"errors":                 strings.Join(errorsCollected, "; "),
 	}
 
 	ipAddress := "system"
 	userAgent := "system"
 	if md, ok := ctx.Value("metadata").(map[string]string); ok {
-		if val, exists := md["ip-address"]; exists { ipAddress = val }
-		if val, exists := md["user-agent"]; exists { userAgent = val }
+		if val, exists := md["ip-address"]; exists {
+			ipAddress = val
+		}
+		if val, exists := md["user-agent"]; exists {
+			userAgent = val
+		}
 	}
 
 	s.auditLogRecorder.RecordEvent(ctx, adminActorIDStrKafka, "system_user_logout_all_sessions", auditStatus, &userID, models.AuditTargetTypeUser, auditDetails, &ipAddress, &userAgent)
@@ -667,7 +681,6 @@ func (s *AuthService) Register(ctx context.Context, req models.RegisterRequest) 
 	// 	 if err == nil { return nil, nil, domainErrors.ErrEmailExists }
 	// 	 return nil, nil, err // DB error
 	// }
-
 
 	// HIBP Check (after other validations, before hashing password)
 	if s.cfg.HIBP.Enabled {
@@ -776,7 +789,6 @@ func (s *AuthService) ResetPassword(ctx context.Context, token string, newPasswo
 	metrics.PasswordResetAttemptsTotal.WithLabelValues("success").Inc()
 	return nil
 }
-
 
 // --- HTTP Client Helper Methods --- (These are now removed as oauth2 library handles HTTP client interactions)
 // [NOTE: This is where the duplicated SystemDeleteUser and SystemLogoutAllUserSessions methods would have been if they were present again]

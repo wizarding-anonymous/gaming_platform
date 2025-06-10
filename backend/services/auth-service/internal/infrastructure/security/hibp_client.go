@@ -7,20 +7,20 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
+	"net" // Added for net.Error check
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-	"net" // Added for net.Error check
 
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // For config.HIBPConfig
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"   // For service.HIBPService
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"                             // For config.HIBPConfig
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces" // For domainInterfaces.HIBPService
 	"go.uber.org/zap"
 )
 
 const hibpRequestTimeout = 5 * time.Second
 
-// HIBPClient implements the service.HIBPService interface.
+// HIBPClient implements the domainInterfaces.HIBPService interface.
 type HIBPClient struct {
 	httpClient *http.Client
 	userAgent  string
@@ -126,4 +126,4 @@ func (c *HIBPClient) CheckPasswordPwned(ctx context.Context, password string) (b
 }
 
 // Ensure HIBPClient implements HIBPService interface
-var _ service.HIBPService = (*HIBPClient)(nil)
+var _ domainInterfaces.HIBPService = (*HIBPClient)(nil)

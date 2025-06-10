@@ -1,5 +1,5 @@
-// File: backend/services/auth-service/internal/domain/service/hibp_service.go
-package service
+// File: backend/services/auth-service/internal/domain/interfaces/hibp_service.go
+package interfaces
 
 import (
 	"context"

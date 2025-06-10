@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/crypto/argon2"
 
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 )
 
 // Argon2idParams holds the parameters for Argon2id hashing.
@@ -31,7 +31,7 @@ type argon2idPasswordService struct {
 
 // NewArgon2idPasswordService creates a new argon2idPasswordService.
 // Parameters would typically come from application configuration.
-func NewArgon2idPasswordService(params Argon2idParams) (service.PasswordService, error) {
+func NewArgon2idPasswordService(params Argon2idParams) (domainInterfaces.PasswordService, error) {
 	if params.Memory == 0 || params.Iterations == 0 || params.Parallelism == 0 || params.SaltLength == 0 || params.KeyLength == 0 {
 		// Provide sensible defaults if not configured or fall back to error
 		// For this example, we use common defaults. The spec suggests:
@@ -114,4 +114,4 @@ func (s *argon2idPasswordService) CheckPasswordHash(password, encodedHash string
 }
 
 // Ensure argon2idPasswordService implements PasswordService (compile-time check)
-var _ service.PasswordService = (*argon2idPasswordService)(nil)
+var _ domainInterfaces.PasswordService = (*argon2idPasswordService)(nil)

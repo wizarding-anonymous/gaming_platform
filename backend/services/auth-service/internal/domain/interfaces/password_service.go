@@ -1,5 +1,5 @@
-// File: backend/services/auth-service/internal/domain/service/password_service.go
-package service
+// File: backend/services/auth-service/internal/domain/interfaces/password_service.go
+package interfaces
 
 // PasswordService defines the interface for password hashing and verification.
 type PasswordService interface {

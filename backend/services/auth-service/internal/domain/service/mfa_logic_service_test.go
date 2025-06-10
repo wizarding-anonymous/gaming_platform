@@ -16,7 +16,8 @@ import (
 	appConfig "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+        domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
+        "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
 	// infrastructureSecurity "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
 )

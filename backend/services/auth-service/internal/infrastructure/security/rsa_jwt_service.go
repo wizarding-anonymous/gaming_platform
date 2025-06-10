@@ -14,10 +14,10 @@ import (
 	"github.com/google/uuid" // For JTI
 
 	appConfig "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config" // Alias for clarity
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 )
 
-// rsaTokenManagementService implements the service.TokenManagementService using RS256.
+// rsaTokenManagementService implements the interfaces.TokenManagementService using RS256.
 type rsaTokenManagementService struct {
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
@@ -26,7 +26,7 @@ type rsaTokenManagementService struct {
 
 // NewRSATokenManagementService creates a new rsaTokenManagementService.
 // It requires RSA keys to be properly configured and loaded from file paths.
-func NewRSATokenManagementService(cfg appConfig.JWTConfig) (service.TokenManagementService, error) {
+func NewRSATokenManagementService(cfg appConfig.JWTConfig) (interfaces.TokenManagementService, error) {
 	if cfg.RSAPrivateKeyPEMFile == "" || cfg.RSAPublicKeyPEMFile == "" || cfg.JWKSKeyID == "" {
 		return nil, errors.New("RSA private key, public key file, and JWKS Key ID must be configured")
 	}
@@ -65,7 +65,7 @@ func NewRSATokenManagementService(cfg appConfig.JWTConfig) (service.TokenManagem
 // GenerateAccessToken creates a new JWT access token.
 func (s *rsaTokenManagementService) GenerateAccessToken(
 	userID string, username string, roles []string, permissions []string, sessionID string,
-) (string, *service.Claims, error) {
+) (string, *interfaces.Claims, error) {
 	if s.privateKey == nil {
 		return "", nil, errors.New("private key not configured for signing access tokens")
 	}
@@ -73,7 +73,7 @@ func (s *rsaTokenManagementService) GenerateAccessToken(
 	now := time.Now()
 	jti := uuid.NewString()
 
-	claims := &service.Claims{
+	claims := &interfaces.Claims{
 		UserID:      userID,
 		Username:    username,
 		Roles:       roles,
@@ -101,12 +101,12 @@ func (s *rsaTokenManagementService) GenerateAccessToken(
 }
 
 // ValidateAccessToken validates the JWT access token.
-func (s *rsaTokenManagementService) ValidateAccessToken(tokenString string) (*service.Claims, error) {
+func (s *rsaTokenManagementService) ValidateAccessToken(tokenString string) (*interfaces.Claims, error) {
 	if s.publicKey == nil {
 		return nil, errors.New("public key not configured for validating access tokens")
 	}
 
-	token, err := jwt.ParseWithClaims(tokenString, &service.Claims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &interfaces.Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -124,13 +124,12 @@ func (s *rsaTokenManagementService) ValidateAccessToken(tokenString string) (*se
 		return s.publicKey, nil
 	}, jwt.WithAudience(s.cfg.Audience), jwt.WithIssuer(s.cfg.Issuer))
 
-
 	if err != nil {
 		// err already contains detailed error like "token is expired" or "signature is invalid"
 		return nil, fmt.Errorf("token validation failed: %w", err)
 	}
 
-	if claims, ok := token.Claims.(*service.Claims); ok && token.Valid {
+	if claims, ok := token.Claims.(*interfaces.Claims); ok && token.Valid {
 		return claims, nil
 	}
 
@@ -171,8 +170,8 @@ func (s *rsaTokenManagementService) GetJWKS() (map[string]interface{}, error) {
 	}, nil
 }
 
-// Ensure rsaTokenManagementService implements service.TokenManagementService.
-var _ service.TokenManagementService = (*rsaTokenManagementService)(nil)
+// Ensure rsaTokenManagementService implements interfaces.TokenManagementService.
+var _ interfaces.TokenManagementService = (*rsaTokenManagementService)(nil)
 
 const challengeTokenTTL = 5 * time.Minute // Short TTL for challenge token
 
@@ -183,7 +182,7 @@ func (s *rsaTokenManagementService) Generate2FAChallengeToken(userID string) (st
 	}
 
 	now := time.Now()
-	claims := &service.ChallengeClaims{
+	claims := &interfaces.ChallengeClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(), // JTI
@@ -213,7 +212,7 @@ func (s *rsaTokenManagementService) Validate2FAChallengeToken(tokenString string
 		return "", errors.New("public key not configured for validating challenge tokens")
 	}
 
-	token, err := jwt.ParseWithClaims(tokenString, &service.ChallengeClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &interfaces.ChallengeClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method for challenge token: %v", token.Header["alg"])
 		}
@@ -226,12 +225,11 @@ func (s *rsaTokenManagementService) Validate2FAChallengeToken(tokenString string
 		return s.publicKey, nil
 	}, jwt.WithAudience(s.cfg.Audience), jwt.WithIssuer(s.cfg.Issuer))
 
-
 	if err != nil {
 		return "", fmt.Errorf("challenge token validation failed: %w", err)
 	}
 
-	if claims, ok := token.Claims.(*service.ChallengeClaims); ok && token.Valid {
+	if claims, ok := token.Claims.(*interfaces.ChallengeClaims); ok && token.Valid {
 		return claims.UserID, nil
 	}
 	return "", errors.New("invalid challenge token or claims type")
@@ -239,7 +237,7 @@ func (s *rsaTokenManagementService) Validate2FAChallengeToken(tokenString string
 
 // GenerateStateJWT creates a short-lived JWT for OAuth state cookie.
 // This uses HMAC-SHA256 as it's a symmetric secret known only to this service.
-func (s *rsaTokenManagementService) GenerateStateJWT(claims *service.OAuthStateClaims, secret string, ttl time.Duration) (string, error) {
+func (s *rsaTokenManagementService) GenerateStateJWT(claims *interfaces.OAuthStateClaims, secret string, ttl time.Duration) (string, error) {
 	if secret == "" {
 		return "", errors.New("OAuth state JWT secret cannot be empty")
 	}
@@ -253,11 +251,11 @@ func (s *rsaTokenManagementService) GenerateStateJWT(claims *service.OAuthStateC
 }
 
 // ValidateStateJWT validates the OAuth state JWT from cookie.
-func (s *rsaTokenManagementService) ValidateStateJWT(tokenString string, secret string) (*service.OAuthStateClaims, error) {
+func (s *rsaTokenManagementService) ValidateStateJWT(tokenString string, secret string) (*interfaces.OAuthStateClaims, error) {
 	if secret == "" {
 		return nil, errors.New("OAuth state JWT secret cannot be empty for validation")
 	}
-	token, err := jwt.ParseWithClaims(tokenString, &service.OAuthStateClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &interfaces.OAuthStateClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method for state JWT: %v", token.Header["alg"])
 		}
@@ -268,7 +266,7 @@ func (s *rsaTokenManagementService) ValidateStateJWT(tokenString string, secret 
 		return nil, fmt.Errorf("state JWT validation failed: %w", err)
 	}
 
-	if claims, ok := token.Claims.(*service.OAuthStateClaims); ok && token.Valid {
+	if claims, ok := token.Claims.(*interfaces.OAuthStateClaims); ok && token.Valid {
 		return claims, nil
 	}
 	return nil, errors.New("invalid state JWT or claims type")

@@ -8,17 +8,17 @@ import (
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // Path to the TOTPService interface
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces" // Path to the TOTPService interface
 )
 
-// pquernaTOTPService implements the service.TOTPService using the pquerna/otp library.
+// pquernaTOTPService implements the domainInterfaces.TOTPService using the pquerna/otp library.
 type pquernaTOTPService struct {
 	defaultIssuerName string
 }
 
 // NewPquernaTOTPService creates a new pquernaTOTPService.
 // defaultIssuerName is the global issuer name for OTPs (e.g., your application's name).
-func NewPquernaTOTPService(defaultIssuerName string) service.TOTPService {
+func NewPquernaTOTPService(defaultIssuerName string) domainInterfaces.TOTPService {
 	if strings.TrimSpace(defaultIssuerName) == "" {
 		defaultIssuerName = "MyApp" // A fallback default if not configured
 	}
@@ -44,14 +44,13 @@ func (s *pquernaTOTPService) GenerateSecret(accountName string, issuerNameOverri
 		return "", "", fmt.Errorf("issuer name cannot contain a colon character")
 	}
 
-
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      issuer,
 		AccountName: accountName,
-		Period:      30,                  // Standard TOTP period
-		Digits:      otp.DigitsSix,       // Standard 6 digits
-		Algorithm:   otp.AlgorithmSHA1,   // Standard algorithm
-		SecretSize:  20,                  // Standard secret size (160 bits for SHA1)
+		Period:      30,                // Standard TOTP period
+		Digits:      otp.DigitsSix,     // Standard 6 digits
+		Algorithm:   otp.AlgorithmSHA1, // Standard algorithm
+		SecretSize:  20,                // Standard secret size (160 bits for SHA1)
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate TOTP key: %w", err)
@@ -89,5 +88,5 @@ func (s *pquernaTOTPService) ValidateCode(secretBase32 string, code string) (boo
 	return valid, nil
 }
 
-// Ensure pquernaTOTPService implements service.TOTPService (compile-time check).
-var _ service.TOTPService = (*pquernaTOTPService)(nil)
+// Ensure pquernaTOTPService implements domainInterfaces.TOTPService (compile-time check).
+var _ domainInterfaces.TOTPService = (*pquernaTOTPService)(nil)
