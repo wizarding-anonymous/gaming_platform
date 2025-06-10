@@ -1,3 +1,4 @@
+# File: backend/services/auth-service/configs/config.yaml
 server:
   port: 8080
   read_timeout: "10s"
@@ -24,6 +25,8 @@ kafka:
   brokers: ["localhost:9092"]
   producer:
     topic: "auth-events"
+    role_topic: "auth-role-events"
+    user_role_topic: "auth-user-role-events"
   consumer:
     topics: ["account-events", "admin-events"]
     group_id: "auth_service_consumer_group"

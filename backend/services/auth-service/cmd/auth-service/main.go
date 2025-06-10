@@ -12,20 +12,20 @@ import (
 	"time"
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/handlers" // For event handlers
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"                           // For EventType constants and CloudEventSource
+	repoPostgres "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/postgres" // For specific repo constructors
+	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"            // For PasswordService interface
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/handlers"                         // For event handlers
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For EventType constants and CloudEventSource
+	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1" // For gRPC server registration
 	grpcHandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/grpc"
 	httpHandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http"
 	infraDbPostgres "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/database/postgres" // For NewDBPool
-	repoPostgres "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/postgres"      // For specific repo constructors
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"                          // For NewArgon2idPasswordService
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis"
-	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // For PasswordService interface
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"   // For NewArgon2idPasswordService
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/telemetry"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1" // For gRPC server registration
 
 	"github.com/Shopify/sarama" // Added for Sarama config
 	"github.com/golang-migrate/migrate/v4"
@@ -38,7 +38,7 @@ import (
 	// Import healthcheck interfaces (assuming checkers.go is in internal/utils/healthcheck)
 	// healthcheckUtils "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/healthcheck"
 	// No, the interfaces are used by the grpc service, not directly by main. Main provides concrete types.
-	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // Path to your kafka producer/consumer wrappers
+	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"            // Path to your kafka producer/consumer wrappers
 	infraCaptcha "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/captcha" // Added for StubCaptchaService
 )
 
@@ -132,7 +132,7 @@ func main() {
 	apiKeyRepo := repoPostgres.NewAPIKeyRepositoryPostgres(dbPool)
 	auditLogRepo := repoPostgres.NewAuditLogRepositoryPostgres(dbPool)
 	userRolesRepo := repoPostgres.NewUserRolesRepositoryPostgres(dbPool) // Added
-	roleRepo := repoPostgres.NewRoleRepositoryPostgres(dbPool) // Added (needed for RoleService)
+	roleRepo := repoPostgres.NewRoleRepositoryPostgres(dbPool)           // Added (needed for RoleService)
 	// TODO: Initialize PermissionRepository for RoleService if RoleService needs it directly for more complex ops
 
 	// Инициализация подключения к Redis
@@ -168,7 +168,7 @@ func main() {
 		Topics:        cfg.Kafka.Consumer.Topics,
 		GroupID:       cfg.Kafka.Consumer.GroupID,
 		SaramaConfig:  saramaCfg,
-		Logger:        logger, // Pass the main application logger
+		Logger:        logger,              // Pass the main application logger
 		InitialOffset: sarama.OffsetOldest, // Or from cfg.Kafka.Consumer.InitialOffset if defined
 	}
 	kafkaConsumer, err := kafka.NewConsumerGroup(consumerGroupCfg)
@@ -227,13 +227,12 @@ func main() {
 
 	// Инициализация APIKeyService
 	apiKeyServiceConfig := domainService.APIKeyServiceConfig{ // Changed: Use domainService.APIKeyServiceConfig
-		APIKeyRepo:      apiKeyRepo,
-		PasswordService: passwordService,
+		APIKeyRepo:       apiKeyRepo,
+		PasswordService:  passwordService,
 		AuditLogRecorder: auditLogService, // Added
-		KafkaProducer:   kafkaProducer,    // Added Sarama-based kafkaProducer
+		KafkaProducer:    kafkaProducer,   // Added Sarama-based kafkaProducer
 	}
 	apiKeyService := domainService.NewAPIKeyService(apiKeyServiceConfig) // Changed: Use domainService.NewAPIKeyService
-
 
 	// Инициализация сервисов
 	// Old TokenService is being refactored. NewTokenService will take new dependencies.
@@ -269,11 +268,11 @@ func main() {
 		userRolesRepo,
 		roleService,
 		externalAccountRepo, // This was missing from the original NewAuthService call structure in my view, ensure it's defined
-		telegramService,   // Ensure telegramService is defined
+		telegramService,     // Ensure telegramService is defined
 		auditLogService,
 		rateLimiter,
-		hibpClient,           // Added HIBPService
-		stubCaptchaService,   // Added CaptchaService
+		hibpClient,         // Added HIBPService
+		stubCaptchaService, // Added CaptchaService
 	)
 
 	// Assuming UserService and RoleService need specific repositories now
@@ -282,6 +281,7 @@ func main() {
 		userRepo,
 		userRolesRepo,
 		kafkaProducer,
+		cfg,
 		logger,
 		auditLogService, // Added
 	)
@@ -290,24 +290,23 @@ func main() {
 		userRepo,
 		// roleRepo, // user_service.go's NewUserService takes roleRepo
 		userRolesRepo, // Corrected: user_service.go's NewUserService takes userRolesRepo instead of just roleRepo based on recent file reads. Let me double check.
-		              // Reading user_service.go again: NewUserService(userRepo, roleRepo, kafkaClient, logger, auditLogRecorder) -> it does take roleRepo.
-		roleRepo,     // Correcting based on actual signature from user_service.go
+		// Reading user_service.go again: NewUserService(userRepo, roleRepo, kafkaClient, logger, auditLogRecorder) -> it does take roleRepo.
+		roleRepo, // Correcting based on actual signature from user_service.go
 		kafkaProducer,
 		logger,
 		auditLogService, // Added
 	)
 
 	telegramService := service.NewTelegramService(
-		userRepo,       // Added missing userRepo
-		tokenService,   // Added missing tokenService
-		kafkaProducer,  // Pass Sarama-based kafkaProducer
+		userRepo,      // Added missing userRepo
+		tokenService,  // Added missing tokenService
+		kafkaProducer, // Pass Sarama-based kafkaProducer
 		logger,
 		cfg.Telegram.BotToken, // Pass BotToken from config
 	)
 	// twoFactorService from previous setup is now replaced by mfaLogicService via AuthService
 	// var twoFactorService *service.TwoFactorService // This line is now definitely for the old one, or can be removed.
 	// The refactored twoFactorServiceImpl is now used as the mfaLogicService.
-
 
 	// Инициализация обработчиков событий
 	// Instantiate new event handlers
@@ -362,9 +361,9 @@ func main() {
 	// It no longer takes the old tokenService or twoFactorService if AuthHandler is updated
 	router := httpHandler.SetupRouter(
 		authService,
-		userService,          // Placeholder
-		roleService,          // Placeholder
-		tokenService,         // Old TokenService, still passed as some handlers might use it directly
+		userService,  // Placeholder
+		roleService,  // Placeholder
+		tokenService, // Old TokenService, still passed as some handlers might use it directly
 		sessionService,
 		telegramService,
 		twoFactorServiceImpl, // Pass the refactored TwoFactorService here as well if httpHandler expects it directly
@@ -408,7 +407,7 @@ func main() {
 
 	authV1GrpcService := grpcHandler.NewAuthV1Service(
 		logger,
-		authService,  // This is AuthLogicService
+		authService, // This is AuthLogicService
 		userService,
 		tokenService, // This is service.TokenService
 		roleService,  // This is service.RoleService acting as RBACService
@@ -421,7 +420,6 @@ func main() {
 	// currently (potentially incompletely) generated authv1.AuthServiceServer interface.
 	authv1.RegisterAuthServiceServer(grpcServer, authV1GrpcService)
 	logger.Info("AuthV1 gRPC service registered")
-
 
 	// Инициализация и регистрация gRPC Health Check сервера (standard health check)
 	// The custom HealthCheck RPC within AuthService is separate from this standard one.
@@ -441,7 +439,6 @@ func main() {
 	grpc_health_v1.RegisterHealthServer(grpcServer, standardHealthServer)
 	standardHealthServer.SetServingStatus("auth.v1.AuthService", grpc_health_v1.HealthCheckResponse_SERVING) // Mark main service as serving
 	logger.Info("Standard gRPC Health Check service registered")
-
 
 	// Включение reflection для gRPC (полезно для отладки)
 	if cfg.GRPC.EnableReflection {
