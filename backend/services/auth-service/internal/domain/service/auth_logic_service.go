@@ -11,7 +11,9 @@ import (
 	"github.com/google/uuid" // For generating IDs
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
 	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
+	eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
+	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
 )
 
 // AuthLogicService defines the interface for core authentication business logic.
@@ -47,6 +49,8 @@ type authLogicServiceImpl struct {
 	externalAccountRepo  repository.ExternalAccountRepository // Added
 	passwordService      domainInterfaces.PasswordService
 	tokenService         TokenService
+	notificationService  domainInterfaces.NotificationService
+	kafkaProducer        *kafkaPkg.Producer
 	telegramVerifier     domainInterfaces.TelegramVerifierService // Added
 	rbacService          RBACService                              // Added for RBAC
 	// roleRepository         repository.RoleRepository
@@ -63,6 +67,8 @@ type AuthLogicServiceConfig struct {
 	ExternalAccountRepo  repository.ExternalAccountRepository // Added
 	PasswordService      domainInterfaces.PasswordService
 	TokenService         TokenService
+	NotificationService  domainInterfaces.NotificationService
+	KafkaProducer        *kafkaPkg.Producer
 	TelegramVerifier     domainInterfaces.TelegramVerifierService // Added
 	RBACService          RBACService                              // Added for RBAC
 	// RoleRepository       repository.RoleRepository
@@ -80,6 +86,8 @@ func NewAuthLogicService(cfg AuthLogicServiceConfig) AuthLogicService {
 		externalAccountRepo:  cfg.ExternalAccountRepo, // Added
 		passwordService:      cfg.PasswordService,
 		tokenService:         cfg.TokenService,
+		notificationService:  cfg.NotificationService,
+		kafkaProducer:        cfg.KafkaProducer,
 		telegramVerifier:     cfg.TelegramVerifier, // Added
 		rbacService:          cfg.RBACService,      // Added
 		// roleRepository:         cfg.RoleRepository,
@@ -159,7 +167,11 @@ func (s *authLogicServiceImpl) RegisterUser(ctx context.Context, username, email
 		return newUser, "", fmt.Errorf("user created, but failed to create verification code: %w", err)
 	}
 
-	// TODO: Send email with verificationTokenValue (the plaintext one) via NotificationService
+	if s.notificationService != nil {
+		if err := s.notificationService.SendEmailVerificationNotification(ctx, uuid.MustParse(newUser.ID), verificationTokenValue); err != nil {
+			// In production, log the error but do not fail registration
+		}
+	}
 
 	return newUser, verificationTokenValue, nil
 }
@@ -278,7 +290,16 @@ func (s *authLogicServiceImpl) LoginUser(ctx context.Context, loginIdentifier, p
 		// Log error
 	}
 
-	// TODO: Publish login event to Kafka
+	if s.kafkaProducer != nil {
+		loginSuccessPayload := eventModels.UserLoginSuccessPayload{
+			UserID:         user.ID,
+			SessionID:      session.ID,
+			LoginTimestamp: time.Now().UTC(),
+		}
+		subject := user.ID
+		contentType := "application/json"
+		_ = s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", kafkaPkg.EventType(eventModels.AuthUserLoginSuccessV1), &subject, &contentType, loginSuccessPayload)
+	}
 
 	return user, accessTokenString, refreshTokenValue, nil
 }
@@ -443,7 +464,20 @@ func (s *authLogicServiceImpl) LoginWithTelegram(
 	_ = s.userRepo.UpdateLastLogin(ctx, user.ID, time.Now())
 	_ = s.userRepo.ResetFailedLoginAttempts(ctx, user.ID)
 
-	// TODO: Publish login event
+	if s.kafkaProducer != nil {
+		loginMethod := "telegram"
+		loginSuccessPayload := eventModels.UserLoginSuccessPayload{
+			UserID:         user.ID,
+			SessionID:      session.ID,
+			LoginTimestamp: time.Now().UTC(),
+			IPAddress:      ipAddress,
+			UserAgent:      userAgent,
+			LoginMethod:    &loginMethod,
+		}
+		subject := user.ID
+		contentType := "application/json"
+		_ = s.kafkaProducer.PublishCloudEvent(ctx, "auth-events", kafkaPkg.EventType(eventModels.AuthUserLoginSuccessV1), &subject, &contentType, loginSuccessPayload)
+	}
 
 	return user, accessTokenString, refreshTokenValue, nil
 }
