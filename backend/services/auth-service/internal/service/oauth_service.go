@@ -1,3 +1,4 @@
+// File: internal/service/oauth_service.go
 package service
 
 import (

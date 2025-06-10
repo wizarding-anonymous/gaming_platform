@@ -1,3 +1,4 @@
+// File: internal/utils/crypto/crypto_test.go
 package crypto_test
 
 import (
@@ -114,7 +115,6 @@ func TestDecrypt_ErrorOnTamperedCiphertext(t *testing.T) {
 			tamperedChar = '+'
 		}
 
-
 		tamperedCiphertextBase64 = ciphertextBase64[:idx] + string(tamperedChar) + ciphertextBase64[idx+1:]
 	} else {
 		// If too short, make it invalid some other way
@@ -132,7 +132,6 @@ func TestDecrypt_ErrorOnTamperedCiphertext(t *testing.T) {
 			t.Skip("Ciphertext too short to tamper effectively for this test case")
 		}
 	}
-
 
 	_, err = enc.DecryptString(tamperedCiphertextBase64)
 	assert.Error(t, err, "Decrypt should return an error for tampered ciphertext")
@@ -259,20 +258,22 @@ func getGCMNonceSize(t *testing.T) int {
 }
 
 func TestDecrypt_CiphertextExactlyNonceSize(t *testing.T) {
-    key, _ := crypto.GenerateKey(32)
-    enc, _ := crypto.NewEncrypter(key)
-    require.NotNil(t, enc)
+	key, _ := crypto.GenerateKey(32)
+	enc, _ := crypto.NewEncrypter(key)
+	require.NotNil(t, enc)
 
-    nonceSize := getGCMNonceSize(t)
-    shortCiphertextBytes := make([]byte, nonceSize)
-    // Fill with some data, doesn't matter what for this length check
-    for i := 0; i < nonceSize; i++ { shortCiphertextBytes[i] = byte(i) }
+	nonceSize := getGCMNonceSize(t)
+	shortCiphertextBytes := make([]byte, nonceSize)
+	// Fill with some data, doesn't matter what for this length check
+	for i := 0; i < nonceSize; i++ {
+		shortCiphertextBytes[i] = byte(i)
+	}
 
-    shortCiphertextBase64 := base64.StdEncoding.EncodeToString(shortCiphertextBytes)
+	shortCiphertextBase64 := base64.StdEncoding.EncodeToString(shortCiphertextBytes)
 
-    // Decrypting a message that is only a nonce (no actual ciphertext part) should fail.
-    // The aesGCM.Open call will fail.
-    _, err := enc.DecryptString(shortCiphertextBase64)
-    assert.Error(t, err, "Decrypt should error if ciphertext is only nonce and no actual data")
-    assert.Contains(t, err.Error(), "ошибка дешифрования", "Error message should indicate decryption failure")
+	// Decrypting a message that is only a nonce (no actual ciphertext part) should fail.
+	// The aesGCM.Open call will fail.
+	_, err := enc.DecryptString(shortCiphertextBase64)
+	assert.Error(t, err, "Decrypt should error if ciphertext is only nonce and no actual data")
+	assert.Contains(t, err.Error(), "ошибка дешифрования", "Error message should indicate decryption failure")
 }

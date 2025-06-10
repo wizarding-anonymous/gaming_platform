@@ -1,3 +1,4 @@
+// File: internal/domain/models/telegram_models.go
 package models
 
 // TelegramAuthData represents the data received from Telegram for authentication.
@@ -13,10 +14,10 @@ type TelegramAuthData struct {
 
 // TelegramProfile represents the verified user profile information from Telegram.
 type TelegramProfile struct {
-	ID         int64  `json:"id"`
-	FirstName  string `json:"first_name"`
-	LastName   string `json:"last_name,omitempty"`
-	Username   string `json:"username,omitempty"`
-	PhotoURL   string `json:"photo_url,omitempty"`
-	AuthDate   int64  `json:"auth_date"` // Included as it's part of the data from Telegram
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name,omitempty"`
+	Username  string `json:"username,omitempty"`
+	PhotoURL  string `json:"photo_url,omitempty"`
+	AuthDate  int64  `json:"auth_date"` // Included as it's part of the data from Telegram
 }

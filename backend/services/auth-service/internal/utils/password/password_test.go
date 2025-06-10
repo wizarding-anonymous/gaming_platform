@@ -1,3 +1,4 @@
+// File: internal/utils/password/password_test.go
 package password_test
 
 import (

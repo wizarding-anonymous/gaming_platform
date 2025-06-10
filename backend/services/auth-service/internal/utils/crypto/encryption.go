@@ -1,3 +1,4 @@
+// File: internal/utils/crypto/encryption.go
 package crypto
 
 import (

@@ -1,3 +1,4 @@
+// File: internal/handler/http/oauth_handler.go
 package http
 
 import (
@@ -16,8 +17,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	appService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
 )
 
