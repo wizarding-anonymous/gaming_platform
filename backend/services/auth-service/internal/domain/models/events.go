@@ -43,29 +43,29 @@ type VerificationEmailResentEvent struct {
 // PasswordResetRequestedEvent is published when a user requests a password reset.
 // Corresponds to event type: auth.user.password_reset_requested.v1
 type PasswordResetRequestedEvent struct {
-	UserID                string    `json:"user_id"`
-	Email                 string    `json:"email"`
-	RequestTimestamp      time.Time `json:"request_timestamp"`
+	UserID               string    `json:"user_id"`
+	Email                string    `json:"email"`
+	RequestTimestamp     time.Time `json:"request_timestamp"`
 	ResetTokenIdentifier *string   `json:"reset_token_identifier,omitempty"`
 }
 
 // DeviceInfoPayload for login success event (as per spec example)
 type DeviceInfoPayload struct {
-	Type        string `json:"type,omitempty"`
-	OS          string `json:"os,omitempty"`
-	AppVersion  string `json:"app_version,omitempty"`
-	DeviceName  string `json:"device_name,omitempty"`
+	Type       string `json:"type,omitempty"`
+	OS         string `json:"os,omitempty"`
+	AppVersion string `json:"app_version,omitempty"`
+	DeviceName string `json:"device_name,omitempty"`
 }
 
 // UserLoginSuccessPayload is published upon successful user login.
 // Corresponds to event type: auth.user.login_success.v1
 type UserLoginSuccessPayload struct {
-	UserID          string             `json:"user_id"`
-	SessionID       string             `json:"session_id"`
-	LoginTimestamp  time.Time          `json:"login_timestamp"`
-	IPAddress       string             `json:"ip_address"`
-	UserAgent       string             `json:"user_agent"`
-	DeviceInfo      *DeviceInfoPayload `json:"device_info,omitempty"`
+	UserID         string             `json:"user_id"`
+	SessionID      string             `json:"session_id"`
+	LoginTimestamp time.Time          `json:"login_timestamp"`
+	IPAddress      string             `json:"ip_address"`
+	UserAgent      string             `json:"user_agent"`
+	DeviceInfo     *DeviceInfoPayload `json:"device_info,omitempty"`
 }
 
 // UserLogoutEvent is published upon user logout from a single session.
@@ -83,17 +83,17 @@ type UserLogoutAllEvent struct {
 
 // TokenRefreshedEvent is published when a token pair is refreshed.
 type TokenRefreshedEvent struct {
-	UserID    string    `json:"user_id"`
-	SessionID string    `json:"session_id"`
+	UserID      string    `json:"user_id"`
+	SessionID   string    `json:"session_id"`
 	RefreshedAt time.Time `json:"refreshed_at"`
 }
 
 // PasswordChangedEvent is published when a user successfully changes their password while authenticated.
 // Corresponds to event type: auth.user.password_changed.v1
 type PasswordChangedEvent struct {
-	UserID           string    `json:"user_id"`
-	ChangeTimestamp  time.Time `json:"change_timestamp"`
-	ChangeType       string    `json:"change_type"`
+	UserID          string    `json:"user_id"`
+	ChangeTimestamp time.Time `json:"change_timestamp"`
+	ChangeType      string    `json:"change_type"`
 }
 
 // --- RBAC Event Structs ---
@@ -133,7 +133,7 @@ type RoleAssignedEvent struct {
 // This specific event might be deprecated in favor of UserRolesChangedEvent.
 type RoleRemovedEvent struct {
 	UserID          string    `json:"user_id"`
-	RoleID          string    `json:"role_id"` // The specific role that was removed
+	RoleID          string    `json:"role_id"`   // The specific role that was removed
 	RoleName        string    `json:"role_name"` // For context
 	RemovedAt       time.Time `json:"removed_at"`
 	ChangedByUserID string    `json:"changed_by_user_id,omitempty"`
@@ -150,6 +150,15 @@ type UserRolesChangedEvent struct {
 	ChangeTimestamp time.Time `json:"change_timestamp"`
 }
 
+// RolePermissionChangedEvent is published when a permission is assigned to or removed from a role.
+// Corresponds to event type: auth.rbac.role_permission_changed.v1
+type RolePermissionChangedEvent struct {
+	RoleID          string    `json:"role_id"`
+	PermissionID    string    `json:"permission_id"`
+	Action          string    `json:"action"` // "assigned" or "removed"
+	ChangedByUserID *string   `json:"changed_by_user_id,omitempty"`
+	ChangeTimestamp time.Time `json:"change_timestamp"`
+}
 
 // Add other event structs as needed for Kafka integration,
 // ensuring they align with `auth_event_streaming.md`.
@@ -169,10 +178,10 @@ type SessionCreatedEvent struct {
 // SessionRevokedEvent is published when a session is revoked.
 // Corresponds to event type: auth.session.revoked.v1
 type SessionRevokedEvent struct { // Renamed struct
-	SessionID            string    `json:"session_id"`
-	UserID               string    `json:"user_id"`
-	RevocationTimestamp  time.Time `json:"revocation_timestamp"`
-	Reason               string    `json:"reason"`
+	SessionID           string    `json:"session_id"`
+	UserID              string    `json:"user_id"`
+	RevocationTimestamp time.Time `json:"revocation_timestamp"`
+	Reason              string    `json:"reason"`
 }
 
 // --- User Security Event Payloads ---
@@ -190,9 +199,9 @@ type UserLoginFailedPayload struct {
 // UserAccountLockedPayload is published when a user account is locked due to excessive failed login attempts.
 // Corresponds to event type: auth.user.account_locked.v1
 type UserAccountLockedPayload struct {
-	UserID                  string    `json:"user_id"`
-	LockTimestamp           time.Time `json:"lock_timestamp"`
-	Reason                  string    `json:"reason"`
+	UserID                 string    `json:"user_id"`
+	LockTimestamp          time.Time `json:"lock_timestamp"`
+	Reason                 string    `json:"reason"`
 	LockoutDurationSeconds *int64    `json:"lockout_duration_seconds,omitempty"`
 }
 
@@ -212,7 +221,6 @@ type User2FADisabledEvent struct {
 	DisabledTimestamp time.Time `json:"disabled_timestamp"`
 }
 
-
 // --- CloudEvent Types ---
 // These constants define the `type` attribute for CloudEvents.
 // Format: {service_name}.{aggregate_type}.{event_name}.{version}
@@ -220,7 +228,7 @@ type User2FADisabledEvent struct {
 
 // User Lifecycle Events
 const (
-	AuthUserRegisteredV1   = "auth.user.registered.v1"
+	AuthUserRegisteredV1    = "auth.user.registered.v1"
 	AuthUserEmailVerifiedV1 = "auth.user.email_verified.v1"
 	// AuthUserDeletedV1 is usually an event from Account service, not published by Auth.
 	// Auth service might consume account.user.deleted.v1
@@ -228,18 +236,18 @@ const (
 
 // Security Events
 const (
-	AuthUserLoginSuccessV1             = "auth.user.login_success.v1"
-	AuthUserLoginFailedV1              = "auth.user.login_failed.v1" // New
-	AuthUserAccountLockedV1            = "auth.user.account_locked.v1" // New
-	AuthUserLogoutSuccessV1            = "auth.user.logout_success.v1"
-	AuthUserAllSessionsRevokedV1       = "auth.user.all_sessions_revoked.v1"
-	AuthUserPasswordChangedV1          = "auth.user.password_changed.v1"
-	AuthUserPasswordResetV1            = "auth.user.password_reset.v1"
+	AuthUserLoginSuccessV1                   = "auth.user.login_success.v1"
+	AuthUserLoginFailedV1                    = "auth.user.login_failed.v1"   // New
+	AuthUserAccountLockedV1                  = "auth.user.account_locked.v1" // New
+	AuthUserLogoutSuccessV1                  = "auth.user.logout_success.v1"
+	AuthUserAllSessionsRevokedV1             = "auth.user.all_sessions_revoked.v1"
+	AuthUserPasswordChangedV1                = "auth.user.password_changed.v1"
+	AuthUserPasswordResetV1                  = "auth.user.password_reset.v1"
 	AuthSecurityEmailVerificationRequestedV1 = "auth.security.email_verification_requested.v1"
-	AuthSecurityPasswordResetRequestedV1 = "auth.security.password_reset_requested.v1"
+	AuthSecurityPasswordResetRequestedV1     = "auth.security.password_reset_requested.v1"
 	// MFA Events
-	AuthUser2FAEnabledV1  = "auth.user.2fa_enabled.v1"
-	AuthUser2FADisabledV1 = "auth.user.2fa_disabled.v1"
+	AuthUser2FAEnabledV1              = "auth.user.2fa_enabled.v1"
+	AuthUser2FADisabledV1             = "auth.user.2fa_disabled.v1"
 	AuthUser2FABackupCodesGeneratedV1 = "auth.user.2fa_backup_codes_generated.v1"
 	// API Key Events
 	AuthUserAPIKeyCreatedV1 = "auth.user.api_key_created.v1"
@@ -248,18 +256,19 @@ const (
 
 // Session Events
 const (
-	AuthSessionCreatedV1 = "auth.session.created.v1"
+	AuthSessionCreatedV1   = "auth.session.created.v1"
 	AuthSessionRefreshedV1 = "auth.session.refreshed.v1" // If refresh token rotation creates a new session logical record or for audit
-	AuthSessionRevokedV1 = "auth.session.revoked.v1"
+	AuthSessionRevokedV1   = "auth.session.revoked.v1"
 )
 
 // Role & Permission Events (can be expanded)
 const (
-	AuthRoleCreatedV1 = "auth.rbac.role_created.v1"
-	AuthRoleUpdatedV1 = "auth.rbac.role_updated.v1"
-	AuthRoleDeletedV1 = "auth.rbac.role_deleted.v1"
-	AuthUserRoleAssignedV1 = "auth.rbac.user_role_assigned.v1"
-	AuthUserRoleRevokedV1  = "auth.rbac.user_role_revoked.v1"
+	AuthRoleCreatedV1           = "auth.rbac.role_created.v1"
+	AuthRoleUpdatedV1           = "auth.rbac.role_updated.v1"
+	AuthRoleDeletedV1           = "auth.rbac.role_deleted.v1"
+	AuthUserRoleAssignedV1      = "auth.rbac.user_role_assigned.v1"
+	AuthUserRoleRevokedV1       = "auth.rbac.user_role_revoked.v1"
+	AuthRolePermissionChangedV1 = "auth.rbac.role_permission_changed.v1"
 	// AuthPermissionAssignedToRoleV1 = "auth.rbac.permission_assigned_to_role.v1"
 	// AuthPermissionRevokedFromRoleV1 = "auth.rbac.permission_revoked_from_role.v1"
 )

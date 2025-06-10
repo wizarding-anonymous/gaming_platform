@@ -27,6 +27,7 @@ kafka:
     topic: "auth-events"
     role_topic: "auth-role-events"
     user_role_topic: "auth-user-role-events"
+    role_permission_topic: "auth-role-permission-events"
   consumer:
     topics: ["account-events", "admin-events"]
     group_id: "auth_service_consumer_group"

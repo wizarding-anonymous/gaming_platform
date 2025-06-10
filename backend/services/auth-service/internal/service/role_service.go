@@ -658,7 +658,33 @@ func (s *RoleService) AssignPermissionToRole(ctx context.Context, roleID string,
 		return err
 	}
 
-	// TODO: Publish event: auth.role.permissions_changed (RoleID, PermissionID, "assigned", ChangedBy, Timestamp)
+	// Publish CloudEvent about permission assignment
+	permissionAssignedPayload := models.RolePermissionChangedEvent{
+		RoleID:          roleID,
+		PermissionID:    permissionID,
+		Action:          "assigned",
+		ChangeTimestamp: time.Now(),
+	}
+	if actorID != nil {
+		actorIDStr := actorID.String()
+		permissionAssignedPayload.ChangedByUserID = &actorIDStr
+	}
+	subjectRolePermissionAssigned := roleID
+	contentTypeJSON := "application/json"
+	if errKafka := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.RolePermissionTopic,
+		kafkaEvents.EventType(models.AuthRolePermissionChangedV1),
+		&subjectRolePermissionAssigned,
+		&contentTypeJSON,
+		permissionAssignedPayload,
+	); errKafka != nil {
+		s.logger.Error("Failed to publish CloudEvent for role permission assigned", zap.Error(errKafka), zap.String("role_id", roleID), zap.String("permission_id", permissionID))
+		if auditDetails == nil {
+			auditDetails = make(map[string]interface{})
+		}
+		auditDetails["warning_cloudevent_publish"] = errKafka.Error()
+	}
 	s.auditLogRecorder.RecordEvent(ctx, actorID, "role_permission_assign", models.AuditLogStatusSuccess, targetRoleIDStr, models.AuditTargetTypeRole, auditDetails, ipAddress, userAgent)
 	return nil
 }
@@ -700,7 +726,33 @@ func (s *RoleService) RemovePermissionFromRole(ctx context.Context, roleID strin
 		return err
 	}
 
-	// TODO: Publish event: auth.role.permissions_changed (RoleID, PermissionID, "removed", ChangedBy, Timestamp)
+	// Publish CloudEvent about permission revocation
+	permissionRevokedPayload := models.RolePermissionChangedEvent{
+		RoleID:          roleID,
+		PermissionID:    permissionID,
+		Action:          "removed",
+		ChangeTimestamp: time.Now(),
+	}
+	if actorID != nil {
+		actorIDStr := actorID.String()
+		permissionRevokedPayload.ChangedByUserID = &actorIDStr
+	}
+	subjectRolePermissionRevoked := roleID
+	contentTypeJSON := "application/json"
+	if errKafka := s.kafkaClient.PublishCloudEvent(
+		ctx,
+		s.cfg.Kafka.Producer.RolePermissionTopic,
+		kafkaEvents.EventType(models.AuthRolePermissionChangedV1),
+		&subjectRolePermissionRevoked,
+		&contentTypeJSON,
+		permissionRevokedPayload,
+	); errKafka != nil {
+		s.logger.Error("Failed to publish CloudEvent for role permission revoked", zap.Error(errKafka), zap.String("role_id", roleID), zap.String("permission_id", permissionID))
+		if auditDetails == nil {
+			auditDetails = make(map[string]interface{})
+		}
+		auditDetails["warning_cloudevent_publish"] = errKafka.Error()
+	}
 	s.auditLogRecorder.RecordEvent(ctx, actorID, "role_permission_revoke", models.AuditLogStatusSuccess, targetRoleIDStr, models.AuditTargetTypeRole, auditDetails, ipAddress, userAgent)
 	return nil
 }
