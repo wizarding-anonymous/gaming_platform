@@ -76,6 +76,7 @@ func setDefaults() {
 	viper.SetDefault("kafka.producer.topic", "auth.events")
 	viper.SetDefault("kafka.producer.role_topic", "auth-role-events")
 	viper.SetDefault("kafka.producer.user_role_topic", "auth-user-role-events")
+	viper.SetDefault("kafka.producer.role_permission_topic", "auth-role-permission-events")
 	viper.SetDefault("kafka.consumer.topics", []string{"account.events"})
 	viper.SetDefault("kafka.consumer.group_id", "auth-service")
 

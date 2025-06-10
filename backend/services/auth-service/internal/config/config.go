@@ -65,9 +65,10 @@ type RedisConfig struct {
 }
 
 type KafkaProducerConfig struct {
-	Topic         string `mapstructure:"topic"`
-	RoleTopic     string `mapstructure:"role_topic"`
-	UserRoleTopic string `mapstructure:"user_role_topic"`
+	Topic               string `mapstructure:"topic"`
+	RoleTopic           string `mapstructure:"role_topic"`
+	UserRoleTopic       string `mapstructure:"user_role_topic"`
+	RolePermissionTopic string `mapstructure:"role_permission_topic"`
 }
 
 type KafkaConsumerConfig struct {
