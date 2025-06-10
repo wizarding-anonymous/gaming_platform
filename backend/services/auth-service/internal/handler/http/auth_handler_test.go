@@ -633,10 +633,6 @@ func TestAuthHandler_ForgotPassword_BadRequest(t *testing.T) {
 }
 
 
-// TODO: Add tests for ResetPassword, VerifyEmailHandler, ResendVerificationEmailHandler, Logout, LogoutAll
-// - Test success cases.
-// - Test bad request (missing/invalid fields).
-// - Test service errors (e.g., token not found, user not found, etc.) mapping to HTTP statuses.
 
 // Example for ResetPassword - Bad Request
 func TestAuthHandler_ResetPassword_BadRequest(t *testing.T) {
@@ -807,7 +803,7 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 
 	ts.router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusNoContent, w.Code)
 	// Check cookies are cleared
 	clearedAccess := false
 	clearedRefresh := false
@@ -836,7 +832,7 @@ func TestAuthHandler_LogoutAll_Success(t *testing.T) {
 
 	ts.router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusNoContent, w.Code)
 	// Check cookies are cleared
 	clearedAccess := false
 	clearedRefresh := false
@@ -849,8 +845,54 @@ func TestAuthHandler_LogoutAll_Success(t *testing.T) {
 		}
 	}
 	assert.True(t, clearedAccess, "Access token cookie should be cleared on logout all")
-	assert.True(t, clearedRefresh, "Refresh token cookie should be cleared on logout all")
-	ts.mockAuthService.AssertExpectations(t)
+        assert.True(t, clearedRefresh, "Refresh token cookie should be cleared on logout all")
+        ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_Logout_ServiceError(t *testing.T) {
+        ts := setupAuthHandlerTestSuite(t)
+
+        ts.mockAuthService.On("Logout", mock.Anything, "test-access-token", "test-refresh-token").Return(errors.New("svc error")).Once()
+
+        w := httptest.NewRecorder()
+        req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+        req.AddCookie(&http.Cookie{Name: "access_token", Value: "test-access-token"})
+        req.AddCookie(&http.Cookie{Name: "refresh_token", Value: "test-refresh-token"})
+
+        ts.router.ServeHTTP(w, req)
+
+        assert.Equal(t, http.StatusInternalServerError, w.Code)
+        ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_LogoutAll_InvalidToken(t *testing.T) {
+        ts := setupAuthHandlerTestSuite(t)
+
+        ts.mockAuthService.On("LogoutAll", mock.Anything, "bad-token").Return(domainErrors.ErrInvalidToken).Once()
+
+        w := httptest.NewRecorder()
+        req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout/all", nil)
+        req.AddCookie(&http.Cookie{Name: "access_token", Value: "bad-token"})
+
+        ts.router.ServeHTTP(w, req)
+
+        assert.Equal(t, http.StatusUnauthorized, w.Code)
+        ts.mockAuthService.AssertExpectations(t)
+}
+
+func TestAuthHandler_LogoutAll_ServiceError(t *testing.T) {
+        ts := setupAuthHandlerTestSuite(t)
+
+        ts.mockAuthService.On("LogoutAll", mock.Anything, "test-access-token").Return(errors.New("svc error")).Once()
+
+        w := httptest.NewRecorder()
+        req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout/all", nil)
+        req.AddCookie(&http.Cookie{Name: "access_token", Value: "test-access-token"})
+
+        ts.router.ServeHTTP(w, req)
+
+        assert.Equal(t, http.StatusInternalServerError, w.Code)
+        ts.mockAuthService.AssertExpectations(t)
 }
 
 // --- OAuthLogin Tests ---
