@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
-	"github.com/gaiming/account-service/pkg/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/logger"
 )
 
 // CloudEvent представляет структуру события в формате CloudEvents
@@ -21,14 +21,14 @@ type CloudEvent struct {
 	SpecVersion string    `json:"specversion"`
 	Type        string    `json:"type"`
 	Time        time.Time `json:"time"`
-	
+
 	// Опциональные атрибуты CloudEvents
-	Subject     string          `json:"subject,omitempty"`
-	DataSchema  string          `json:"dataschema,omitempty"`
-	ContentType string          `json:"contenttype"`
-	
+	Subject     string `json:"subject,omitempty"`
+	DataSchema  string `json:"dataschema,omitempty"`
+	ContentType string `json:"contenttype"`
+
 	// Данные события
-	Data        json.RawMessage `json:"data"`
+	Data json.RawMessage `json:"data"`
 }
 
 // EventProducer интерфейс для публикации событий
@@ -51,7 +51,7 @@ func NewKafkaEventProducer(brokers []string, sourceName string) *KafkaEventProdu
 		RequiredAcks: kafka.RequireAll,
 		Async:        false,
 	}
-	
+
 	return &KafkaEventProducer{
 		writer:     writer,
 		sourceName: sourceName,
@@ -63,14 +63,14 @@ func (p *KafkaEventProducer) PublishEvent(ctx context.Context, eventType string,
 	// Определяем топик на основе типа события
 	topic := getTopicFromEventType(eventType)
 	p.writer.Topic = topic
-	
+
 	// Сериализуем данные события
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
 		logger.Error("Ошибка сериализации данных события", "error", err)
 		return err
 	}
-	
+
 	// Создаем CloudEvent
 	event := CloudEvent{
 		ID:          uuid.New().String(),
@@ -82,14 +82,14 @@ func (p *KafkaEventProducer) PublishEvent(ctx context.Context, eventType string,
 		ContentType: "application/json",
 		Data:        dataBytes,
 	}
-	
+
 	// Сериализуем CloudEvent
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
 		logger.Error("Ошибка сериализации CloudEvent", "error", err)
 		return err
 	}
-	
+
 	// Публикуем сообщение в Kafka
 	err = p.writer.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(subject),
@@ -104,12 +104,12 @@ func (p *KafkaEventProducer) PublishEvent(ctx context.Context, eventType string,
 			{Key: "ce_contenttype", Value: []byte(event.ContentType)},
 		},
 	})
-	
+
 	if err != nil {
 		logger.Error("Ошибка публикации события в Kafka", "error", err, "topic", topic, "event_type", eventType)
 		return err
 	}
-	
+
 	logger.Info("Событие опубликовано в Kafka", "topic", topic, "event_type", eventType, "subject", subject)
 	return nil
 }

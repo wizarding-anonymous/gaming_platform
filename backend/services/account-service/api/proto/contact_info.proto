@@ -4,7 +4,7 @@ syntax = "proto3";
 
 package account;
 
-option go_package = "github.com/gaiming/account-service/api/proto/contact_info";
+option go_package = "github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/api/proto/contact_info";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";

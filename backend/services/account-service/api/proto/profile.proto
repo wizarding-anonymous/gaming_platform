@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package profile;
 
-option go_package = "github.com/gaiming/account-service/api/proto/profile";
+option go_package = "github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/api/proto/profile";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";

@@ -14,9 +14,9 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 
-	"github.com/gaiming/account-service/internal/app/usecase"
-	"github.com/gaiming/account-service/internal/domain/entity"
-	"github.com/gaiming/account-service/internal/domain/repository"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/app/usecase"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/repository"
 )
 
 // Мок для репозитория аккаунтов
@@ -212,10 +212,10 @@ func TestAccountUseCase_GetAccount(t *testing.T) {
 
 	// Настройка мока кэша - кэш пуст
 	mockAccountCache.On("Get", ctx, accountID).Return(nil, errors.New("not found in cache"))
-	
+
 	// Настройка мока репозитория
 	mockAccountRepo.On("GetByID", ctx, accountID).Return(expectedAccount, nil)
-	
+
 	// Настройка мока кэша - сохранение в кэш
 	mockAccountCache.On("Set", ctx, expectedAccount).Return(nil)
 
@@ -307,7 +307,7 @@ func TestAccountUseCase_GetAccount_NotFound(t *testing.T) {
 
 	// Настройка мока кэша - кэш пуст
 	mockAccountCache.On("Get", ctx, accountID).Return(nil, errors.New("not found in cache"))
-	
+
 	// Настройка мока репозитория - аккаунт не найден
 	mockAccountRepo.On("GetByID", ctx, accountID).Return(nil, repository.ErrNotFound)
 
@@ -360,16 +360,16 @@ func TestAccountUseCase_CreateAccount(t *testing.T) {
 
 	// Настройка мока репозитория - проверка существования username
 	mockAccountRepo.On("GetByUsername", ctx, newAccount.Username).Return(nil, repository.ErrNotFound)
-	
+
 	// Настройка мока репозитория - проверка существования email
 	mockAccountRepo.On("GetByEmail", ctx, newAccount.Email).Return(nil, repository.ErrNotFound)
-	
+
 	// Настройка мока репозитория - создание аккаунта
 	mockAccountRepo.On("Create", ctx, mock.AnythingOfType("*entity.Account")).Return(createdAccount, nil)
-	
+
 	// Настройка мока кэша - сохранение в кэш
 	mockAccountCache.On("Set", ctx, createdAccount).Return(nil)
-	
+
 	// Настройка мока Kafka продюсера
 	mockKafkaProducer.On("Produce", "account-events", createdAccount.ID, mock.AnythingOfType("map[string]interface {}")).Return(nil)
 
@@ -459,7 +459,7 @@ func TestAccountUseCase_UpdateAccount(t *testing.T) {
 
 	ctx := context.Background()
 	accountID := "test-account-id"
-	
+
 	existingAccount := &entity.Account{
 		ID:        accountID,
 		Username:  "oldusername",
@@ -468,13 +468,13 @@ func TestAccountUseCase_UpdateAccount(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	
+
 	updateAccount := &entity.Account{
 		ID:       accountID,
 		Username: "newusername",
 		Email:    "new@example.com",
 	}
-	
+
 	updatedAccount := &entity.Account{
 		ID:        accountID,
 		Username:  updateAccount.Username,
@@ -486,19 +486,19 @@ func TestAccountUseCase_UpdateAccount(t *testing.T) {
 
 	// Настройка мока репозитория - получение существующего аккаунта
 	mockAccountRepo.On("GetByID", ctx, accountID).Return(existingAccount, nil)
-	
+
 	// Настройка мока репозитория - проверка существования username
 	mockAccountRepo.On("GetByUsername", ctx, updateAccount.Username).Return(nil, repository.ErrNotFound)
-	
+
 	// Настройка мока репозитория - проверка существования email
 	mockAccountRepo.On("GetByEmail", ctx, updateAccount.Email).Return(nil, repository.ErrNotFound)
-	
+
 	// Настройка мока репозитория - обновление аккаунта
 	mockAccountRepo.On("Update", ctx, mock.AnythingOfType("*entity.Account")).Return(updatedAccount, nil)
-	
+
 	// Настройка мока кэша - удаление из кэша
 	mockAccountCache.On("Delete", ctx, accountID).Return(nil)
-	
+
 	// Настройка мока Kafka продюсера
 	mockKafkaProducer.On("Produce", "account-events", accountID, mock.AnythingOfType("map[string]interface {}")).Return(nil)
 
@@ -539,7 +539,7 @@ func TestAccountUseCase_DeleteAccount(t *testing.T) {
 
 	ctx := context.Background()
 	accountID := "test-account-id"
-	
+
 	existingAccount := &entity.Account{
 		ID:        accountID,
 		Username:  "testuser",
@@ -551,13 +551,13 @@ func TestAccountUseCase_DeleteAccount(t *testing.T) {
 
 	// Настройка мока репозитория - получение существующего аккаунта
 	mockAccountRepo.On("GetByID", ctx, accountID).Return(existingAccount, nil)
-	
+
 	// Настройка мока репозитория - удаление аккаунта
 	mockAccountRepo.On("Delete", ctx, accountID).Return(nil)
-	
+
 	// Настройка мока кэша - удаление из кэша
 	mockAccountCache.On("Delete", ctx, accountID).Return(nil)
-	
+
 	// Настройка мока Kafka продюсера
 	mockKafkaProducer.On("Produce", "account-events", accountID, mock.AnythingOfType("map[string]interface {}")).Return(nil)
 

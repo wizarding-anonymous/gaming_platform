@@ -10,11 +10,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/gaiming/account-service/internal/app/usecase"
-	"github.com/gaiming/account-service/internal/domain/entity"
-	"github.com/gaiming/account-service/internal/domain/errors"
-	"github.com/gaiming/account-service/internal/api/rest/middleware"
-	"github.com/gaiming/account-service/internal/api/rest/presenter"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest/middleware"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest/presenter"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/app/usecase"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
 )
 
 // AccountHandler обработчик HTTP-запросов для работы с аккаунтами
@@ -33,21 +33,21 @@ func NewAccountHandler(accountUseCase usecase.AccountUseCase) *AccountHandler {
 func (h *AccountHandler) Register(router *mux.Router) {
 	// Публичные эндпоинты
 	router.HandleFunc("/accounts", h.CreateAccount).Methods(http.MethodPost)
-	
+
 	// Защищенные эндпоинты (требуют аутентификации)
 	protected := router.PathPrefix("").Subrouter()
 	protected.Use(middleware.JWTAuth)
-	
+
 	// Эндпоинты для всех аутентифицированных пользователей
 	protected.HandleFunc("/accounts/{id}", h.GetAccount).Methods(http.MethodGet)
 	protected.HandleFunc("/accounts/me", h.GetCurrentAccount).Methods(http.MethodGet)
 	protected.HandleFunc("/accounts/me/profile", h.GetCurrentProfile).Methods(http.MethodGet)
-	
+
 	// Эндпоинты для владельцев аккаунтов или администраторов
 	protected.HandleFunc("/accounts/{id}", h.UpdateAccount).Methods(http.MethodPut)
 	protected.HandleFunc("/accounts/{id}", h.DeleteAccount).Methods(http.MethodDelete)
 	protected.HandleFunc("/accounts/{id}/status", h.UpdateAccountStatus).Methods(http.MethodPut)
-	
+
 	// Эндпоинты для работы с контактной информацией
 	protected.HandleFunc("/accounts/{id}/contact-info", h.GetContactInfo).Methods(http.MethodGet)
 	protected.HandleFunc("/accounts/{id}/contact-info", h.AddContactInfo).Methods(http.MethodPost)
@@ -55,23 +55,23 @@ func (h *AccountHandler) Register(router *mux.Router) {
 	protected.HandleFunc("/accounts/{id}/contact-info/{contact_id}", h.DeleteContactInfo).Methods(http.MethodDelete)
 	protected.HandleFunc("/accounts/{id}/contact-info/{type}/verification-request", h.RequestContactVerification).Methods(http.MethodPost)
 	protected.HandleFunc("/accounts/{id}/contact-info/{type}/verify", h.VerifyContact).Methods(http.MethodPost)
-	
+
 	// Эндпоинты для работы с профилем
 	protected.HandleFunc("/accounts/{id}/profile", h.GetProfile).Methods(http.MethodGet)
 	protected.HandleFunc("/accounts/{id}/profile", h.UpdateProfile).Methods(http.MethodPut)
 	protected.HandleFunc("/accounts/{id}/profile/history", h.GetProfileHistory).Methods(http.MethodGet)
-	
+
 	// Эндпоинты для работы с аватарами
 	protected.HandleFunc("/accounts/{id}/avatar", h.GetAvatars).Methods(http.MethodGet)
 	protected.HandleFunc("/accounts/{id}/avatar", h.UploadAvatar).Methods(http.MethodPost)
 	protected.HandleFunc("/accounts/{id}/avatar/{avatar_id}", h.SetCurrentAvatar).Methods(http.MethodPut)
 	protected.HandleFunc("/accounts/{id}/avatar/{avatar_id}", h.DeleteAvatar).Methods(http.MethodDelete)
-	
+
 	// Эндпоинты для работы с настройками
 	protected.HandleFunc("/accounts/{id}/settings", h.GetAllSettings).Methods(http.MethodGet)
 	protected.HandleFunc("/accounts/{id}/settings/{category}", h.GetSettings).Methods(http.MethodGet)
 	protected.HandleFunc("/accounts/{id}/settings/{category}", h.UpdateSettings).Methods(http.MethodPut)
-	
+
 	// Эндпоинты только для администраторов
 	admin := router.PathPrefix("").Subrouter()
 	admin.Use(middleware.JWTAuth, middleware.AdminOnly)

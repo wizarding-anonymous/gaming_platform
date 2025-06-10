@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/gaiming/account-service/internal/domain/entity"
-	"github.com/gaiming/account-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
 )
 
 // ContactInfoRepository интерфейс для работы с репозиторием контактной информации
@@ -44,11 +44,11 @@ type ContactInfoEventProducer interface {
 
 // ContactInfoUseCase реализует бизнес-логику для работы с контактной информацией
 type ContactInfoUseCase struct {
-	contactInfoRepo    ContactInfoRepository
-	verificationRepo   VerificationCodeRepository
-	accountRepo        AccountRepository
-	eventProducer      ContactInfoEventProducer
-	logger             *zap.SugaredLogger
+	contactInfoRepo  ContactInfoRepository
+	verificationRepo VerificationCodeRepository
+	accountRepo      AccountRepository
+	eventProducer    ContactInfoEventProducer
+	logger           *zap.SugaredLogger
 }
 
 // NewContactInfoUseCase создает новый экземпляр ContactInfoUseCase
@@ -59,10 +59,10 @@ func NewContactInfoUseCase(
 	logger *zap.SugaredLogger,
 ) *ContactInfoUseCase {
 	return &ContactInfoUseCase{
-		contactInfoRepo:    contactInfoRepo,
-		accountRepo:        accountRepo,
-		eventProducer:      eventProducer,
-		logger:             logger,
+		contactInfoRepo: contactInfoRepo,
+		accountRepo:     accountRepo,
+		eventProducer:   eventProducer,
+		logger:          logger,
 	}
 }
 
