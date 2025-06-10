@@ -34,9 +34,86 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/metrics"
 )
 
+func loadConfig() (*config.Config, error) {
+	return config.Load()
+}
+
+func initDB(cfg *config.Config) (*postgres.DB, *redis.Client, error) {
+	db, err := postgres.NewPostgresDB(cfg.Database)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	redisClient, err := redis.NewRedisClient(cfg.Redis)
+	if err != nil {
+		db.Close()
+		return nil, nil, err
+	}
+
+	return db, redisClient, nil
+}
+
+type services struct {
+	accountUseCase     usecase.AccountUseCase
+	profileUseCase     usecase.ProfileUseCase
+	contactInfoUseCase usecase.ContactInfoUseCase
+	settingUseCase     usecase.SettingUseCase
+}
+
+func initServices(db *postgres.DB, redisClient *redis.Client, producer kafka.Producer, sugar *zap.SugaredLogger) services {
+	accountRepo := postgres.NewAccountRepository(db)
+	profileRepo := postgres.NewProfileRepository(db)
+	authMethodRepo := postgres.NewAuthMethodRepository(db)
+	contactInfoRepo := postgres.NewContactInfoRepository(db)
+	settingRepo := postgres.NewSettingRepository(db)
+	avatarRepo := postgres.NewAvatarRepository(db)
+	profileHistoryRepo := postgres.NewProfileHistoryRepository(db)
+
+	accountCache := redis.NewAccountCache(redisClient)
+	profileCache := redis.NewProfileCache(redisClient)
+
+	return services{
+		accountUseCase: usecase.NewAccountUseCase(
+			accountRepo,
+			authMethodRepo,
+			profileRepo,
+			accountCache,
+			producer,
+			sugar,
+		),
+		profileUseCase: usecase.NewProfileUseCase(
+			profileRepo,
+			accountRepo,
+			avatarRepo,
+			profileHistoryRepo,
+			profileCache,
+			producer,
+			sugar,
+		),
+		contactInfoUseCase: usecase.NewContactInfoUseCase(
+			contactInfoRepo,
+			accountRepo,
+			producer,
+			sugar,
+		),
+		settingUseCase: usecase.NewSettingUseCase(
+			settingRepo,
+			accountRepo,
+			producer,
+			sugar,
+		),
+	}
+}
+
+func startHTTPServer(cfg *config.Config, router http.Handler) *http.Server {
+	return &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
+		Handler: router,
+	}
+}
+
 func main() {
-	// Загрузка конфигурации
-	cfg, err := config.Load()
+	cfg, err := loadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
@@ -68,72 +145,20 @@ func main() {
 	// Инициализация метрик
 	metricsRegistry := metrics.NewRegistry()
 
-	// Инициализация репозиториев
-	db, err := postgres.NewPostgresDB(cfg.Database)
+	db, redisClient, err := initDB(cfg)
 	if err != nil {
-		sugar.Fatalw("Failed to connect to database", "error", err)
+		sugar.Fatalw("Failed to initialize databases", "error", err)
 	}
 	defer db.Close()
-
-	redisClient, err := redis.NewRedisClient(cfg.Redis)
-	if err != nil {
-		sugar.Fatalw("Failed to connect to Redis", "error", err)
-	}
 	defer redisClient.Close()
 
-	// Инициализация репозиториев
-	accountRepo := postgres.NewAccountRepository(db)
-	profileRepo := postgres.NewProfileRepository(db)
-	authMethodRepo := postgres.NewAuthMethodRepository(db)
-	contactInfoRepo := postgres.NewContactInfoRepository(db)
-	settingRepo := postgres.NewSettingRepository(db)
-	avatarRepo := postgres.NewAvatarRepository(db)
-	profileHistoryRepo := postgres.NewProfileHistoryRepository(db)
-
-	// Инициализация кэша
-	accountCache := redis.NewAccountCache(redisClient)
-	profileCache := redis.NewProfileCache(redisClient)
-
-	// Инициализация Kafka продюсера
 	kafkaProducer, err := kafka.NewProducer(cfg.Kafka)
 	if err != nil {
 		sugar.Fatalw("Failed to create Kafka producer", "error", err)
 	}
 	defer kafkaProducer.Close()
 
-	// Инициализация use cases
-	accountUseCase := usecase.NewAccountUseCase(
-		accountRepo,
-		authMethodRepo,
-		profileRepo,
-		accountCache,
-		kafkaProducer,
-		sugar,
-	)
-
-	profileUseCase := usecase.NewProfileUseCase(
-		profileRepo,
-		accountRepo,
-		avatarRepo,
-		profileHistoryRepo,
-		profileCache,
-		kafkaProducer,
-		sugar,
-	)
-
-	contactInfoUseCase := usecase.NewContactInfoUseCase(
-		contactInfoRepo,
-		accountRepo,
-		kafkaProducer,
-		sugar,
-	)
-
-	settingUseCase := usecase.NewSettingUseCase(
-		settingRepo,
-		accountRepo,
-		kafkaProducer,
-		sugar,
-	)
+	svcs := initServices(db, redisClient, kafkaProducer, sugar)
 
 	// Инициализация HTTP сервера
 	gin.SetMode(gin.ReleaseMode)
@@ -156,16 +181,13 @@ func main() {
 
 	// Регистрация API маршрутов
 	apiV1 := router.Group("/api/v1")
-	rest.RegisterAccountRoutes(apiV1, accountUseCase, sugar)
-	rest.RegisterProfileRoutes(apiV1, profileUseCase, sugar)
-	rest.RegisterContactInfoRoutes(apiV1, contactInfoUseCase, sugar)
-	rest.RegisterSettingRoutes(apiV1, settingUseCase, sugar)
+	rest.RegisterAccountRoutes(apiV1, svcs.accountUseCase, sugar)
+	rest.RegisterProfileRoutes(apiV1, svcs.profileUseCase, sugar)
+	rest.RegisterContactInfoRoutes(apiV1, svcs.contactInfoUseCase, sugar)
+	rest.RegisterSettingRoutes(apiV1, svcs.settingUseCase, sugar)
 
 	// Запуск HTTP сервера
-	httpServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
-		Handler: router,
-	}
+	httpServer := startHTTPServer(cfg, router)
 
 	// Запуск gRPC сервера
 	grpcServer := grpc.NewServer(
@@ -176,9 +198,9 @@ func main() {
 	)
 
 	// Регистрация gRPC сервисов
-	server.RegisterAccountServiceServer(grpcServer, accountUseCase)
-	server.RegisterProfileServiceServer(grpcServer, profileUseCase)
-	server.RegisterSettingsServiceServer(grpcServer, settingUseCase)
+	server.RegisterAccountServiceServer(grpcServer, svcs.accountUseCase)
+	server.RegisterProfileServiceServer(grpcServer, svcs.profileUseCase)
+	server.RegisterSettingsServiceServer(grpcServer, svcs.settingUseCase)
 
 	grpcListener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
