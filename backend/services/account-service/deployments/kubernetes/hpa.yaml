@@ -1,5 +1,4 @@
-# account-service\kubernetes\hpa.yaml
-// kubernetes/hpa.yaml
+# File: backend/services/account-service/deployments/kubernetes/hpa.yaml
 
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

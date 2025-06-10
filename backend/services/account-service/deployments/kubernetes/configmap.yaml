@@ -1,4 +1,4 @@
-# account-service\kubernetes\configmap.yaml
+# File: backend/services/account-service/deployments/kubernetes/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:

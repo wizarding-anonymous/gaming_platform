@@ -1,5 +1,4 @@
-# account-service\kubernetes\service.yaml
-// kubernetes/service.yaml
+# File: backend/services/account-service/deployments/kubernetes/service.yaml
 
 apiVersion: v1
 kind: Service
