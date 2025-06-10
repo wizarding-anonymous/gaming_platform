@@ -11,19 +11,20 @@ import (
 )
 
 type Config struct {
-	Server         ServerConfig                   `mapstructure:"server"`
-	Database       DatabaseConfig                 `mapstructure:"database"`
-	Redis          RedisConfig                    `mapstructure:"redis"`
-	Kafka          KafkaConfig                    `mapstructure:"kafka"`
-	JWT            JWTConfig                      `mapstructure:"jwt"`
-	Security       SecurityConfig                 `mapstructure:"security"`
-	MFA            MFAConfig                      `mapstructure:"mfa"`
-	Logging        LoggingConfig                  `mapstructure:"logging"`
-	Telemetry      TelemetryConfig                `mapstructure:"telemetry"`
-	OAuthProviders map[string]OAuthProviderConfig `mapstructure:"oauth_providers"`
-	Telegram       TelegramConfig                 `mapstructure:"telegram"`
-	HIBP           HIBPConfig                     `mapstructure:"hibp"`
-	Captcha        CaptchaConfig                  `mapstructure:"captcha"`
+	Server            ServerConfig                   `mapstructure:"server"`
+	Database          DatabaseConfig                 `mapstructure:"database"`
+	Redis             RedisConfig                    `mapstructure:"redis"`
+	Kafka             KafkaConfig                    `mapstructure:"kafka"`
+	JWT               JWTConfig                      `mapstructure:"jwt"`
+	Security          SecurityConfig                 `mapstructure:"security"`
+	MFA               MFAConfig                      `mapstructure:"mfa"`
+	Logging           LoggingConfig                  `mapstructure:"logging"`
+	Telemetry         TelemetryConfig                `mapstructure:"telemetry"`
+	OAuthProviders    map[string]OAuthProviderConfig `mapstructure:"oauth_providers"`
+	Telegram          TelegramConfig                 `mapstructure:"telegram"`
+	HIBP              HIBPConfig                     `mapstructure:"hibp"`
+	Captcha           CaptchaConfig                  `mapstructure:"captcha"`
+	OAuthErrorPageURL string                         `mapstructure:"oauth_error_page_url"`
 }
 
 type HIBPConfig struct {

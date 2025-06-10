@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -17,8 +18,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	"go.uber.org/zap"
 )
@@ -40,23 +41,33 @@ func (m *MockAuthServiceForHandler) Login(ctx context.Context, req models.LoginR
 	args := m.Called(ctx, req)
 	r0, r1, r2, r3 := args.Get(0), args.Get(1), args.String(2), args.Error(3)
 	var tp *models.TokenPair
-	if r0 != nil { tp = r0.(*models.TokenPair) }
+	if r0 != nil {
+		tp = r0.(*models.TokenPair)
+	}
 	var user *models.User
-	if r1 != nil { user = r1.(*models.User) }
+	if r1 != nil {
+		user = r1.(*models.User)
+	}
 	return tp, user, r2, r3
 }
 func (m *MockAuthServiceForHandler) CompleteLoginAfter2FA(ctx context.Context, userID uuid.UUID, deviceInfo map[string]string) (*models.TokenPair, *models.User, error) {
-    args := m.Called(ctx, userID, deviceInfo)
-    r0, r1, r2 := args.Get(0), args.Get(1), args.Error(2)
-    var tp *models.TokenPair
-    if r0 != nil { tp = r0.(*models.TokenPair) }
-    var user *models.User
-    if r1 != nil { user = r1.(*models.User) }
-    return tp, user, r2
+	args := m.Called(ctx, userID, deviceInfo)
+	r0, r1, r2 := args.Get(0), args.Get(1), args.Error(2)
+	var tp *models.TokenPair
+	if r0 != nil {
+		tp = r0.(*models.TokenPair)
+	}
+	var user *models.User
+	if r1 != nil {
+		user = r1.(*models.User)
+	}
+	return tp, user, r2
 }
 func (m *MockAuthServiceForHandler) RefreshToken(ctx context.Context, plainOpaqueRefreshToken string) (*models.TokenPair, error) {
 	args := m.Called(ctx, plainOpaqueRefreshToken)
-	if args.Get(0) == nil { return nil, args.Error(1) }
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(*models.TokenPair), args.Error(1)
 }
 func (m *MockAuthServiceForHandler) Logout(ctx context.Context, accessToken, refreshToken string) error {
@@ -97,28 +108,40 @@ func (m *MockAuthServiceForHandler) CheckUserPermission(ctx context.Context, use
 }
 func (m *MockAuthServiceForHandler) LoginWithTelegram(ctx context.Context, tgData models.TelegramLoginRequest, deviceInfo map[string]string) (*models.TokenPair, *models.User, error) {
 	args := m.Called(ctx, tgData, deviceInfo)
-	var tp *models.TokenPair; if args.Get(0) != nil {tp = args.Get(0).(*models.TokenPair)}
-	var user *models.User; if args.Get(1) != nil {user = args.Get(1).(*models.User)}
+	var tp *models.TokenPair
+	if args.Get(0) != nil {
+		tp = args.Get(0).(*models.TokenPair)
+	}
+	var user *models.User
+	if args.Get(1) != nil {
+		user = args.Get(1).(*models.User)
+	}
 	return tp, user, args.Error(2)
 }
 func (m *MockAuthServiceForHandler) InitiateOAuthLogin(ctx context.Context, providerName string, clientProvidedRedirectURI string, clientProvidedState string) (string, string, error) {
-    args := m.Called(ctx, providerName, clientProvidedRedirectURI, clientProvidedState)
-    return args.String(0), args.String(1), args.Error(2)
+	args := m.Called(ctx, providerName, clientProvidedRedirectURI, clientProvidedState)
+	return args.String(0), args.String(1), args.Error(2)
 }
 func (m *MockAuthServiceForHandler) HandleOAuthCallback(ctx context.Context, providerName string, authorizationCode string, receivedCSRFState string, stateCookieJWT string, deviceInfo map[string]string) (*models.TokenPair, *models.User, error) {
 	args := m.Called(ctx, providerName, authorizationCode, receivedCSRFState, stateCookieJWT, deviceInfo)
-	var tp *models.TokenPair; if args.Get(0) != nil {tp = args.Get(0).(*models.TokenPair)}
-	var user *models.User; if args.Get(1) != nil {user = args.Get(1).(*models.User)}
+	var tp *models.TokenPair
+	if args.Get(0) != nil {
+		tp = args.Get(0).(*models.TokenPair)
+	}
+	var user *models.User
+	if args.Get(1) != nil {
+		user = args.Get(1).(*models.User)
+	}
 	return tp, user, args.Error(2)
 }
-
 
 type MockMFALogicServiceForHandler struct {
 	mock.Mock
 }
+
 func (m *MockMFALogicServiceForHandler) Verify2FACode(ctx context.Context, userID uuid.UUID, code string, codeType models.MFAType) (bool, error) {
-    args := m.Called(ctx, userID, code, codeType)
-    return args.Bool(0), args.Error(1)
+	args := m.Called(ctx, userID, code, codeType)
+	return args.Bool(0), args.Error(1)
 }
 func (m *MockMFALogicServiceForHandler) Enable2FAInitiate(ctx context.Context, userID uuid.UUID, accountName string) (mfaSecretID uuid.UUID, secretBase32 string, otpAuthURL string, err error) {
 	args := m.Called(ctx, userID, accountName)
@@ -131,45 +154,64 @@ func (m *MockMFALogicServiceForHandler) Enable2FAInitiate(ctx context.Context, u
 }
 func (m *MockMFALogicServiceForHandler) VerifyAndActivate2FA(ctx context.Context, userID uuid.UUID, plainTOTPCode string, mfaSecretID uuid.UUID) (backupCodes []string, err error) {
 	args := m.Called(ctx, userID, plainTOTPCode, mfaSecretID)
-	if args.Get(0) == nil { return nil, args.Error(1) }
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]string), args.Error(1)
 }
 func (m *MockMFALogicServiceForHandler) Disable2FA(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) error {
 	args := m.Called(ctx, userID, verificationToken, verificationMethod)
 	return args.Error(0)
 }
-func (m *MockMFALogicServiceForHandler) RegenerateBackupCodes(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) (backupCodes []string, err error){
+func (m *MockMFALogicServiceForHandler) RegenerateBackupCodes(ctx context.Context, userID uuid.UUID, verificationToken string, verificationMethod string) (backupCodes []string, err error) {
 	args := m.Called(ctx, userID, verificationToken, verificationMethod)
-	if args.Get(0) == nil { return nil, args.Error(1) }
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]string), args.Error(1)
 }
-
 
 type MockTokenManagementServiceForHandler struct {
 	mock.Mock
 }
+
 func (m *MockTokenManagementServiceForHandler) Validate2FAChallengeToken(challengeToken string) (string, error) {
-    args := m.Called(challengeToken)
-    return args.String(0), args.Error(1)
+	args := m.Called(challengeToken)
+	return args.String(0), args.Error(1)
 }
-func (m *MockTokenManagementServiceForHandler) GenerateAccessToken(userID, username string, roles, permissions []string, sessionID string) (string, error) { panic("not implemented for this mock") }
-func (m *MockTokenManagementServiceForHandler) ValidateAccessToken(tokenString string) (*domainService.Claims, error) { panic("not implemented for this mock") }
-func (m *MockTokenManagementServiceForHandler) GenerateRefreshTokenValue() (string, error) { panic("not implemented for this mock") }
-func (m *MockTokenManagementServiceForHandler) GetRefreshTokenExpiry() time.Time { panic("not implemented for this mock") }
-func (m *MockTokenManagementServiceForHandler) GetJWKS() ([]byte, error) { panic("not implemented for this mock") }
-func (m *MockTokenManagementServiceForHandler) GenerateStateJWT(claims *domainService.OAuthStateClaims, secret string, ttl time.Duration) (string, error) { panic("not implemented for this mock") }
-func (m *MockTokenManagementServiceForHandler) ValidateStateJWT(tokenString string, secret string) (*domainService.OAuthStateClaims, error) { panic("not implemented for this mock") }
+func (m *MockTokenManagementServiceForHandler) GenerateAccessToken(userID, username string, roles, permissions []string, sessionID string) (string, error) {
+	panic("not implemented for this mock")
+}
+func (m *MockTokenManagementServiceForHandler) ValidateAccessToken(tokenString string) (*domainService.Claims, error) {
+	panic("not implemented for this mock")
+}
+func (m *MockTokenManagementServiceForHandler) GenerateRefreshTokenValue() (string, error) {
+	panic("not implemented for this mock")
+}
+func (m *MockTokenManagementServiceForHandler) GetRefreshTokenExpiry() time.Time {
+	panic("not implemented for this mock")
+}
+func (m *MockTokenManagementServiceForHandler) GetJWKS() ([]byte, error) {
+	panic("not implemented for this mock")
+}
+func (m *MockTokenManagementServiceForHandler) GenerateStateJWT(claims *domainService.OAuthStateClaims, secret string, ttl time.Duration) (string, error) {
+	panic("not implemented for this mock")
+}
+func (m *MockTokenManagementServiceForHandler) ValidateStateJWT(tokenString string, secret string) (*domainService.OAuthStateClaims, error) {
+	panic("not implemented for this mock")
+}
+
 // Generate2FAChallengeToken on TokenManagementService is actually defined with (userID string) (string, error)
 // This mock already has Validate2FAChallengeToken, so Generate2FAChallengeToken is not strictly needed here
 // unless AuthHandler calls it directly (which it doesn't seem to).
 
 // --- Test Suite Setup ---
 type AuthHandlerTestSuite struct {
-	router             *gin.Engine
-	mockAuthService    *MockAuthServiceForHandler
-	mockMfaLogicSvc    *MockMFALogicServiceForHandler
-	mockTokenMgmtSvc   *MockTokenManagementServiceForHandler
-	authHandler        *AuthHandler
+	router           *gin.Engine
+	mockAuthService  *MockAuthServiceForHandler
+	mockMfaLogicSvc  *MockMFALogicServiceForHandler
+	mockTokenMgmtSvc *MockTokenManagementServiceForHandler
+	authHandler      *AuthHandler
 }
 
 func setupAuthHandlerTestSuite(t *testing.T) *AuthHandlerTestSuite {
@@ -181,7 +223,7 @@ func setupAuthHandlerTestSuite(t *testing.T) *AuthHandlerTestSuite {
 	ts.mockTokenMgmtSvc = new(MockTokenManagementServiceForHandler)
 
 	logger := zap.NewNop()
-	testConfig := &config.Config{ /* Populate with minimal needed config for handlers */ }
+	testConfig := &config.Config{OAuthErrorPageURL: "https://example.com/error"}
 
 	ts.authHandler = NewAuthHandler(
 		logger,
@@ -203,7 +245,7 @@ func setupAuthHandlerTestSuite(t *testing.T) *AuthHandlerTestSuite {
 		authRoutes.POST("/password/reset", ts.authHandler.ResetPassword)
 		authRoutes.POST("/email/verify", ts.authHandler.VerifyEmailHandler)
 		authRoutes.POST("/email/resend-verification", ts.authHandler.ResendVerificationEmailHandler)
-		authRoutes.POST("/logout", ts.authHandler.Logout) // Assuming auth middleware handles getting user from token
+		authRoutes.POST("/logout", ts.authHandler.Logout)        // Assuming auth middleware handles getting user from token
 		authRoutes.POST("/logout/all", ts.authHandler.LogoutAll) // Assuming auth middleware
 
 		// OAuth & Telegram
@@ -213,7 +255,6 @@ func setupAuthHandlerTestSuite(t *testing.T) *AuthHandlerTestSuite {
 	}
 	return ts
 }
-
 
 // --- Tests ---
 // ... (RegisterUser, LoginUser tests from previous steps) ...
@@ -309,7 +350,6 @@ func TestAuthHandler_RegisterUser_Failure_InternalServiceError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	ts.mockAuthService.AssertExpectations(t)
 }
-
 
 // --- LoginUser Tests ---
 func TestAuthHandler_LoginUser_Success_No2FA(t *testing.T) {
@@ -423,21 +463,20 @@ func TestAuthHandler_LoginUser_Failure_UserNotFound(t *testing.T) { // Example o
 }
 
 func TestAuthHandler_LoginUser_Failure_UserBlocked(t *testing.T) {
-    ts := setupAuthHandlerTestSuite(t)
-    reqBody := LoginRequest{Email: "blocked@example.com", Password: "password123"}
-    jsonBody, _ := json.Marshal(reqBody)
+	ts := setupAuthHandlerTestSuite(t)
+	reqBody := LoginRequest{Email: "blocked@example.com", Password: "password123"}
+	jsonBody, _ := json.Marshal(reqBody)
 
-    ts.mockAuthService.On("Login", mock.Anything, mock.AnythingOfType("models.LoginRequest")).Return(nil, nil, "", domainErrors.ErrUserBlocked).Once()
+	ts.mockAuthService.On("Login", mock.Anything, mock.AnythingOfType("models.LoginRequest")).Return(nil, nil, "", domainErrors.ErrUserBlocked).Once()
 
-    w := httptest.NewRecorder()
-    req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(jsonBody))
-    req.Header.Set("Content-Type", "application/json")
-    ts.router.ServeHTTP(w, req)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	ts.router.ServeHTTP(w, req)
 
-    assert.Equal(t, http.StatusForbidden, w.Code) // Or 401 depending on desired behavior for "blocked"
-    ts.mockAuthService.AssertExpectations(t)
+	assert.Equal(t, http.StatusForbidden, w.Code) // Or 401 depending on desired behavior for "blocked"
+	ts.mockAuthService.AssertExpectations(t)
 }
-
 
 // --- VerifyLogin2FA Tests ---
 func TestAuthHandler_VerifyLogin2FA_Success(t *testing.T) {
@@ -508,7 +547,6 @@ func TestAuthHandler_VerifyLogin2FA_Failure_Invalid2FACode(t *testing.T) {
 	ts.mockMfaLogicSvc.AssertExpectations(t)
 	ts.mockAuthService.AssertNotCalled(t, "CompleteLoginAfter2FA")
 }
-
 
 func TestAuthHandler_VerifyLogin2FA_BadRequest(t *testing.T) {
 	ts := setupAuthHandlerTestSuite(t)
@@ -589,7 +627,6 @@ func TestAuthHandler_RefreshToken_BadRequest(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-
 // --- ForgotPassword Tests ---
 func TestAuthHandler_ForgotPassword_Success(t *testing.T) {
 	ts := setupAuthHandlerTestSuite(t)
@@ -609,7 +646,6 @@ func TestAuthHandler_ForgotPassword_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &respBody)
 	require.NoError(t, err)
 	assert.Contains(t, respBody["message"], "processed successfully")
-
 
 	ts.mockAuthService.AssertExpectations(t)
 }
@@ -631,8 +667,6 @@ func TestAuthHandler_ForgotPassword_BadRequest(t *testing.T) {
 	ts.router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
-
-
 
 // Example for ResetPassword - Bad Request
 func TestAuthHandler_ResetPassword_BadRequest(t *testing.T) {
@@ -737,7 +771,6 @@ func TestAuthHandler_VerifyEmailHandler_InvalidToken(t *testing.T) {
 	ts.mockAuthService.AssertExpectations(t)
 }
 
-
 // --- ResendVerificationEmailHandler Tests ---
 func TestAuthHandler_ResendVerificationEmailHandler_Success(t *testing.T) {
 	ts := setupAuthHandlerTestSuite(t)
@@ -780,7 +813,6 @@ func TestAuthHandler_ResendVerificationEmailHandler_UserNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	ts.mockAuthService.AssertExpectations(t)
 }
-
 
 // --- Logout / LogoutAll Tests (Basic) ---
 // These tests assume middleware correctly extracts user/token info and passes to handler via context.
@@ -845,54 +877,54 @@ func TestAuthHandler_LogoutAll_Success(t *testing.T) {
 		}
 	}
 	assert.True(t, clearedAccess, "Access token cookie should be cleared on logout all")
-        assert.True(t, clearedRefresh, "Refresh token cookie should be cleared on logout all")
-        ts.mockAuthService.AssertExpectations(t)
+	assert.True(t, clearedRefresh, "Refresh token cookie should be cleared on logout all")
+	ts.mockAuthService.AssertExpectations(t)
 }
 
 func TestAuthHandler_Logout_ServiceError(t *testing.T) {
-        ts := setupAuthHandlerTestSuite(t)
+	ts := setupAuthHandlerTestSuite(t)
 
-        ts.mockAuthService.On("Logout", mock.Anything, "test-access-token", "test-refresh-token").Return(errors.New("svc error")).Once()
+	ts.mockAuthService.On("Logout", mock.Anything, "test-access-token", "test-refresh-token").Return(errors.New("svc error")).Once()
 
-        w := httptest.NewRecorder()
-        req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
-        req.AddCookie(&http.Cookie{Name: "access_token", Value: "test-access-token"})
-        req.AddCookie(&http.Cookie{Name: "refresh_token", Value: "test-refresh-token"})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: "test-access-token"})
+	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: "test-refresh-token"})
 
-        ts.router.ServeHTTP(w, req)
+	ts.router.ServeHTTP(w, req)
 
-        assert.Equal(t, http.StatusInternalServerError, w.Code)
-        ts.mockAuthService.AssertExpectations(t)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
 }
 
 func TestAuthHandler_LogoutAll_InvalidToken(t *testing.T) {
-        ts := setupAuthHandlerTestSuite(t)
+	ts := setupAuthHandlerTestSuite(t)
 
-        ts.mockAuthService.On("LogoutAll", mock.Anything, "bad-token").Return(domainErrors.ErrInvalidToken).Once()
+	ts.mockAuthService.On("LogoutAll", mock.Anything, "bad-token").Return(domainErrors.ErrInvalidToken).Once()
 
-        w := httptest.NewRecorder()
-        req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout/all", nil)
-        req.AddCookie(&http.Cookie{Name: "access_token", Value: "bad-token"})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout/all", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: "bad-token"})
 
-        ts.router.ServeHTTP(w, req)
+	ts.router.ServeHTTP(w, req)
 
-        assert.Equal(t, http.StatusUnauthorized, w.Code)
-        ts.mockAuthService.AssertExpectations(t)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
 }
 
 func TestAuthHandler_LogoutAll_ServiceError(t *testing.T) {
-        ts := setupAuthHandlerTestSuite(t)
+	ts := setupAuthHandlerTestSuite(t)
 
-        ts.mockAuthService.On("LogoutAll", mock.Anything, "test-access-token").Return(errors.New("svc error")).Once()
+	ts.mockAuthService.On("LogoutAll", mock.Anything, "test-access-token").Return(errors.New("svc error")).Once()
 
-        w := httptest.NewRecorder()
-        req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout/all", nil)
-        req.AddCookie(&http.Cookie{Name: "access_token", Value: "test-access-token"})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout/all", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: "test-access-token"})
 
-        ts.router.ServeHTTP(w, req)
+	ts.router.ServeHTTP(w, req)
 
-        assert.Equal(t, http.StatusInternalServerError, w.Code)
-        ts.mockAuthService.AssertExpectations(t)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	ts.mockAuthService.AssertExpectations(t)
 }
 
 // --- OAuthLogin Tests ---
@@ -940,7 +972,6 @@ func TestAuthHandler_OAuthLogin_UnsupportedProvider(t *testing.T) {
 	ts.mockAuthService.AssertExpectations(t)
 }
 
-
 // --- OAuthCallback Tests ---
 func TestAuthHandler_OAuthCallback_Success(t *testing.T) {
 	ts := setupAuthHandlerTestSuite(t)
@@ -984,7 +1015,9 @@ func TestAuthHandler_OAuthCallback_StateMismatch(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: stateCookieValue})
 	ts.router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
+	expectedURL := "https://example.com/error?error=" + url.QueryEscape("OAuth callback error: invalid state or request")
+	assert.Equal(t, expectedURL, w.Header().Get("Location"))
 	ts.mockAuthService.AssertExpectations(t)
 }
 
@@ -999,16 +1032,29 @@ func TestAuthHandler_OAuthCallback_NoStateCookie(t *testing.T) {
 	// If HandleOAuthCallback is called with an empty stateCookieJWT:
 	ts.mockAuthService.On("HandleOAuthCallback", mock.Anything, provider, authCode, stateFromProvider, "", mock.AnythingOfType("map[string]string")).Return(nil, nil, domainErrors.ErrOAuthStateMismatch).Maybe()
 
-
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/auth/oauth/"+provider+"/callback?code="+authCode+"&state="+stateFromProvider, nil)
 	// No cookie added to req
 	ts.router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code) // Or Unauthorized depending on how strict the missing cookie is handled
+	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
+	expectedURL := "https://example.com/error?error=" + url.QueryEscape("OAuth state validation failed: missing state cookie")
+	assert.Equal(t, expectedURL, w.Header().Get("Location"))
 	// ts.mockAuthService.AssertExpectations(t) // May or may not be called
 }
 
+func TestAuthHandler_OAuthCallback_ProviderError(t *testing.T) {
+	ts := setupAuthHandlerTestSuite(t)
+	provider := "google"
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/auth/oauth/"+provider+"/callback?error=access_denied&error_description=denied", nil)
+	ts.router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
+	expectedURL := "https://example.com/error?error=" + url.QueryEscape("OAuth provider error: denied")
+	assert.Equal(t, expectedURL, w.Header().Get("Location"))
+}
 
 // --- TelegramLogin Tests ---
 func TestAuthHandler_TelegramLogin_Success(t *testing.T) {
@@ -1063,11 +1109,9 @@ func TestAuthHandler_TelegramLogin_BadRequest(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-
 func init() {
 	gin.SetMode(gin.TestMode)
 }
-
 
 var _ domainService.AuthLogicService = (*MockAuthServiceForHandler)(nil)
 var _ domainService.MFALogicService = (*MockMFALogicServiceForHandler)(nil)
