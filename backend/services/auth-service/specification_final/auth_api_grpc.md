@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/specification_final/auth_api_grpc.md -->
 # Auth Service: gRPC API Specification
 
 **Version:** 1.0

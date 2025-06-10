@@ -1,3 +1,4 @@
+# File: backend/services/auth-service/deployments/prometheus/rules.yaml
 groups:
 - name: auth-service-alerts
   rules:

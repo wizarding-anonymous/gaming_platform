@@ -1,3 +1,4 @@
+-- File: backend/services/auth-service/migrations/000007_add_user_status_fields.up.sql
 -- Add status_reason and updated_by columns to the users table
 
 ALTER TABLE users

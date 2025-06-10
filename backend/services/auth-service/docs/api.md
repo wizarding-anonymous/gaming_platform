@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/docs/api.md -->
 # API документация Auth Service
 
 **Важно:** Этот документ предоставляет обзор и примеры API. Актуальным и исчерпывающим источником спецификаций API (REST, gRPC, События), моделей данных и логики работы является `auth_microservice_specification_final.md`.

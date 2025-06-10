@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/specification_final/auth_data_model.md -->
 # Auth Service: Data Model and Database Schema
 
 **Version:** 1.0

@@ -1,3 +1,4 @@
+# File: backend/services/auth-service/deployments/kubernetes/service.yaml
 apiVersion: v1
 kind: Service
 metadata:

@@ -1,3 +1,4 @@
+-- File: backend/services/auth-service/migrations/000010_alter_password_hash_length.up.sql
 -- Purpose: Increase the length of the hashed_password column to accommodate Argon2id hashes.
 -- According to the initial schema (000001_create_initial_tables.up.sql), the column is named 'password_hash'.
 -- If it was 'hashed_password' in an earlier version not visible here, this would need adjustment.

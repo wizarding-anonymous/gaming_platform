@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/deployments/helm/auth-service/README.md -->
 # Auth Service Helm Chart
 
 ## Введение

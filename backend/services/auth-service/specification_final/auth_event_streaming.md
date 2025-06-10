@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/specification_final/auth_event_streaming.md -->
 # Auth Service: Event Streaming Specification
 
 **Version:** 1.0

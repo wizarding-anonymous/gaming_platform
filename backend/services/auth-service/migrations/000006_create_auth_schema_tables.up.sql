@@ -1,3 +1,4 @@
+-- File: backend/services/auth-service/migrations/000006_create_auth_schema_tables.up.sql
 -- Migration to create tables based on the schema in auth_microservice_specification_final.md
 -- This assumes a clean state for these specific tables or that prior conflicting migrations for these tables are handled.
 

@@ -1,1 +1,2 @@
+# File: backend/services/auth-service/internal/infrastructure/security/.gitkeep
 # For security-related infrastructure like password hashing, JWT generation, etc.

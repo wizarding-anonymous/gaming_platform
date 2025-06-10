@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/README.md -->
 # Auth Service
 
 Микросервис аутентификации и авторизации для российского аналога платформы Steam.

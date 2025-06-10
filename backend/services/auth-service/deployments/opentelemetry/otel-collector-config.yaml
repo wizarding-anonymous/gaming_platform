@@ -1,3 +1,4 @@
+# File: backend/services/auth-service/deployments/opentelemetry/otel-collector-config.yaml
 receivers:
   otlp:
     protocols:

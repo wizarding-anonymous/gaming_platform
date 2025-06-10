@@ -1,3 +1,4 @@
+# File: backend/services/auth-service/deployments/helm/auth-service/Chart.yaml
 apiVersion: v2
 name: auth-service
 description: Helm chart for Auth Service of Gaiming Platform

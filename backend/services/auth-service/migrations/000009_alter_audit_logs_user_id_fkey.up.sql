@@ -1,3 +1,4 @@
+-- File: backend/services/auth-service/migrations/000009_alter_audit_logs_user_id_fkey.up.sql
 -- Start a transaction
 BEGIN;
 

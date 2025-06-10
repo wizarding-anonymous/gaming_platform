@@ -1,3 +1,4 @@
+<!-- File: backend/services/auth-service/specification_final/auth_security_compliance.md -->
 # Auth Service: Security and Compliance Specification
 
 **Version:** 1.0
