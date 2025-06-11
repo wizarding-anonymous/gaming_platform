@@ -646,13 +646,9 @@ func (s *AuthServiceTestSuite) TestForgotPassword_RateLimitExceeded_IP() {
 	s.mockUserRepo.AssertNotCalled(s.T(), "FindByEmail", mock.Anything, mock.Anything)
 }
 
-// TODO: Add similar tests for Register (by IP), Login (by email+IP), ResendVerificationEmail (by email), ResetPassword (by IP)
-// For each:
-// 1. Test case for rate limit exceeded (mock Allow to return false, expect ErrRateLimitExceeded, assert core logic not called, assert audit log)
-// 2. Ensure success test case mocks Allow to return true and verifies the call.
+// Additional rate limit tests following the pattern of TestForgotPassword_RateLimitExceeded
 
-// Example for Register - Rate Limit Exceeded
-func (s *AuthServiceTestSuite) TestRegister_RateLimitExceeded_IP() {
+func (s *AuthServiceTestSuite) TestRegister_RateLimitExceeded_WithAudit() {
 	ctx := context.Background()
 	req := models.CreateUserRequest{
 		Username: "newuser",
@@ -662,12 +658,8 @@ func (s *AuthServiceTestSuite) TestRegister_RateLimitExceeded_IP() {
 	ipAddress := "192.168.1.100"
 	userAgent := "test-agent-register"
 
-	// Mock RateLimiter
-	rateLimitRule := s.cfg.Security.RateLimiting.RegisterIP // Use direct field
-	s.mockRateLimiter.On("Allow", ctx, "register_ip:"+ipAddress, rateLimitRule).Return(false, nil).Once()
+	s.mockRateLimiter.On("Allow", ctx, "register_ip:"+ipAddress, s.cfg.Security.RateLimiting.RegisterIP).Return(false, nil).Once()
 
-	// Mock AuditLogRecorder
-	// actorUserID is nil as registration hasn't happened. targetUserID is nil.
 	expectedDetails := map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "ip_address": ipAddress}
 	s.mockAuditRecorder.On("RecordEvent", ctx, (*uuid.UUID)(nil), "user_register", models.AuditLogStatusFailure, (*uuid.UUID)(nil), nil, expectedDetails, ipAddress, userAgent).Once()
 
@@ -680,47 +672,68 @@ func (s *AuthServiceTestSuite) TestRegister_RateLimitExceeded_IP() {
 	s.mockUserRepo.AssertNotCalled(s.T(), "FindByEmail", mock.Anything, mock.Anything)
 }
 
-// NOTE: This is a basic structure. More mocks and detailed setup for config might be needed.
-// The Mock structures for all dependencies of AuthService are included for completeness,
-// but their methods are not fully implemented here. They would need to be filled out
-// as required by the specific tests being written.
-// The eventMocks.MockProducer is a placeholder; a proper mock for the Kafka producer would be needed.
-// The cfg.Security.RateLimiting.Rules["register_ip"] access pattern is an assumption based on how config might be structured.
-// This needs to match the actual config structure used in auth_service.go.
-// From previous steps, it's s.cfg.RateLimit.Rules["register_ip"]
-// Let me correct that in the Register test.
-// Also, the audit details for register on rate limit failure needs to be nil for targetType (not nil for actor/target).
-
-// Corrected TestRegister_RateLimitExceeded_IP
-func (s *AuthServiceTestSuite) TestRegister_RateLimitExceeded_IP_Corrected() {
+func (s *AuthServiceTestSuite) TestLogin_RateLimitExceeded_WithAudit() {
 	ctx := context.Background()
-	req := models.CreateUserRequest{
-		Username: "newuser",
-		Email:    "new@example.com",
-		Password: "password123",
-	}
-	ipAddress := "192.168.1.100"
-	userAgent := "test-agent-register"
-
-	// Setup the specific rule for register_ip in the test config if not already general enough
-	s.cfg.Security.RateLimiting.Rules = map[string]config.RateLimitRule{
-		"register_ip": {Enabled: true, Limit: 5, Window: time.Minute * 10},
-	}
-	rateLimitRule := s.cfg.Security.RateLimiting.Rules["register_ip"]
-
-	s.mockRateLimiter.On("Allow", ctx, "register_ip:"+ipAddress, rateLimitRule).Return(false, nil).Once()
-
-	expectedDetails := map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "ip_address": ipAddress}
-	// For registration failure due to rate limit, actorUserID is nil, targetUserID is nil, targetType is also nil as no user entity is involved yet.
-	s.mockAuditRecorder.On("RecordEvent", ctx, (*uuid.UUID)(nil), "user_register", models.AuditLogStatusFailure, (*uuid.UUID)(nil), models.AuditTargetType(""), expectedDetails, ipAddress, userAgent).Once()
+	req := models.LoginRequest{Email: "test@example.com", Password: "password123"}
+	ipAddress := "127.0.0.1"
+	userAgent := "test-agent"
 
 	metadataCtx := context.WithValue(ctx, "metadata", map[string]string{"ip-address": ipAddress, "user-agent": userAgent})
-	_, _, err := s.authService.Register(metadataCtx, req)
+
+	s.mockRateLimiter.On("Allow", metadataCtx, "login_email_ip:"+req.Email+":"+ipAddress, s.cfg.Security.RateLimiting.LoginEmailIP).Return(false, nil).Once()
+
+	expectedDetails := map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "identifier": req.Email}
+	s.mockAuditRecorder.On("RecordEvent", metadataCtx, (*uuid.UUID)(nil), "user_login", models.AuditLogStatusFailure, (*uuid.UUID)(nil), models.AuditTargetTypeUser, expectedDetails, ipAddress, userAgent).Once()
+
+	_, _, _, err := s.authService.Login(metadataCtx, req)
 
 	assert.ErrorIs(s.T(), err, domainErrors.ErrRateLimitExceeded)
 	s.mockRateLimiter.AssertExpectations(s.T())
 	s.mockAuditRecorder.AssertExpectations(s.T())
 	s.mockUserRepo.AssertNotCalled(s.T(), "FindByEmail", mock.Anything, mock.Anything)
+}
+
+func (s *AuthServiceTestSuite) TestResendVerificationEmail_RateLimitExceeded_WithAudit() {
+	ctx := context.Background()
+	email := "test@example.com"
+	ipAddress := "127.0.0.1"
+	userAgent := "test-agent-resend"
+
+	metadataCtx := context.WithValue(ctx, "metadata", map[string]string{"ip-address": ipAddress, "user-agent": userAgent})
+
+	s.mockRateLimiter.On("Allow", metadataCtx, "resend_verification_email:"+email, s.cfg.Security.RateLimiting.ResendVerificationEmail).Return(false, nil).Once()
+
+	expectedDetails := map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "email": email}
+	s.mockAuditRecorder.On("RecordEvent", metadataCtx, (*uuid.UUID)(nil), "resend_verification_request", models.AuditLogStatusFailure, (*uuid.UUID)(nil), models.AuditTargetTypeUser, expectedDetails, ipAddress, userAgent).Once()
+
+	err := s.authService.ResendVerificationEmail(metadataCtx, email)
+
+	assert.ErrorIs(s.T(), err, domainErrors.ErrRateLimitExceeded)
+	s.mockRateLimiter.AssertExpectations(s.T())
+	s.mockAuditRecorder.AssertExpectations(s.T())
+	s.mockUserRepo.AssertNotCalled(s.T(), "FindByEmail", mock.Anything, mock.Anything)
+}
+
+func (s *AuthServiceTestSuite) TestResetPassword_RateLimitExceeded_WithAudit() {
+	ctx := context.Background()
+	plainToken := "valid_reset_token"
+	newPassword := "newSecurePassword123!"
+	ipAddress := "127.0.0.1"
+	userAgent := "test-agent-reset"
+
+	metadataCtx := context.WithValue(ctx, "metadata", map[string]string{"ip-address": ipAddress, "user-agent": userAgent})
+
+	s.mockRateLimiter.On("Allow", metadataCtx, "reset_password_ip:"+ipAddress, s.cfg.Security.RateLimiting.ResetPasswordIP).Return(false, nil).Once()
+
+	expectedDetails := map[string]interface{}{"error": domainErrors.ErrRateLimitExceeded.Error(), "ip_address": ipAddress}
+	s.mockAuditRecorder.On("RecordEvent", metadataCtx, (*uuid.UUID)(nil), "password_reset", models.AuditLogStatusFailure, (*uuid.UUID)(nil), models.AuditTargetTypeUser, expectedDetails, ipAddress, userAgent).Once()
+
+	err := s.authService.ResetPassword(metadataCtx, plainToken, newPassword)
+
+	assert.ErrorIs(s.T(), err, domainErrors.ErrRateLimitExceeded)
+	s.mockRateLimiter.AssertExpectations(s.T())
+	s.mockAuditRecorder.AssertExpectations(s.T())
+	s.mockVerificationRepo.AssertNotCalled(s.T(), "FindByCodeHashAndType", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // Mock implementations for other repositories and services would go here or in separate mock files.
