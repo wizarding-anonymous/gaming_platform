@@ -74,64 +74,6 @@ func NewMeHandler(
 	}
 }
 
-// GetMe handles fetching the current authenticated user's information.
-// GET /me
-func (h *MeHandler) GetMe(c *gin.Context) {
-	// This endpoint is protected by auth middleware.
-	// The user's claims should be available in the Gin context if set by middleware.
-	// Example: claims, exists := c.Get(middleware.AuthClaimsKey)
-	// For this example, we'll simulate getting UserID from context.
-
-	userIDFromToken, exists := c.Get("userID") // Assuming middleware sets this
-	if !exists {
-		h.logger.Error("GetMe: userID not found in context, auth middleware might not be working")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: User ID not found in token claims"})
-		return
-	}
-
-	userIDStr, ok := userIDFromToken.(string)
-	if !ok || userIDStr == "" {
-		h.logger.Error("GetMe: userID in context is not a valid string", zap.Any("userID", userIDFromToken))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: Invalid User ID in token claims"})
-		return
-	}
-
-	// Fetch more complete user information using UserService
-	user, mfaEnabled, err := h.userService.GetUserFullInfo(c.Request.Context(), userIDStr)
-	if err != nil {
-		// Handle user not found or other errors
-		h.logger.Error("GetMe: failed to get user full info", zap.Error(err), zap.String("userID", userIDStr))
-		// Map error appropriately
-		if strings.Contains(err.Error(), "not found") {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user information"})
-		}
-		return
-	}
-
-	// Use UserResponse DTO from auth_handler.go or a more specific MeResponseDTO
-	meResponse := UserResponse{ // Re-using UserResponse for simplicity
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		Status:    string(user.Status),
-		CreatedAt: user.CreatedAt,
-		// Add mfa_enabled to UserResponse or create a MeUserResponse DTO
-	}
-	// Add mfa_enabled if UserResponse DTO is extended or use a map
-	responseMap := map[string]interface{}{
-		"id":          meResponse.ID,
-		"username":    meResponse.Username,
-		"email":       meResponse.Email,
-		"status":      meResponse.Status,
-		"created_at":  meResponse.CreatedAt,
-		"mfa_enabled": mfaEnabled,
-	}
-
-	c.JSON(http.StatusOK, responseMap)
-}
-
 // TODO: Implement other /me handlers:
 // - PUT /me/password
 // - GET /me/sessions
@@ -165,58 +107,6 @@ func RegisterMeRoutes(router *gin.RouterGroup, meHandler *MeHandler /*, authMidd
 		me.POST("/api-keys", meHandler.CreateMyAPIKey)
 		me.DELETE("/api-keys/:key_id", meHandler.DeleteMyAPIKey)
 	}
-}
-
-// ChangePassword handles updating the authenticated user's password.
-// PUT /me/password
-func (h *MeHandler) ChangePassword(c *gin.Context) {
-	userIDStr, exists := c.Get("userID")
-	if !exists {
-		h.logger.Error("ChangePassword: userID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: User ID not found in token claims"})
-		return
-	}
-
-	userID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		h.logger.Error("ChangePassword: failed to parse userID from context", zap.String("rawUserID", userIDStr.(string)), zap.Error(err))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: Invalid User ID format"})
-		return
-	}
-
-	var req ChangePasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Error("ChangePassword: failed to bind request JSON", zap.Error(err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload: " + err.Error()})
-		return
-	}
-
-	// Basic validation for new password (min length already handled by binding)
-	// More complex rules (uppercase, number, special char) should be in the service layer if not covered by binding.
-	// For example, ensuring new password is not same as old could be a service layer check.
-
-	err = h.authService.ChangePassword(c.Request.Context(), userID, req.CurrentPassword, req.NewPassword)
-	if err != nil {
-		h.logger.Error("ChangePassword: authService.ChangePassword failed", zap.Error(err), zap.String("userID", userID.String()))
-		if errors.Is(err, domainErrors.ErrInvalidCredentials) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid current password"})
-			return
-		}
-		if errors.Is(err, domainErrors.ErrUserNotFound) { // Should ideally not happen if middleware is correct
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		// Handle potential validation errors from the service for the new password if they are specific domain errors
-		// For example, if service returns ErrPasswordTooShort, ErrPasswordRequiresSpecialChar, etc.
-		// if errors.Is(err, domainErrors.ErrValidation) { // Assuming a generic validation error
-		// 	 c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		// 	 return
-		// }
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change password"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }
 
 // EnableTOTP handles the initiation of TOTP-based 2FA for the authenticated user.
