@@ -83,12 +83,14 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	statusFilter := c.Query("status")
 	usernameFilter := c.Query("username_contains") // Changed from "username" to "username_contains"
 	emailFilter := c.Query("email_contains")       // Changed from "email" to "email_contains"
+	includeRoles, _ := strconv.ParseBool(c.DefaultQuery("include_roles", "false"))
 
 	listParams := models.ListUsersParams{
 		Page:             page,
 		PageSize:         pageSize,
 		UsernameContains: usernameFilter,
 		EmailContains:    emailFilter,
+		IncludeRoles:     includeRoles,
 	}
 
 	if statusFilter != "" {
@@ -140,9 +142,6 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 		},
 	})
 }
-
-// TODO: Implement other /admin handlers:
-// - GET /admin/audit-logs (using AuditLogRepository.List)
 
 // GetUserByID handles fetching a specific user by ID for admin.
 // GET /admin/users/:user_id

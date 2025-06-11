@@ -14,7 +14,7 @@ import (
 
 // ExternalAuthHandler handles HTTP requests for external authentication (e.g., Telegram).
 type ExternalAuthHandler struct {
-	logger         *zap.Logger
+	logger           *zap.Logger
 	authLogicService service.AuthLogicService
 	// Add other necessary services, like a config reader if not passed directly
 }
@@ -22,7 +22,7 @@ type ExternalAuthHandler struct {
 // NewExternalAuthHandler creates a new ExternalAuthHandler.
 func NewExternalAuthHandler(logger *zap.Logger, authLogic service.AuthLogicService) *ExternalAuthHandler {
 	return &ExternalAuthHandler{
-		logger:         logger.Named("external_auth_handler"),
+		logger:           logger.Named("external_auth_handler"),
 		authLogicService: authLogic,
 	}
 }
@@ -50,7 +50,6 @@ type LoginResponse struct {
 	TokenType    string       `json:"token_type"`    // Usually "Bearer"
 	ExpiresIn    int64        `json:"expires_in"`    // Access token expiry in seconds from now
 }
-
 
 // HandleTelegramLogin processes requests for authentication via Telegram.
 // Path: POST /api/v1/auth/telegram-login
@@ -83,7 +82,6 @@ func (h *ExternalAuthHandler) HandleTelegramLogin(w http.ResponseWriter, r *http
 	}
 	telegramDataMap["auth_date"] = req.AuthDate // Telegram sends AuthDate as number
 	telegramDataMap["hash"] = req.Hash
-	
 
 	// Extract IP Address and User-Agent
 	ipAddress := r.RemoteAddr // This might include port, consider parsing
@@ -117,14 +115,13 @@ func (h *ExternalAuthHandler) HandleTelegramLogin(w http.ResponseWriter, r *http
 		}
 		return
 	}
-	
-	// TODO: Get AccessTokenTTL from config or token service to populate ExpiresIn
+
 	loginResp := LoginResponse{
 		User:         user, // Consider a UserDTO to not expose all user fields
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
 		TokenType:    "Bearer",
-		ExpiresIn:    15 * 60, // Placeholder (15 minutes in seconds)
+		ExpiresIn:    int(h.cfg.JWT.AccessTokenTTL.Seconds()),
 	}
 
 	h.respondWithJSON(w, http.StatusOK, loginResp)

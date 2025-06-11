@@ -74,18 +74,6 @@ func NewMeHandler(
 	}
 }
 
-// TODO: Implement other /me handlers:
-// - PUT /me/password
-// - GET /me/sessions
-// - DELETE /me/sessions/{session_id}
-// - POST /me/2fa/totp/enable
-// - POST /me/2fa/totp/verify
-// - POST /me/2fa/disable
-// - POST /me/2fa/backup-codes/regenerate
-// - GET /me/api-keys
-// - POST /me/api-keys
-// - DELETE /me/api-keys/{key_id}
-
 // RegisterMeRoutes registers /me related HTTP routes.
 // All routes in this group should be protected by an authentication middleware.
 func RegisterMeRoutes(router *gin.RouterGroup, meHandler *MeHandler /*, authMiddleware gin.HandlerFunc */) {

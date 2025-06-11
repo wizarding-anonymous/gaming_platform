@@ -1,4 +1,4 @@
-// File: internal/service/two_factor_service.go
+// File: backend/services/auth-service/internal/service/two_factor_service.go
 
 package service
 
@@ -19,6 +19,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/crypto"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/kafka"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/metrics" // Added metrics import
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/password"
 	"go.uber.org/zap"
 )
 
@@ -26,6 +27,7 @@ import (
 type TwoFactorService struct {
 	userRepo        interfaces.UserRepository
 	mfaSecretRepo   repository.MFASecretRepository // Added MFASecretRepository
+	backupCodeRepo  repository.MFABackupCodeRepository
 	kafkaClient     *kafka.Client
 	logger          *zap.Logger
 	issuer          string
@@ -37,6 +39,7 @@ type TwoFactorService struct {
 func NewTwoFactorService(
 	userRepo interfaces.UserRepository,
 	mfaSecretRepo repository.MFASecretRepository, // Added MFASecretRepository
+	backupCodeRepo repository.MFABackupCodeRepository,
 	kafkaClient *kafka.Client,
 	logger *zap.Logger,
 	issuer string,
@@ -55,6 +58,7 @@ func NewTwoFactorService(
 	return &TwoFactorService{
 		userRepo:        userRepo,
 		mfaSecretRepo:   mfaSecretRepo,
+		backupCodeRepo:  backupCodeRepo,
 		kafkaClient:     kafkaClient,
 		logger:          logger,
 		issuer:          issuer,
@@ -110,7 +114,7 @@ func (s *TwoFactorService) InitiateEnableTwoFactor(ctx context.Context, userID u
 	// Создание URL для QR-кода
 	otpKey, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      s.issuer,
-		AccountName: user.Email, // Используем email пользователя в качестве имени аккаунта
+		AccountName: user.Email,     // Используем email пользователя в качестве имени аккаунта
 		Secret:      rawSecretBytes, // Передаем сырые байты секрета
 	})
 	if err != nil {
@@ -119,8 +123,8 @@ func (s *TwoFactorService) InitiateEnableTwoFactor(ctx context.Context, userID u
 	}
 
 	return &models.Enable2FAInitiateResponse{
-		MFASecretID:   mfaSecret.ID,
-		SecretKey:     rawSecretBase32, // Для ручного ввода
+		MFASecretID:    mfaSecret.ID,
+		SecretKey:      rawSecretBase32, // Для ручного ввода
 		QRCodeImageURL: otpKey.URL(),
 		// Recovery codes are generated only after successful verification in VerifyAndActivateTwoFactor
 	}, nil
@@ -184,9 +188,12 @@ func (s *TwoFactorService) VerifyAndActivateTwoFactor(ctx context.Context, userI
 		s.logger.Warn("Failed to get user to update transient TwoFactorEnabled flag", zap.Error(err), zap.String("user_id", userID.String()))
 	}
 
-	// TODO: Генерация и сохранение кодов восстановления (связанных с mfaSecret.ID или userID)
-	// recoveryCodes := s.generateAndStoreRecoveryCodes(ctx, userID, mfaSecret.ID)
-	recoveryCodes := s.generateRecoveryCodes() // Placeholder, needs actual storage logic
+	// Генерация и сохранение кодов восстановления для пользователя
+	recoveryCodes, err := s.generateAndStoreRecoveryCodes(ctx, userID)
+	if err != nil {
+		s.logger.Error("Failed to generate/store recovery codes", zap.Error(err), zap.String("user_id", userID.String()))
+		return nil, fmt.Errorf("failed to generate recovery codes: %w", err)
+	}
 
 	// Отправка события о включении 2FA
 	event := models.TwoFactorEnabledEvent{
@@ -226,11 +233,31 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID uuid.UUI
 	decryptedSecretBase32 := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(decryptedSecretBytes)
 
 	valid := totp.Validate(code, decryptedSecretBase32)
-	// TODO: Добавить проверку кодов восстановления
 	if !valid {
-		s.logger.Warn("Invalid TOTP code during 2FA disabling", zap.String("user_id", userID.String()))
-		metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_disable_invalid_code").Inc()
-		return models.ErrInvalidTOTPCode
+		// Try backup codes
+		backupCodes, errCodes := s.backupCodeRepo.FindByUserID(ctx, userID)
+		if errCodes != nil {
+			s.logger.Error("Failed to fetch backup codes", zap.Error(errCodes), zap.String("user_id", userID.String()))
+			metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_disable_invalid_code").Inc()
+			return models.ErrInvalidTOTPCode
+		}
+		var matchedID uuid.UUID
+		for _, bc := range backupCodes {
+			ok, _ := password.Verify(code, bc.CodeHash)
+			if ok {
+				matchedID = bc.ID
+				break
+			}
+		}
+		if matchedID == uuid.Nil {
+			s.logger.Warn("Invalid TOTP or backup code during 2FA disabling", zap.String("user_id", userID.String()))
+			metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_disable_invalid_code").Inc()
+			return models.ErrInvalidTOTPCode
+		}
+		// Mark backup code as used
+		if err := s.backupCodeRepo.MarkAsUsed(ctx, matchedID, time.Now()); err != nil {
+			s.logger.Warn("Failed to mark backup code as used", zap.Error(err), zap.String("user_id", userID.String()))
+		}
 	}
 
 	if err := s.mfaSecretRepo.DeleteByUserIDAndType(ctx, userID, models.MFATypeTOTP); err != nil {
@@ -302,14 +329,33 @@ func (s *TwoFactorService) VerifyTOTP(ctx context.Context, userID uuid.UUID, cod
 
 // generateRecoveryCodes генерирует коды восстановления (пока без сохранения)
 func (s *TwoFactorService) generateRecoveryCodes() []string {
-	codes := make([]string, 10)
-	for i := 0; i < 10; i++ {
-		// Генерация случайных байтов
+	codes := make([]string, s.backupCodeCount)
+	for i := 0; i < s.backupCodeCount; i++ {
 		b := make([]byte, 5)
 		rand.Read(b)
-		
-		// Преобразование в строку
 		codes[i] = fmt.Sprintf("%x", b)
 	}
 	return codes
+}
+
+// generateAndStoreRecoveryCodes creates backup codes, hashes them and stores in repository.
+func (s *TwoFactorService) generateAndStoreRecoveryCodes(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	codes := s.generateRecoveryCodes()
+	modelsToStore := make([]*models.MFABackupCode, len(codes))
+	for i, code := range codes {
+		hashed, err := password.Hash(code, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash backup code: %w", err)
+		}
+		modelsToStore[i] = &models.MFABackupCode{
+			ID:        uuid.New(),
+			UserID:    userID,
+			CodeHash:  hashed,
+			CreatedAt: time.Now(),
+		}
+	}
+	if err := s.backupCodeRepo.CreateMultiple(ctx, modelsToStore); err != nil {
+		return nil, fmt.Errorf("failed to store backup codes: %w", err)
+	}
+	return codes, nil
 }

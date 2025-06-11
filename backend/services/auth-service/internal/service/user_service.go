@@ -451,9 +451,31 @@ func (s *UserService) ListUsers(ctx context.Context, params models.ListUsersPara
 		return nil, 0, err
 	}
 
-	// TODO: Potentially enrich user models here if needed (e.g., loading roles for each user)
-	// For now, returning as is from the repository. If roles are needed, it's often better
-	// to have a separate method or an option in ListUsersParams to include them to avoid N+1 queries.
+	if params.IncludeRoles {
+		for _, u := range users {
+			roleEntities, err := s.roleRepo.GetRolesForUser(ctx, u.ID.String())
+			if err != nil {
+				s.logger.Warn("Failed to load roles for user", zap.String("user_id", u.ID.String()), zap.Error(err))
+				continue
+			}
+			roles := make([]models.Role, 0, len(roleEntities))
+			for _, r := range roleEntities {
+				role := models.Role{
+					ID:   r.ID,
+					Name: r.Name,
+				}
+				if r.Description != nil {
+					role.Description = *r.Description
+				}
+				role.CreatedAt = r.CreatedAt
+				if r.UpdatedAt != nil {
+					role.UpdatedAt = *r.UpdatedAt
+				}
+				roles = append(roles, role)
+			}
+			u.Roles = roles
+		}
+	}
 
 	return users, total, nil
 }
