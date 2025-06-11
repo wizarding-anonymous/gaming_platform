@@ -1,4 +1,4 @@
-// File: internal/service/telegram_auth_service.go
+// File: backend/services/auth-service/internal/service/telegram_auth_service.go
 package service
 
 import (
@@ -18,7 +18,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // Using existing alias for event payloads
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafkaEvents"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
 	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 )
 

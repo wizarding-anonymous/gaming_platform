@@ -15,7 +15,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafkaEvents"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
 	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 )
 

@@ -16,7 +16,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	// eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/models" // To be removed
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
-	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/interfaces"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	// kafkaMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Not used if handlers don't publish
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // For kafka.CloudEvent
@@ -30,9 +30,12 @@ type MockUserRepository struct {
 	mock.Mock
 	repoInterfaces.UserRepository
 }
+
 func (m *MockUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	args := m.Called(ctx, id)
-	if args.Get(0) == nil { return nil, args.Error(1) }
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(*models.User), args.Error(1)
 }
 func (m *MockUserRepository) UpdateEmail(ctx context.Context, userID uuid.UUID, newEmail string) error {
@@ -48,13 +51,14 @@ func (m *MockUserRepository) UpdateStatus(ctx context.Context, userID uuid.UUID,
 	return args.Error(0)
 }
 func (m *MockUserRepository) UpdateStatusReason(ctx context.Context, userID uuid.UUID, reason *string) error {
-    args := m.Called(ctx, userID, reason)
-    return args.Error(0)
+	args := m.Called(ctx, userID, reason)
+	return args.Error(0)
 }
 func (m *MockUserRepository) Delete(ctx context.Context, userID uuid.UUID) error {
 	args := m.Called(ctx, userID)
 	return args.Error(0)
 }
+
 // Add other UserRepo methods if needed by handlers under test
 
 // MockVerificationCodeRepository
@@ -62,6 +66,7 @@ type MockVerificationCodeRepository struct {
 	mock.Mock
 	repoInterfaces.VerificationCodeRepository
 }
+
 func (m *MockVerificationCodeRepository) Create(ctx context.Context, vc *models.VerificationCode) error {
 	args := m.Called(ctx, vc)
 	return args.Error(0)
@@ -71,80 +76,87 @@ func (m *MockVerificationCodeRepository) DeleteByUserIDAndType(ctx context.Conte
 	return args.Get(0).(int64), args.Error(1)
 }
 func (m *MockVerificationCodeRepository) DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
-    args := m.Called(ctx, userID)
-    return args.Get(0).(int64), args.Error(1)
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
 }
-
 
 // MockAuthLogicService (subset for AccountEventsHandler)
 type MockAuthLogicService struct {
 	mock.Mock
 	domainService.AuthLogicService // Embed interface
 }
+
 func (m *MockAuthLogicService) SystemLogoutAllUserSessions(ctx context.Context, userID uuid.UUID, reason string) error {
 	args := m.Called(ctx, userID, reason)
 	return args.Error(0)
 }
+
 // Add other AuthLogicService methods if called by handlers
 
 // MockSessionRepository
 type MockSessionRepository struct {
-    mock.Mock
-    repoInterfaces.SessionRepository
+	mock.Mock
+	repoInterfaces.SessionRepository
 }
+
 func (m *MockSessionRepository) DeleteAllByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
-    args := m.Called(ctx, userID)
-    return args.Get(0).(int64), args.Error(1)
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 // MockRefreshTokenRepository
 type MockRefreshTokenRepository struct {
-    mock.Mock
-    repoInterfaces.RefreshTokenRepository
+	mock.Mock
+	repoInterfaces.RefreshTokenRepository
 }
+
 func (m *MockRefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
-    args := m.Called(ctx, userID)
-    return args.Get(0).(int64), args.Error(1)
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 // MockMFASecretRepository
 type MockMFASecretRepository struct {
-    mock.Mock
-    repoInterfaces.MFASecretRepository
+	mock.Mock
+	repoInterfaces.MFASecretRepository
 }
+
 func (m *MockMFASecretRepository) DeleteAllForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
-    args := m.Called(ctx, userID)
-    return args.Get(0).(int64), args.Error(1)
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 // MockMFABackupCodeRepository
 type MockMFABackupCodeRepository struct {
-    mock.Mock
-    repoInterfaces.MFABackupCodeRepository
+	mock.Mock
+	repoInterfaces.MFABackupCodeRepository
 }
+
 func (m *MockMFABackupCodeRepository) DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
-    args := m.Called(ctx, userID)
-    return args.Get(0).(int64), args.Error(1)
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 // MockAPIKeyRepository
 type MockAPIKeyRepository struct {
-    mock.Mock
-    repoInterfaces.APIKeyRepository
+	mock.Mock
+	repoInterfaces.APIKeyRepository
 }
+
 func (m *MockAPIKeyRepository) RevokeAllByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
-    args := m.Called(ctx, userID)
-    return args.Get(0).(int64), args.Error(1)
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 // MockExternalAccountRepository
 type MockExternalAccountRepository struct {
-    mock.Mock
-    repoInterfaces.ExternalAccountRepository
+	mock.Mock
+	repoInterfaces.ExternalAccountRepository
 }
+
 func (m *MockExternalAccountRepository) DeleteAllByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
-    args := m.Called(ctx, userID)
-    return args.Get(0).(int64), args.Error(1)
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 // MockAuditLogRecorder
@@ -152,28 +164,28 @@ type MockAuditLogRecorder struct {
 	mock.Mock
 	domainService.AuditLogRecorder
 }
+
 func (m *MockAuditLogRecorder) RecordEvent(ctx context.Context, actorUserID *uuid.UUID, eventName string, status models.AuditLogStatus, targetUserID *uuid.UUID, targetType models.AuditTargetType, details map[string]interface{}, ipAddress string, userAgent string) {
 	m.Called(ctx, actorUserID, eventName, status, targetUserID, targetType, details, ipAddress, userAgent)
 }
 
-
 // --- AccountEventsHandler Test Suite ---
 type AccountEventsHandlerTestSuite struct {
 	suite.Suite
-	handler             *AccountEventsHandler
-	mockUserRepo        *MockUserRepository
-	mockVerificationRepo*MockVerificationCodeRepository
-	mockAuthLogicSvc    *MockAuthLogicService
+	handler              *AccountEventsHandler
+	mockUserRepo         *MockUserRepository
+	mockVerificationRepo *MockVerificationCodeRepository
+	mockAuthLogicSvc     *MockAuthLogicService
 	// mockKafkaProducer   *kafkaMocks.MockProducer // Handler does not publish, so producer mock not needed here
-	mockSessionRepo     *MockSessionRepository
-	mockRefreshRepo     *MockRefreshTokenRepository
-	mockMfaSecretRepo   *MockMFASecretRepository
-	mockMfaBackupRepo   *MockMFABackupCodeRepository
-	mockApiKeyRepo      *MockAPIKeyRepository
-	mockExtAccRepo      *MockExternalAccountRepository
-	mockAuditRecorder   *MockAuditLogRecorder
-	cfg                 *config.Config
-	logger              *zap.Logger
+	mockSessionRepo   *MockSessionRepository
+	mockRefreshRepo   *MockRefreshTokenRepository
+	mockMfaSecretRepo *MockMFASecretRepository
+	mockMfaBackupRepo *MockMFABackupCodeRepository
+	mockApiKeyRepo    *MockAPIKeyRepository
+	mockExtAccRepo    *MockExternalAccountRepository
+	mockAuditRecorder *MockAuditLogRecorder
+	cfg               *config.Config
+	logger            *zap.Logger
 }
 
 func (s *AccountEventsHandlerTestSuite) SetupTest() {
@@ -297,21 +309,19 @@ func (s *AccountEventsHandlerTestSuite) TestHandleAccountUserProfileUpdated_Stat
 		DataContentType: PtrToString("application/json"),
 		Data:            payloadBytes,
 	}
-    // user := &models.User{ID: userID, Status: models.UserStatusActive} // Not strictly needed if FindByID is not called by handler
+	// user := &models.User{ID: userID, Status: models.UserStatusActive} // Not strictly needed if FindByID is not called by handler
 
 	// Mocking for the logic within HandleAccountUserProfileUpdated for status change to blocked
-    s.mockUserRepo.On("UpdateStatus", ctx, userID, models.UserStatusBlocked).Return(nil).Once()
-    s.mockSessionRepo.On("DeleteAllUserSessions", ctx, userID, (*uuid.UUID)(nil)).Return(int64(1), nil).Once() // Adjusted based on handler logic for blocked status
-    s.mockAuditRecorder.On("RecordEvent", ctx, mock.Anything, "profile_updated_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
-
+	s.mockUserRepo.On("UpdateStatus", ctx, userID, models.UserStatusBlocked).Return(nil).Once()
+	s.mockSessionRepo.On("DeleteAllUserSessions", ctx, userID, (*uuid.UUID)(nil)).Return(int64(1), nil).Once() // Adjusted based on handler logic for blocked status
+	s.mockAuditRecorder.On("RecordEvent", ctx, mock.Anything, "profile_updated_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
 
 	err := s.handler.HandleAccountUserProfileUpdated(ctx, cloudEvent)
 	assert.NoError(s.T(), err)
-    s.mockUserRepo.AssertExpectations(s.T())
+	s.mockUserRepo.AssertExpectations(s.T())
 	s.mockSessionRepo.AssertExpectations(s.T()) // Changed from mockAuthLogicSvc
-    s.mockAuditRecorder.AssertExpectations(s.T())
+	s.mockAuditRecorder.AssertExpectations(s.T())
 }
-
 
 // TestHandleAccountUserDeleted
 func (s *AccountEventsHandlerTestSuite) TestHandleAccountUserDeleted() {
@@ -334,13 +344,12 @@ func (s *AccountEventsHandlerTestSuite) TestHandleAccountUserDeleted() {
 	// Mocking for the logic within HandleAccountUserDeleted
 	// The handler calls authService.SystemDeleteUser
 	s.mockAuthLogicSvc.On("SystemDeleteUser", ctx, userID).Return(nil).Once()
-    s.mockAuditRecorder.On("RecordEvent", ctx, mock.Anything, "user_deleted_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
-
+	s.mockAuditRecorder.On("RecordEvent", ctx, mock.Anything, "user_deleted_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
 
 	err := s.handler.HandleAccountUserDeleted(ctx, cloudEvent)
 	assert.NoError(s.T(), err)
-    s.mockAuthLogicSvc.AssertExpectations(s.T()) // Check if SystemDeleteUser was called
-    s.mockAuditRecorder.AssertExpectations(s.T())
+	s.mockAuthLogicSvc.AssertExpectations(s.T()) // Check if SystemDeleteUser was called
+	s.mockAuditRecorder.AssertExpectations(s.T())
 }
 
 // Helper function to get a pointer to a string

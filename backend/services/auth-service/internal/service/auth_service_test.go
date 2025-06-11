@@ -15,8 +15,8 @@ import (
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/interfaces"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
-	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
 	// eventMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Assuming a kafka mock might exist or be needed
 	eventskafka "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"  // For eventskafka.EventType
 	mockproducer "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Mock producer
