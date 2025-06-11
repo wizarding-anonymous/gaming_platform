@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -150,7 +151,17 @@ func (s *TelegramAuthService) AuthenticateViaTelegram(ctx context.Context, teleg
 		if username == "" {
 			username = fmt.Sprintf("%s_%s", TelegramProviderName, externalUserID)
 		}
-		// TODO: Check for username collisions and handle appropriately (e.g., append random suffix)
+
+		for {
+			if _, uErr := userRepoTx.FindByUsername(txCtx, username); uErr != nil {
+				if errors.Is(uErr, domainErrors.ErrUserNotFound) {
+					break
+				}
+				s.logger.Error("Failed to check username uniqueness", zap.Error(uErr))
+				return nil, nil, domainErrors.ErrInternal
+			}
+			username = fmt.Sprintf("%s_%s", username, uuid.NewString()[:6])
+		}
 
 		var photoURLPtr *string
 		if verifiedProfile.PhotoURL != "" {
