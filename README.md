@@ -47,3 +47,15 @@ go env -w GOPROXY=https://your.corp.proxy/,direct
 ```
 
 The helper script `setup-go-proxy.sh` in the repository root automates this step.
+
+## Generating Test Keys
+
+Use OpenSSL to create a local RSA key pair for development:
+
+```bash
+openssl genpkey -algorithm RSA -out configs/keys/dev_private_key.pem -pkeyopt rsa_keygen_bits:2048
+openssl rsa -pubout -in configs/keys/dev_private_key.pem -out configs/keys/dev_public_key.pem
+```
+
+These commands place the keys in `configs/keys`. The `.gitignore` file prevents
+these files from being committed.
