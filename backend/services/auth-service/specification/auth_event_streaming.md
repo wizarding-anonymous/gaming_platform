@@ -1,4 +1,4 @@
-<!-- File: backend/services/auth-service/specification_final/auth_event_streaming.md -->
+<!-- File: backend/services/auth-service/specification/auth_event_streaming.md -->
 # Auth Service: Event Streaming Specification
 
 **Version:** 1.0
@@ -14,7 +14,7 @@ This document specifies the event-driven interactions for the Auth Service. It d
 *   **Event Format**: All events adhere to the CloudEvents v1.0 specification, using JSON for the data payload.
 *   **Serialization**: JSON.
 *   **Topics**:
-    *   Auth Service primarily publishes to a dedicated topic: `auth-events`.
+*   Auth Service primarily publishes to a dedicated topic: `auth.events`.
     *   Auth Service consumes events from topics related to other services (e.g., `account-events`, `admin-events`).
 *   **Partitions**: Kafka topics should be partitioned appropriately (e.g., by `user_id` or `subject` of the CloudEvent where relevant) to ensure ordered processing for related events and to allow for consumer scaling.
 *   **Consumer Groups**: Each consuming service (or logical group of instances) should use a unique consumer group ID for Kafka.
@@ -34,7 +34,7 @@ All events published by the Auth Service will include the following CloudEvents 
 
 ## 4. Published Events
 
-Auth Service publishes the following events to the `auth-events` Kafka topic.
+Auth Service publishes the following events to the `auth.events` Kafka topic.
 
 ---
 

@@ -24,7 +24,7 @@ redis:
 kafka:
   brokers: ["localhost:9092"]
   producer:
-    topic: "auth-events"
+    topic: "auth.events"
     role_topic: "auth-role-events"
     user_role_topic: "auth-user-role-events"
     role_permission_topic: "auth-role-permission-events"
