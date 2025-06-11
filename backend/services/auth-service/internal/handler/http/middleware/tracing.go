@@ -1,4 +1,4 @@
-// File: internal/handler/http/middleware/tracing.go
+// File: backend/services/auth-service/internal/handler/http/middleware/tracing.go
 
 package middleware
 

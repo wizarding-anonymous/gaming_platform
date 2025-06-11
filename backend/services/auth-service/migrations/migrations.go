@@ -1,4 +1,4 @@
-// File: internal/migrations/migrations.go
+// File: backend/services/auth-service/migrations/migrations.go
 
 package migrations
 

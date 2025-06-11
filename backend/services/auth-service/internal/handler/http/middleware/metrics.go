@@ -1,4 +1,4 @@
-// File: internal/handler/http/middleware/metrics.go
+// File: backend/services/auth-service/internal/handler/http/middleware/metrics.go
 
 package middleware
 

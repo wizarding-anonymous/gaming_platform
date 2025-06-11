@@ -1,4 +1,4 @@
-// File: .github/workflows/ci.yml
+# File: backend/services/auth-service/.github/workflows/ci.yml
 
 name: CI/CD Pipeline
 

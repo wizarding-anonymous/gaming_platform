@@ -1,4 +1,4 @@
-// File: internal/handler/grpc/interceptors/recovery.go
+// File: backend/services/auth-service/internal/handler/grpc/interceptors/recovery.go
 
 package interceptors
 
