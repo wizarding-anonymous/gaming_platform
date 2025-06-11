@@ -183,14 +183,21 @@ func (s *TokenService) RefreshTokens(ctx context.Context, plainOpaqueRefreshToke
 		return models.TokenPair{}, domainErrors.ErrUserBlocked
 	}
 
-	// Fetch associated session (optional, but good for validation if session can be independently invalidated)
-	_, err = s.sessionRepo.FindByID(ctx, storedRefreshToken.SessionID)
+	// Fetch associated session and ensure it is active
+	session, err := s.sessionRepo.FindByID(ctx, storedRefreshToken.SessionID)
 	if err != nil {
 		s.logger.Error("Session not found for refresh token", zap.String("session_id", storedRefreshToken.SessionID.String()), zap.Error(err))
 		metrics.TokenRefreshTotal.WithLabelValues("failure_session_not_found").Inc()
-		return models.TokenPair{}, domainErrors.ErrSessionNotFound // Or ErrInvalidRefreshToken
+		return models.TokenPair{}, domainErrors.ErrSessionNotFound
 	}
-	// TODO: Add check here if session.IsActive or similar if sessions can be revoked separately.
+	if time.Now().After(session.ExpiresAt) {
+		revokeReason := "session_inactive"
+		if errRev := s.refreshTokenRepo.Revoke(ctx, storedRefreshToken.ID, &revokeReason); errRev != nil {
+			s.logger.Error("Failed to revoke refresh token for inactive session", zap.Error(errRev))
+		}
+		metrics.TokenRefreshTotal.WithLabelValues("failure_session_not_found").Inc()
+		return models.TokenPair{}, domainErrors.ErrSessionNotFound
+	}
 
 	// Rotation: Revoke the old refresh token
 	revokeReason := "rotated"
