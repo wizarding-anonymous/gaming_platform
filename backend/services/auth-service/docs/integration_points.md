@@ -71,7 +71,7 @@ The REST API is primarily for end-user clients (via frontend applications) and a
 
 Auth Service publishes these events to inform other parts of the system.
 **Default Source**: `auth-service`
-**Default Topic**: `auth-events` (or specific topics per event group if needed)
+**Default Topic**: `auth.events` (or specific topics per event group if needed)
 **Format**: JSON CloudEvents 1.0
 
 *   **`auth.user.registered`**:

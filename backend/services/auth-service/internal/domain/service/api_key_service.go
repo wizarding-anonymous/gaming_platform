@@ -26,6 +26,8 @@ import (
 const (
 	apiKeyPrefix       = "pltfrm_sk_" // Platform Service Key prefix (example)
 	apiKeySecretLength = 32           // Bytes for the secret part
+	// RequiredPermissionsCtxKey is the context key for required permissions when authenticating an API key.
+	RequiredPermissionsCtxKey = "required_permissions"
 )
 
 // APIKeyService defines the interface for managing API keys.
@@ -181,10 +183,10 @@ func (s *apiKeyServiceImpl) GenerateAndStoreAPIKey(
 	subjectAPIKeyCreated := storedKey.UserID // UserID is string, used as subject
 	contentTypeJSON := "application/json"    // Default content type
 	// Assuming event type models.AuthAPIKeyCreatedV1 is kafkaPkg.EventType (string alias)
-	// TODO: Determine correct topic. Using placeholder "auth-events".
+	// Publish event to the standard auth events topic.
 	if err := s.kafkaProducer.PublishCloudEvent(
 		ctx,
-		"auth-events", // topic
+		kafkaPkg.AuthEventsTopic,
 		kafkaPkg.EventType(models.AuthAPIKeyCreatedV1), // eventType
 		&subjectAPIKeyCreated,                          // subject
 		&contentTypeJSON,                               // dataContentType
@@ -259,10 +261,10 @@ func (s *apiKeyServiceImpl) RevokeUserAPIKey(ctx context.Context, userID string,
 	subjectAPIKeyRevoked := userID // UserID is string, used as subject
 	contentTypeJSON := "application/json"
 	// Assuming event type models.AuthAPIKeyRevokedV1 is kafkaPkg.EventType (string alias)
-	// TODO: Determine correct topic
+	// Publish event to the standard auth events topic
 	if err := s.kafkaProducer.PublishCloudEvent(
 		ctx,
-		"auth-events", // topic
+		kafkaPkg.AuthEventsTopic,
 		kafkaPkg.EventType(models.AuthAPIKeyRevokedV1), // eventType
 		&subjectAPIKeyRevoked,                          // subject
 		&contentTypeJSON,                               // dataContentType
@@ -400,10 +402,23 @@ func (s *apiKeyServiceImpl) AuthenticateByAPIKey(
 			return apiKeyEntity.UserID, []string{}, apiKeyEntity.ID, fmt.Errorf("failed to unmarshal key permissions: %w", errUnmarshal)
 		}
 	}
-	// TODO: Add actual permission check logic here if AuthenticateByAPIKey should also validate scopes/permissions.
-	// If it should, and permissions are insufficient:
-	// metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_no_permission").Inc()
-	// return "", nil, apiKeyEntity.ID, errors.New("insufficient permissions for API key")
+	// Check required permissions from context, if provided.
+	if reqPerms, ok := ctx.Value(RequiredPermissionsCtxKey).([]string); ok && len(reqPerms) > 0 {
+		permSet := make(map[string]struct{}, len(perms))
+		for _, p := range perms {
+			permSet[p] = struct{}{}
+		}
+		for _, rp := range reqPerms {
+			if _, has := permSet[rp]; !has {
+				err = errors.New("insufficient permissions for API key")
+				auditDetails["error_reason"] = err.Error()
+				auditDetails["missing_permission"] = rp
+				s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_failure", models.AuditLogStatusFailure, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent)
+				metrics.APIKeyValidationAttemptsTotal.WithLabelValues("failure_no_permission").Inc()
+				return "", nil, apiKeyEntity.ID, err
+			}
+		}
+	}
 
 	auditDetails["permissions_granted_count"] = len(perms)                                                                                                                                    // Example of adding success detail
 	s.auditLogRecorder.RecordEvent(ctx, actorIDForLog, "apikey_auth_success", models.AuditLogStatusSuccess, targetKeyIDStr, models.AuditTargetTypeAPIKey, auditDetails, ipAddress, userAgent) // Assuming models.AuditLogStatusSuccess
