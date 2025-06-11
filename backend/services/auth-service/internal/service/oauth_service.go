@@ -1,4 +1,4 @@
-// File: internal/service/oauth_service.go
+// File: backend/services/auth-service/internal/service/oauth_service.go
 package service
 
 import (
@@ -27,7 +27,7 @@ type OAuthService struct {
 	sessionService      *SessionService
 	tokenService        *TokenService // For creating platform tokens after successful OAuth
 	transactionManager  domainService.TransactionManager
-	kafkaClient         *kafkaEvents.Producer          // For publishing events
+	kafkaClient         *kafkaEvents.Producer // For publishing events
 	auditLogRecorder    domainService.AuditLogRecorder
 	oauth2Configs       map[string]*oauth2.Config
 }
@@ -329,11 +329,11 @@ func (s *OAuthService) HandleOAuthCallback(ctx context.Context, provider, code, 
 	// 8. Publish login event (even for new users, as they are now logged in)
 	if s.kafkaClient != nil {
 		loginEvent := kafkaEvents.UserLoggedInEvent{
-			UserID:    user.ID.String(),
-			SessionID: session.ID.String(),
-			LoginTime: time.Now(),
-			UserAgent: r.UserAgent(),
-			IPAddress: r.RemoteAddr(),
+			UserID:     user.ID.String(),
+			SessionID:  session.ID.String(),
+			LoginTime:  time.Now(),
+			UserAgent:  r.UserAgent(),
+			IPAddress:  r.RemoteAddr(),
 			AuthMethod: "oauth_" + provider,
 		}
 		if err := s.kafkaClient.PublishUserLoggedInEvent(ctx, loginEvent); err != nil {
@@ -429,7 +429,7 @@ func (s *OAuthService) fetchUserInfo(ctx context.Context, config *oauth2.Config,
 // cfg.OAuthProviders structure is assumed to be compatible.
 
 // Placeholder for missing imports, will be added as needed by other files
-import (
-	"encoding/json"
-	"time"
-)
+// import (
+//     "encoding/json"
+//     "time"
+// )
