@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid" // Added for userID parsing
 	"go.uber.org/zap"
 
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models" // For request/response structs if any become shared
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"                // For request/response structs if any become shared
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service" // For service interfaces
-	appService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service" // For concrete service like AuthService
+	appService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"           // For concrete service like AuthService
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/middleware" // For auth middleware
 )
 
@@ -81,14 +81,14 @@ func (h *MeHandler) GetMe(c *gin.Context) {
 	// The user's claims should be available in the Gin context if set by middleware.
 	// Example: claims, exists := c.Get(middleware.AuthClaimsKey)
 	// For this example, we'll simulate getting UserID from context.
-	
+
 	userIDFromToken, exists := c.Get("userID") // Assuming middleware sets this
 	if !exists {
 		h.logger.Error("GetMe: userID not found in context, auth middleware might not be working")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: User ID not found in token claims"})
 		return
 	}
-	
+
 	userIDStr, ok := userIDFromToken.(string)
 	if !ok || userIDStr == "" {
 		h.logger.Error("GetMe: userID in context is not a valid string", zap.Any("userID", userIDFromToken))
@@ -120,18 +120,17 @@ func (h *MeHandler) GetMe(c *gin.Context) {
 		// Add mfa_enabled to UserResponse or create a MeUserResponse DTO
 	}
 	// Add mfa_enabled if UserResponse DTO is extended or use a map
-	 responseMap := map[string]interface{}{
-        "id":          meResponse.ID,
-        "username":    meResponse.Username,
-        "email":       meResponse.Email,
-        "status":      meResponse.Status,
-        "created_at":  meResponse.CreatedAt,
-        "mfa_enabled": mfaEnabled,
-    }
+	responseMap := map[string]interface{}{
+		"id":          meResponse.ID,
+		"username":    meResponse.Username,
+		"email":       meResponse.Email,
+		"status":      meResponse.Status,
+		"created_at":  meResponse.CreatedAt,
+		"mfa_enabled": mfaEnabled,
+	}
 
 	c.JSON(http.StatusOK, responseMap)
 }
-
 
 // TODO: Implement other /me handlers:
 // - PUT /me/password
@@ -158,7 +157,7 @@ func RegisterMeRoutes(router *gin.RouterGroup, meHandler *MeHandler /*, authMidd
 		me.POST("/2fa/totp/disable", meHandler.DisableTOTP)
 		me.POST("/2fa/backup-codes/regenerate", meHandler.RegenerateBackupCodes)
 		me.GET("/2fa/backup-codes", meHandler.GetBackupCodeStatus)
-		me.GET("/sessions", meHandler.ListMySessions)                // Added ListMySessions route
+		me.GET("/sessions", meHandler.ListMySessions)                 // Added ListMySessions route
 		me.DELETE("/sessions/:session_id", meHandler.DeleteMySession) // Added DeleteMySession route
 
 		// API Key Routes
@@ -167,7 +166,6 @@ func RegisterMeRoutes(router *gin.RouterGroup, meHandler *MeHandler /*, authMidd
 		me.DELETE("/api-keys/:key_id", meHandler.DeleteMyAPIKey)
 	}
 }
-
 
 // ChangePassword handles updating the authenticated user's password.
 // PUT /me/password
@@ -249,7 +247,6 @@ func (h *MeHandler) EnableTOTP(c *gin.Context) {
 		return
 	}
 	accountName := usernameFromContext.(string)
-
 
 	mfaSecretID, secretBase32, otpAuthURL, err := h.mfaLogicSvc.Enable2FAInitiate(c.Request.Context(), userID, accountName)
 	if err != nil {
@@ -754,8 +751,8 @@ func (h *MeHandler) DeleteMyAPIKey(c *gin.Context) {
 		}
 		// If apiKeySvc.DeleteKey checks ownership and could return ErrForbidden:
 		if errors.Is(err, domainErrors.ErrForbidden) {
-			 c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: API key does not belong to user"})
-			 return
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: API key does not belong to user"})
+			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete API key"})
 		return
@@ -764,11 +761,3 @@ func (h *MeHandler) DeleteMyAPIKey(c *gin.Context) {
 	logger.Info("Successfully deleted API key")
 	c.Status(http.StatusNoContent)
 }
-
-// Need to import "strings" for error checking example
-import (
-	"strings"
-	"time"
-	"encoding/json"
-	"errors"
-)
