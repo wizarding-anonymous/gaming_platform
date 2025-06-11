@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/postgres"
-	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security" // For hashing backup codes
 
 	"github.com/golang-migrate/migrate/v4"
@@ -148,7 +148,6 @@ func (s *MFABackupCodeRepositoryTestSuite) helperCreateBackupCode(userID uuid.UU
 	return backupCode
 }
 
-
 func (s *MFABackupCodeRepositoryTestSuite) TestCreateBackupCode_Success() {
 	ctx := context.Background()
 	plainCode := "123456"
@@ -219,7 +218,6 @@ func (s *MFABackupCodeRepositoryTestSuite) TestCreateMultipleBackupCodes_Partial
 	assert.EqualValues(s.T(), 1, count, "Only the initially created code should exist") // "code_dup" from helper
 }
 
-
 func (s *MFABackupCodeRepositoryTestSuite) TestFindByUserIDAndCodeHash_Scenarios() {
 	ctx := context.Background()
 	plainActive := "active123"
@@ -270,14 +268,12 @@ func (s *MFABackupCodeRepositoryTestSuite) TestMarkAsUsed_Scenarios() {
 	assert.ErrorIs(s.T(), err, domainErrors.ErrBackupCodeNotFound)
 }
 
-
 func (s *MFABackupCodeRepositoryTestSuite) TestDeleteByUserID_Success() {
 	ctx := context.Background()
 	s.helperCreateBackupCode(s.testUser.ID, "del_bc1", nil)
 	s.helperCreateBackupCode(s.testUser.ID, "del_bc2", nil)
 	otherUser := s.helperCreateUserForAuditTest("other_mfa_backup") // Reusing user helper
 	otherCode := s.helperCreateBackupCode(otherUser.ID, "other_user_bc", nil)
-
 
 	deletedCount, err := s.repo.DeleteByUserID(ctx, s.testUser.ID)
 	require.NoError(s.T(), err)
@@ -324,28 +320,30 @@ func (s *MFABackupCodeRepositoryTestSuite) TestCountActiveByUserID() {
 	assert.EqualValues(s.T(), 0, count)
 }
 
-// TestFindByUserID (if it exists in the repository)
-// func (s *MFABackupCodeRepositoryTestSuite) TestFindByUserID() {
-// 	ctx := context.Background()
-// 	bc1 := s.helperCreateBackupCode(s.testUser.ID, "find_uid1", nil)
-// 	bc2 := s.helperCreateBackupCode(s.testUser.ID, "find_uid2", PtrToTime(time.Now())) // one used
-// 	s.helperCreateBackupCode(s.helperCreateUserForAuditTest("other_find_uid").ID, "other_uid1", nil)
-
-// 	codes, err := s.repo.FindByUserID(ctx, s.testUser.ID)
-// 	require.NoError(s.T(), err)
-// 	assert.Len(s.T(), codes, 2)
-//
-// 	var foundBc1, foundBc2 bool
-// 	for _, c := range codes {
-// 		if c.ID == bc1.ID { foundBc1 = true }
-// 		if c.ID == bc2.ID { foundBc2 = true }
-// 	}
-// 	assert.True(s.T(), foundBc1, "Expected to find bc1")
-// 	assert.True(s.T(), foundBc2, "Expected to find bc2")
-// }
-
 // Note: The method MarkAsUsedByCodeHash is not in the provided MFABackupCodeRepository interface
 // in mfa_logic_service_test.go. If it was added to the actual repository, tests would be needed.
 // For now, assuming it's not part of the current interface to be tested.
 // If it is:
 // func (s *MFABackupCodeRepositoryTestSuite) TestMarkAsUsedByCodeHash_Success() { ... }
+func (s *MFABackupCodeRepositoryTestSuite) TestFindByUserID() {
+	ctx := context.Background()
+	bc1 := s.helperCreateBackupCode(s.testUser.ID, "find_uid1", nil)
+	bc2 := s.helperCreateBackupCode(s.testUser.ID, "find_uid2", PtrToTime(time.Now())) // one used
+	s.helperCreateBackupCode(s.helperCreateUserForAuditTest("other_find_uid").ID, "other_uid1", nil)
+
+	codes, err := s.repo.FindByUserID(ctx, s.testUser.ID)
+	require.NoError(s.T(), err)
+	assert.Len(s.T(), codes, 2)
+
+	var foundBc1, foundBc2 bool
+	for _, c := range codes {
+		if c.ID == bc1.ID {
+			foundBc1 = true
+		}
+		if c.ID == bc2.ID {
+			foundBc2 = true
+		}
+	}
+	assert.True(s.T(), foundBc1, "Expected to find bc1")
+	assert.True(s.T(), foundBc2, "Expected to find bc2")
+}
