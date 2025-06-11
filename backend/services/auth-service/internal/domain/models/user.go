@@ -32,11 +32,11 @@ type User struct {
 type UserStatus string
 
 const (
-	UserStatusActive             UserStatus = "active"
-	UserStatusInactive           UserStatus = "inactive"
-	UserStatusBlocked            UserStatus = "blocked"
+	UserStatusActive              UserStatus = "active"
+	UserStatusInactive            UserStatus = "inactive"
+	UserStatusBlocked             UserStatus = "blocked"
 	UserStatusPendingVerification UserStatus = "pending_verification"
-	UserStatusDeleted            UserStatus = "deleted"
+	UserStatusDeleted             UserStatus = "deleted"
 )
 
 // ListUsersParams defines parameters for listing users with pagination and filtering.
@@ -46,6 +46,7 @@ type ListUsersParams struct {
 	Status           UserStatus `json:"status,omitempty"`
 	UsernameContains string     `json:"username_contains,omitempty"`
 	EmailContains    string     `json:"email_contains,omitempty"`
+	IncludeRoles     bool       `json:"include_roles,omitempty"`
 	// Add other filter fields as needed, e.g., CreatedAfter, CreatedBefore
 }
 
@@ -60,8 +61,8 @@ type CreateUserRequest struct {
 // UpdateUserRequest represents data for updating a user.
 // Typically used in service layer.
 type UpdateUserRequest struct {
-	Username            *string     `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
-	Email               *string     `json:"email,omitempty" validate:"omitempty,email"`
+	Username *string `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
+	Email    *string `json:"email,omitempty" validate:"omitempty,email"`
 	// Status field update might be a separate admin endpoint or handled by specific actions like email verification.
 }
 
@@ -91,7 +92,6 @@ type ResetPasswordRequest struct {
 	Token       string `json:"token" binding:"required"`
 	NewPassword string `json:"new_password" binding:"required,min=8,max=100"`
 }
-
 
 // UserResponse structures the user data returned by API endpoints.
 type UserResponse struct {
