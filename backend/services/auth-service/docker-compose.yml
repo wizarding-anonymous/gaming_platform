@@ -1,4 +1,4 @@
-// File: docker-compose.yml
+# File: backend/services/auth-service/docker-compose.yml
 
 version: '3.8'
 

@@ -1,4 +1,4 @@
-// File: internal/handler/grpc/server.go
+// File: backend/services/auth-service/internal/handler/grpc/server.go
 
 package grpc
 

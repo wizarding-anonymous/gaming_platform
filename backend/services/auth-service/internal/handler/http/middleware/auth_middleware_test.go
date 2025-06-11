@@ -1,4 +1,4 @@
-// File: internal/handler/http/middleware/auth_middleware_test.go
+// File: backend/services/auth-service/internal/handler/http/middleware/auth_middleware_test.go
 package middleware_test
 
 import (

@@ -1,4 +1,4 @@
-// File: internal/handler/http/response.go
+// File: backend/services/auth-service/internal/handler/http/response.go
 
 package http
 

@@ -1,4 +1,4 @@
-// File: internal/handler/http/middleware/recovery.go
+// File: backend/services/auth-service/internal/handler/http/middleware/recovery.go
 
 package middleware
 

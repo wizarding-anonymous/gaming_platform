@@ -1,4 +1,4 @@
-# account-service\monitoring\prometheus\prometheus.yml
+# File: backend/services/account-service/deployments/monitoring/prometheus/prometheus.yml
 global:
   scrape_interval: 15s
   evaluation_interval: 15s

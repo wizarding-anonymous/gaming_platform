@@ -1,4 +1,4 @@
-// File: internal/handler/grpc/interceptors/tracing.go
+// File: backend/services/auth-service/internal/handler/grpc/interceptors/tracing.go
 
 package interceptors
 

@@ -1,4 +1,4 @@
-# account-service\monitoring\grafana\provisioning\datasources\prometheus.yml
+# File: backend/services/account-service/deployments/monitoring/grafana/provisioning/datasources/prometheus.yml
 {
   "apiVersion": 1,
   "datasources": [

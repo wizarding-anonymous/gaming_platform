@@ -1,4 +1,4 @@
-// File: internal/handler/http/middleware/auth.go
+// File: backend/services/auth-service/internal/handler/http/middleware/auth.go
 
 package middleware
 

@@ -1,4 +1,4 @@
-// File: internal/handler/http/router.go
+// File: backend/services/auth-service/internal/handler/http/router.go
 
 package http
 
