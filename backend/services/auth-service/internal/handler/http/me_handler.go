@@ -109,6 +109,46 @@ func RegisterMeRoutes(router *gin.RouterGroup, meHandler *MeHandler /*, authMidd
 	}
 }
 
+// ChangePassword updates the authenticated user's password.
+// PUT /me/password
+func (h *MeHandler) ChangePassword(c *gin.Context) {
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		h.logger.Error("ChangePassword: userID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: User ID not found in token claims"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		h.logger.Error("ChangePassword: failed to parse userID from context", zap.String("rawUserID", userIDStr.(string)), zap.Error(err))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: Invalid User ID format"})
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Error("ChangePassword: failed to bind request JSON", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload: " + err.Error()})
+		return
+	}
+
+	err = h.authService.ChangePassword(c.Request.Context(), userID, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		h.logger.Error("ChangePassword: authService.ChangePassword failed", zap.Error(err), zap.String("userID", userID.String()))
+		if errors.Is(err, domainErrors.ErrInvalidCredentials) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid current password"})
+		} else if errors.Is(err, domainErrors.ErrUserNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change password"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+}
+
 // EnableTOTP handles the initiation of TOTP-based 2FA for the authenticated user.
 // POST /me/2fa/totp/enable
 func (h *MeHandler) EnableTOTP(c *gin.Context) {
