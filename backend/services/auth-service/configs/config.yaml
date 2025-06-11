@@ -136,3 +136,6 @@ oauth_providers:
 
 telegram:
   bot_token: "YOUR_TELEGRAM_BOT_TOKEN"
+
+oauth_error_page_url: "http://localhost:3000/oauth/error"
+oauth_success_redirect_url: "http://localhost:3000/oauth/success"

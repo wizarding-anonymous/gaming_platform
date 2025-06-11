@@ -141,9 +141,6 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	})
 }
 
-// TODO: Implement other /admin handlers:
-// - GET /admin/audit-logs (using AuditLogRepository.List)
-
 // GetUserByID handles fetching a specific user by ID for admin.
 // GET /admin/users/:user_id
 func (h *AdminHandler) GetUserByID(c *gin.Context) {
