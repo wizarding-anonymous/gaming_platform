@@ -1,4 +1,4 @@
-// File: internal/handler/http/oauth_handler.go
+// File: backend/services/auth-service/internal/handler/http/oauth_handler.go
 package http
 
 import (
@@ -9,6 +9,7 @@ import (
 	"errors" // Required for errors.Is
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -148,14 +149,23 @@ func (h *OAuthHandler) OAuthCallbackHandler(c *gin.Context) {
 	user, accessToken, refreshToken, err := h.authService.HandleOAuthCallback(c.Request.Context(), providerName, code, ipAddress, userAgent, nil) // Pass nil for clientDeviceInfo for now
 	if err != nil {
 		h.logger.Error("OAuth callback handling failed", zap.String("provider", providerName), zap.Error(err))
-		// TODO: Redirect to a frontend error page with error message
-		// For now, return JSON error
-		if errors.Is(err, domainErrors.ErrOAuthProviderNotFound) || errors.Is(err, domainErrors.ErrOAuthExchangeCode) || errors.Is(err, domainErrors.ErrFailedToFetchUserInfoFromProvider) {
-			ErrorResponse(c.Writer, h.logger, http.StatusBadGateway, fmt.Sprintf("Error communicating with OAuth provider '%s'", providerName), err)
-		} else if errors.Is(err, domainErrors.ErrUserBlocked) {
-			ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is blocked", err)
+		errMsg := "oauth_error"
+		if h.cfg.OAuthErrorPageURL != "" {
+			if errors.Is(err, domainErrors.ErrOAuthProviderNotFound) || errors.Is(err, domainErrors.ErrOAuthExchangeCode) || errors.Is(err, domainErrors.ErrFailedToFetchUserInfoFromProvider) {
+				errMsg = "provider_error"
+			} else if errors.Is(err, domainErrors.ErrUserBlocked) {
+				errMsg = "user_blocked"
+			}
+			redirectErr := fmt.Sprintf("%s?error=%s", h.cfg.OAuthErrorPageURL, url.QueryEscape(errMsg))
+			c.Redirect(http.StatusTemporaryRedirect, redirectErr)
 		} else {
-			ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Failed to process OAuth callback", err)
+			if errors.Is(err, domainErrors.ErrOAuthProviderNotFound) || errors.Is(err, domainErrors.ErrOAuthExchangeCode) || errors.Is(err, domainErrors.ErrFailedToFetchUserInfoFromProvider) {
+				ErrorResponse(c.Writer, h.logger, http.StatusBadGateway, fmt.Sprintf("Error communicating with OAuth provider '%s'", providerName), err)
+			} else if errors.Is(err, domainErrors.ErrUserBlocked) {
+				ErrorResponse(c.Writer, h.logger, http.StatusForbidden, "User account is blocked", err)
+			} else {
+				ErrorResponse(c.Writer, h.logger, http.StatusInternalServerError, "Failed to process OAuth callback", err)
+			}
 		}
 		return
 	}
@@ -165,10 +175,9 @@ func (h *OAuthHandler) OAuthCallbackHandler(c *gin.Context) {
 	SetAuthCookies(c, accessToken, refreshToken, h.cfg.JWT.AccessTokenTTL, h.cfg.JWT.RefreshTokenTTL)
 
 	// 4. Redirect to frontend
-	// TODO: Сделать URL редиректа настраиваемым
-	frontendRedirectURL := h.cfg.App.FrontendBaseURL // Assuming this config exists
+	frontendRedirectURL := h.cfg.OAuthSuccessRedirectURL
 	if frontendRedirectURL == "" {
-		frontendRedirectURL = "/" // Fallback
+		frontendRedirectURL = "/"
 	}
 	// Append query parameters to indicate success, or potentially user info if it's a first-time login
 	redirectURL := fmt.Sprintf("%s?oauth_success=true&provider=%s", frontendRedirectURL, providerName)
