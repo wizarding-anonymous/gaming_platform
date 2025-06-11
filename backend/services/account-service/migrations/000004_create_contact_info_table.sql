@@ -1,3 +1,4 @@
+# File: backend/services/account-service/migrations/000004_create_contact_info_table.sql
 -- account-service\migrations\000004_create_contact_info_table.sql
 -- migrations/000004_create_contact_info_table.sql
 

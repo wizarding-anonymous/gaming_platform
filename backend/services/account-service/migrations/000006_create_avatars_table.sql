@@ -1,3 +1,4 @@
+# File: backend/services/account-service/migrations/000006_create_avatars_table.sql
 -- account-service\migrations\000006_create_avatars_table.sql
 -- migrations/000006_create_avatars_table.sql
 

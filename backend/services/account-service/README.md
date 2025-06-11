@@ -1,3 +1,4 @@
+<!-- File: backend/services/account-service/README.md -->
 # Account Service
 
 Микросервис управления аккаунтами для российского аналога платформы Steam.

@@ -1,3 +1,4 @@
+# File: backend/.gitattributes
 # Установить поведение по умолчанию для текстовых файлов
 * text=auto
 

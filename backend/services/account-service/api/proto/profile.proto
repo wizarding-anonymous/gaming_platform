@@ -1,3 +1,4 @@
+// File: backend/services/account-service/api/proto/profile.proto
 syntax = "proto3";
 
 package profile;

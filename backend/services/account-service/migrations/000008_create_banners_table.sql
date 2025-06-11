@@ -1,3 +1,4 @@
+# File: backend/services/account-service/migrations/000008_create_banners_table.sql
 -- account-service\migrations\000008_create_banners_table.sql
 -- migrations/000008_create_banners_table.sql
 

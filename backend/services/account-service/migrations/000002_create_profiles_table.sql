@@ -1,3 +1,4 @@
+# File: backend/services/account-service/migrations/000002_create_profiles_table.sql
 -- account-service\migrations\000002_create_profiles_table.sql
 -- migrations/000002_create_profiles_table.sql
 

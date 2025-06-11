@@ -1,3 +1,4 @@
+<!-- File: backend/ARCHITECTURE.md -->
 # Архитектура проекта
 
 ## Обзор

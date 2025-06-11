@@ -1,3 +1,4 @@
+# File: backend/services/account-service/deployments/monitoring/grafana/provisioning/dashboards/account-service-dashboard.json
 {
   "annotations": {
     "list": [

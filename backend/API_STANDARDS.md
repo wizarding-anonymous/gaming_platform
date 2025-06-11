@@ -1,3 +1,4 @@
+<!-- File: backend/API_STANDARDS.md -->
 # Стандарты API, форматов данных и событий
 
 ## Стандарты REST API
