@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/postgres"
-	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -200,7 +200,7 @@ func (s *SessionRepositoryTestSuite) TestGetByID_SuccessAndNotFound() {
 	assert.ErrorIs(s.T(), err, domainErrors.ErrSessionNotFound)
 }
 
-func (s *SessionRepositoryTestSuite) TestGetUserSessions_VariousScenarios() {
+func (s *SessionRepositoryTestSuite) TestFindByUserID_VariousScenarios() {
 	ctx := context.Background()
 	user1 := s.helperCreateUser("user1_sessions")
 	user2 := s.helperCreateUser("user2_sessions") // To ensure we only get user1's sessions
@@ -216,37 +216,14 @@ func (s *SessionRepositoryTestSuite) TestGetUserSessions_VariousScenarios() {
 
 	// User with no sessions
 	userNoSessions := s.helperCreateUser("no_sessions")
-	sessionsNone, totalNone, errNone := s.repo.GetUserSessions(ctx, userNoSessions.ID, models.ListSessionsParams{})
+	sessionsNone, errNone := s.repo.FindByUserID(ctx, userNoSessions.ID)
 	require.NoError(s.T(), errNone)
-	assert.Equal(s.T(), 0, totalNone)
 	assert.Empty(s.T(), sessionsNone)
 
 	// User1 all sessions (active and expired)
-	sessionsAll, totalAll, errAll := s.repo.GetUserSessions(ctx, user1.ID, models.ListSessionsParams{})
+	sessionsAll, errAll := s.repo.FindByUserID(ctx, user1.ID)
 	require.NoError(s.T(), errAll)
-	assert.Equal(s.T(), 3, totalAll)
 	assert.Len(s.T(), sessionsAll, 3)
-
-	// User1 active only
-	sessionsActive, totalActive, errActive := s.repo.GetUserSessions(ctx, user1.ID, models.ListSessionsParams{ActiveOnly: true})
-	require.NoError(s.T(), errActive)
-	assert.Equal(s.T(), 2, totalActive) // s1 and s3
-	assert.Len(s.T(), sessionsActive, 2)
-
-	// User1 pagination (expect 2 per page, get page 1)
-	sessionsPage1, totalPage1, errPage1 := s.repo.GetUserSessions(ctx, user1.ID, models.ListSessionsParams{Page: 1, PageSize: 2, OrderBy: "created_at", SortOrder: "ASC"})
-	require.NoError(s.T(), errPage1)
-	assert.Equal(s.T(), 3, totalPage1)
-	assert.Len(s.T(), sessionsPage1, 2)
-	assert.Equal(s.T(), s1.ID, sessionsPage1[0].ID) // s1 was created first
-	assert.Equal(s.T(), s2.ID, sessionsPage1[1].ID)
-
-	// User1 pagination (expect 2 per page, get page 2)
-	sessionsPage2, totalPage2, errPage2 := s.repo.GetUserSessions(ctx, user1.ID, models.ListSessionsParams{Page: 2, PageSize: 2, OrderBy: "created_at", SortOrder: "ASC"})
-	require.NoError(s.T(), errPage2)
-	assert.Equal(s.T(), 3, totalPage2)
-	assert.Len(s.T(), sessionsPage2, 1)
-	assert.Equal(s.T(), s3.ID, sessionsPage2[0].ID)
 }
 
 func (s *SessionRepositoryTestSuite) TestUpdateSession_Success() {
@@ -337,9 +314,9 @@ func (s *SessionRepositoryTestSuite) TestDeleteExpiredSessions() {
 	ctx := context.Background()
 	user := s.helperCreateUser("user_exp_sess")
 
-	s.repo.Create(ctx, &models.Session{ID: uuid.New(), UserID: user.ID, ExpiresAt: time.Now().Add(-time.Hour)})  // Expired
+	s.repo.Create(ctx, &models.Session{ID: uuid.New(), UserID: user.ID, ExpiresAt: time.Now().Add(-time.Hour)})   // Expired
 	s.repo.Create(ctx, &models.Session{ID: uuid.New(), UserID: user.ID, ExpiresAt: time.Now().Add(-time.Minute)}) // Expired
-	activeSession := &models.Session{ID: uuid.New(), UserID: user.ID, ExpiresAt: time.Now().Add(time.Hour)}      // Active
+	activeSession := &models.Session{ID: uuid.New(), UserID: user.ID, ExpiresAt: time.Now().Add(time.Hour)}       // Active
 	s.repo.Create(ctx, activeSession)
 
 	deletedCount, err := s.repo.DeleteExpiredSessions(ctx)

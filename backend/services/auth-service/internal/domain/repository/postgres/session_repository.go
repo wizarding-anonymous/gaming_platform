@@ -90,63 +90,25 @@ func (r *SessionRepositoryPostgres) GetByID(ctx context.Context, id uuid.UUID) (
 	return s, nil
 }
 
-// GetUserSessions retrieves sessions for a specific user.
-func (r *SessionRepositoryPostgres) GetUserSessions(ctx context.Context, userID uuid.UUID, params models.ListSessionsParams) ([]*models.Session, int, error) {
-	var sessions []*models.Session
-	var totalCount int
+// FindByUserID retrieves all sessions for a specific user ordered by last_activity_at descending.
+func (r *SessionRepositoryPostgres) FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Session, error) {
+	query := `
+                SELECT id, user_id, ip_address, user_agent, device_info, expires_at, created_at, last_activity_at, updated_at
+                FROM sessions
+                WHERE user_id = $1
+                ORDER BY last_activity_at DESC
+        `
 
-	baseQuery := `
-		SELECT id, user_id, ip_address, user_agent, device_info, expires_at, created_at, last_activity_at, updated_at
-		FROM sessions
-	`
-	countQueryBase := `SELECT COUNT(*) FROM sessions`
-
-	conditions := []string{"user_id = $1"}
-	args := []interface{}{userID}
-	argCount := 2 // Start after userID
-
-	if params.ActiveOnly {
-		conditions = append(conditions, fmt.Sprintf("expires_at > $%d", argCount))
-		args = append(args, time.Now())
-		argCount++
-	}
-
-	whereClause := " WHERE " + strings.Join(conditions, " AND ")
-
-	countQueryFull := countQueryBase + whereClause
-	err := r.pool.QueryRow(ctx, countQueryFull, args...).Scan(&totalCount)
+	rows, err := r.pool.Query(ctx, query, userID)
 	if err != nil {
-		// Log error
-		return nil, 0, fmt.Errorf("failed to count user sessions: %w", err)
-	}
-
-	if totalCount == 0 {
-		return sessions, 0, nil
-	}
-
-	queryFull := baseQuery + whereClause + " ORDER BY last_activity_at DESC"
-	if params.PageSize > 0 {
-		queryFull += fmt.Sprintf(" LIMIT $%d", argCount)
-		args = append(args, params.PageSize)
-		argCount++
-		if params.Page > 0 {
-			offset := (params.Page - 1) * params.PageSize
-			queryFull += fmt.Sprintf(" OFFSET $%d", argCount)
-			args = append(args, offset)
-			// argCount++ // Not needed as it's the last one
-		}
-	}
-
-	rows, err := r.pool.Query(ctx, queryFull, args...)
-	if err != nil {
-		// Log error
-		return nil, 0, fmt.Errorf("failed to list user sessions: %w", err)
+		return nil, fmt.Errorf("failed to list user sessions: %w", err)
 	}
 	defer rows.Close()
 
+	var sessions []*models.Session
 	for rows.Next() {
 		s := &models.Session{}
-		errScan := rows.Scan(
+		if err := rows.Scan(
 			&s.ID,
 			&s.UserID,
 			&s.IPAddress,
@@ -156,19 +118,16 @@ func (r *SessionRepositoryPostgres) GetUserSessions(ctx context.Context, userID 
 			&s.CreatedAt,
 			&s.LastActivityAt,
 			&s.UpdatedAt,
-		)
-		if errScan != nil {
-			// Log error
-			return nil, 0, fmt.Errorf("failed to scan session row: %w", errScan)
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan session row: %w", err)
 		}
 		sessions = append(sessions, s)
 	}
 
 	if err = rows.Err(); err != nil {
-		// Log error
-		return nil, 0, fmt.Errorf("error iterating session rows: %w", err)
+		return nil, fmt.Errorf("error iterating session rows: %w", err)
 	}
-	return sessions, totalCount, nil
+	return sessions, nil
 }
 
 // Update modifies an existing session's details.

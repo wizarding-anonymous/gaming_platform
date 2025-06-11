@@ -365,15 +365,13 @@ func (h *MeHandler) ListMySessions(c *gin.Context) {
 
 	currentSessionIDStr, currentSessionExists := c.Get("sessionID") // Assuming middleware.GinContextSessionIDKey is "sessionID"
 
-	// Get all active sessions by default.
-	sessions, total, err := h.sessionService.GetUserSessions(c.Request.Context(), userID, models.ListSessionsParams{ActiveOnly: true, PageSize: 0})
+	// Get all active sessions
+	sessions, err := h.sessionService.GetActiveUserSessions(c.Request.Context(), userID)
 	if err != nil {
-		h.logger.Error("ListMySessions: sessionService.GetUserSessions failed", zap.Error(err), zap.String("userID", userID.String()))
+		h.logger.Error("ListMySessions: sessionService.GetActiveUserSessions failed", zap.Error(err), zap.String("userID", userID.String()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve sessions."})
 		return
 	}
-
-	_ = total // total might be useful if pagination is fully implemented with headers
 
 	sessionResponses := make([]SessionResponse, len(sessions))
 	for i, session := range sessions {
