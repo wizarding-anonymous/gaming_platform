@@ -20,15 +20,15 @@ import (
 // Note: This definition should ideally be shared, e.g., in an internal/events/models package.
 // Duplicating it here for now as per the subtask structure.
 type CloudEvent struct {
-	SpecVersion     string          `json:"specversion"`
-	Type            string          `json:"type"`
-	Source          string          `json:"source"`
-	Subject         *string         `json:"subject,omitempty"`
-	ID              string          `json:"id"`
-	Time            time.Time       `json:"time"`
-	DataContentType *string         `json:"datacontenttype,omitempty"`
-	Data            json.RawMessage `json:"data,omitempty"` // Use json.RawMessage for Data
-	// Extensions can be added here as map[string]interface{} `json:"..."`
+	SpecVersion     string                 `json:"specversion"`
+	Type            string                 `json:"type"`
+	Source          string                 `json:"source"`
+	Subject         *string                `json:"subject,omitempty"`
+	ID              string                 `json:"id"`
+	Time            time.Time              `json:"time"`
+	DataContentType *string                `json:"datacontenttype,omitempty"`
+	Data            json.RawMessage        `json:"data,omitempty"` // Use json.RawMessage for Data
+	Extensions      map[string]interface{} `json:"extensions,omitempty"`
 }
 
 // EventHandler defines the function signature for handling a deserialized CloudEvent.
@@ -196,18 +196,16 @@ func (cg *ConsumerGroup) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 
 		// Context enrichment (basic example)
 		ctx := session.Context() // Get context from the session
-		// If TraceID is expected in CloudEvent extensions:
-		// if traceIDVal, ok := cloudEvent.Extensions["traceid"]; ok {
-		//    if traceIDStr, ok := traceIDVal.(string); ok {
-		//        ctx = context.WithValue(ctx, "traceID", traceIDStr)
-		//    }
-		// }
+		if traceIDVal, ok := cloudEvent.Extensions["trace_id"]; ok {
+			if traceIDStr, ok := traceIDVal.(string); ok {
+				ctx = context.WithValue(ctx, "trace_id", traceIDStr)
+			}
+		}
 		if cloudEvent.Subject != nil {
 			ctx = context.WithValue(ctx, "userID", *cloudEvent.Subject)
 		}
 		ctx = context.WithValue(ctx, "eventID", cloudEvent.ID)
 		ctx = context.WithValue(ctx, "eventType", cloudEvent.Type)
-
 
 		handler, ok := cg.handlers[cloudEvent.Type]
 		if !ok {
