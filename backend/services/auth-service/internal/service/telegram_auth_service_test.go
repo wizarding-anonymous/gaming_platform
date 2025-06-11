@@ -45,6 +45,22 @@ func (m *MockUserRepositoryForTelegram) FindByID(ctx context.Context, id uuid.UU
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
+func (m *MockUserRepositoryForTelegram) FindByUsername(ctx context.Context, username string) (*models.User, error) {
+	args := m.Called(ctx, username)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.User), args.Error(1)
+}
+
+func (m *MockUserRepositoryForTelegram) FindByUsername(ctx context.Context, username string) (*models.User, error) {
+	args := m.Called(ctx, username)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.User), args.Error(1)
+}
+
 type MockExternalAccountRepositoryForTelegram struct {
 	mock.Mock
 }
@@ -286,6 +302,87 @@ func (s *TelegramAuthServiceTestSuite) TestTelegramAuthService_AuthenticateViaTe
 	assert.NotNil(s.T(), user)
 	assert.NotNil(s.T(), tokenPair)
 	assert.Equal(s.T(), verifiedProfile.Username, user.Username)
+
+	s.mockTelegramVerifier.AssertExpectations(s.T())
+	s.mockTransactionMgr.AssertExpectations(s.T())
+	s.mockUserRepo.AssertExpectations(s.T())
+	s.mockExtAccRepo.AssertExpectations(s.T())
+	s.mockSessionService.AssertExpectations(s.T())
+	s.mockTokenService.AssertExpectations(s.T())
+	s.mockKafkaProducer.AssertExpectations(s.T())
+	s.mockAuditRecorder.AssertExpectations(s.T())
+}
+
+func (s *TelegramAuthServiceTestSuite) TestTelegramAuthService_AuthenticateViaTelegram_UsernameCollision() {
+	ctx := context.Background()
+	ipAddress := "127.0.0.1"
+	userAgent := "test-agent"
+	telegramID := int64(987654321)
+	externalUserIDStr := "987654321"
+
+	authData := models.TelegramAuthData{
+		ID:        telegramID,
+		FirstName: "Test",
+		LastName:  "User",
+		Username:  "dupuser",
+		PhotoURL:  "http://example.com/photo.jpg",
+		AuthDate:  time.Now().Unix() - 60,
+		Hash:      "valid_hash_from_telegram",
+	}
+
+	verifiedProfile := &models.TelegramProfile{
+		ID:        authData.ID,
+		FirstName: authData.FirstName,
+		LastName:  authData.LastName,
+		Username:  authData.Username,
+		PhotoURL:  authData.PhotoURL,
+		AuthDate:  authData.AuthDate,
+	}
+
+	profileDataBytes, _ := json.Marshal(verifiedProfile)
+	profileDataRaw := json.RawMessage(profileDataBytes)
+
+	s.mockTelegramVerifier.On("Verify", ctx, authData).Return(verifiedProfile, nil).Once()
+
+	mockTx := new(MockTransactionForTelegram)
+	s.mockTransactionMgr.On("Begin", ctx).Return(mockTx, nil).Once()
+	s.mockTransactionMgr.On("Commit", mockTx).Return(nil).Once()
+
+	s.mockUserRepo.On("WithTx", mockTx).Return(s.mockUserRepo).Once()
+	s.mockExtAccRepo.On("WithTx", mockTx).Return(s.mockExtAccRepo).Once()
+
+	s.mockExtAccRepo.On("FindByProviderAndExternalID", ctx, TelegramProviderName, externalUserIDStr).Return(nil, domainErrors.ErrNotFound).Once()
+
+	existingUser := &models.User{ID: uuid.New(), Username: authData.Username}
+	s.mockUserRepo.On("FindByUsername", ctx, authData.Username).Return(existingUser, nil).Once()
+	s.mockUserRepo.On("FindByUsername", ctx, mock.MatchedBy(func(u string) bool { return strings.HasPrefix(u, authData.Username+"_") })).Return(nil, domainErrors.ErrUserNotFound).Once()
+
+	s.mockUserRepo.On("Create", ctx, mock.MatchedBy(func(user *models.User) bool {
+		return strings.HasPrefix(user.Username, authData.Username+"_") && *user.ProfileImageURL == verifiedProfile.PhotoURL
+	})).Return(nil).Once()
+
+	s.mockExtAccRepo.On("Create", ctx, mock.MatchedBy(func(extAcc *models.ExternalAccount) bool {
+		return extAcc.Provider == TelegramProviderName && extAcc.ExternalUserID == externalUserIDStr && string(extAcc.ProfileData) == string(profileDataRaw)
+	})).Return(nil).Once()
+
+	mockSession := &models.Session{ID: uuid.New(), UserID: uuid.New()}
+	s.mockSessionService.On("CreateSession", ctx, mock.AnythingOfType("uuid.UUID"), userAgent, ipAddress).Return(mockSession, nil).Once()
+
+	mockTokenPair := &models.TokenPair{AccessToken: "access_token", RefreshToken: "refresh_token"}
+	s.mockTokenService.On("CreateTokenPairWithSession", ctx, mock.AnythingOfType("*models.User"), mockSession.ID).Return(mockTokenPair, nil).Once()
+
+	s.mockKafkaProducer.On("PublishCloudEvent", ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserRegisteredV1), mock.AnythingOfType("*string"), mock.AnythingOfType("*string"), mock.AnythingOfType("models.UserRegisteredPayload")).Return(nil).Once()
+	s.mockKafkaProducer.On("PublishAccountLinkedEvent", ctx, mock.AnythingOfType("kafkaEvents.AccountLinkedEvent")).Return(nil).Once()
+	s.mockKafkaProducer.On("PublishCloudEvent", ctx, s.cfg.Kafka.Producer.Topic, kafkaEvents.EventType(models.AuthUserLoginSuccessV1), mock.AnythingOfType("*string"), mock.AnythingOfType("*string"), mock.AnythingOfType("models.UserLoginSuccessPayload")).Return(nil).Once()
+
+	s.mockAuditRecorder.On("RecordEvent", mockTx, mock.AnythingOfType("*uuid.UUID"), "user_telegram_register_login", models.AuditLogStatusSuccess, mock.AnythingOfType("*uuid.UUID"), models.AuditTargetTypeUser, mock.Anything, ipAddress, userAgent).Once()
+
+	user, tokenPair, err := s.service.AuthenticateViaTelegram(ctx, authData, ipAddress, userAgent)
+
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), user)
+	assert.NotNil(s.T(), tokenPair)
+	assert.True(s.T(), strings.HasPrefix(user.Username, authData.Username+"_"))
 
 	s.mockTelegramVerifier.AssertExpectations(s.T())
 	s.mockTransactionMgr.AssertExpectations(s.T())
