@@ -39,18 +39,16 @@ func (s *RoleService) AssignPermissionToRole(ctx context.Context, roleID string,
 		return domainErrors.ErrRoleNotFound
 	}
 
-	if s.permissionRepo != nil {
-		if _, err := s.permissionRepo.FindByID(ctx, permissionID); err != nil {
-			if errors.Is(err, domainErrors.ErrPermissionNotFound) {
-				s.logger.Error("AssignPermissionToRole: Permission not found", zap.String("permissionID", permissionID))
-				auditDetails["error"] = domainErrors.ErrPermissionNotFound.Error()
-				auditDetails["details"] = err.Error()
-				s.auditLogRecorder.RecordEvent(ctx, actorID, "role_permission_assign", models.AuditLogStatusFailure, targetRoleIDStr, models.AuditTargetTypeRole, auditDetails, ipAddress, userAgent)
-				return domainErrors.ErrPermissionNotFound
-			}
-			s.logger.Error("AssignPermissionToRole: failed to fetch permission", zap.Error(err))
-			return err
+	if _, err := s.permissionRepo.FindByID(ctx, permissionID); err != nil {
+		if errors.Is(err, domainErrors.ErrPermissionNotFound) {
+			s.logger.Error("AssignPermissionToRole: Permission not found", zap.String("permissionID", permissionID))
+			auditDetails["error"] = domainErrors.ErrPermissionNotFound.Error()
+			auditDetails["details"] = err.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorID, "role_permission_assign", models.AuditLogStatusFailure, targetRoleIDStr, models.AuditTargetTypeRole, auditDetails, ipAddress, userAgent)
+			return domainErrors.ErrPermissionNotFound
 		}
+		s.logger.Error("AssignPermissionToRole: failed to fetch permission", zap.Error(err))
+		return err
 	}
 
 	err = s.roleRepo.AssignPermissionToRole(ctx, roleID, permissionID)
@@ -119,18 +117,16 @@ func (s *RoleService) RemovePermissionFromRole(ctx context.Context, roleID strin
 		return domainErrors.ErrRoleNotFound
 	}
 
-	if s.permissionRepo != nil {
-		if _, err := s.permissionRepo.FindByID(ctx, permissionID); err != nil {
-			if errors.Is(err, domainErrors.ErrPermissionNotFound) {
-				s.logger.Error("RemovePermissionFromRole: Permission not found", zap.String("permissionID", permissionID))
-				auditDetails["error"] = domainErrors.ErrPermissionNotFound.Error()
-				auditDetails["details"] = err.Error()
-				s.auditLogRecorder.RecordEvent(ctx, actorID, "role_permission_revoke", models.AuditLogStatusFailure, targetRoleIDStr, models.AuditTargetTypeRole, auditDetails, ipAddress, userAgent)
-				return domainErrors.ErrPermissionNotFound
-			}
-			s.logger.Error("RemovePermissionFromRole: failed to fetch permission", zap.Error(err))
-			return err
+	if _, err := s.permissionRepo.FindByID(ctx, permissionID); err != nil {
+		if errors.Is(err, domainErrors.ErrPermissionNotFound) {
+			s.logger.Error("RemovePermissionFromRole: Permission not found", zap.String("permissionID", permissionID))
+			auditDetails["error"] = domainErrors.ErrPermissionNotFound.Error()
+			auditDetails["details"] = err.Error()
+			s.auditLogRecorder.RecordEvent(ctx, actorID, "role_permission_revoke", models.AuditLogStatusFailure, targetRoleIDStr, models.AuditTargetTypeRole, auditDetails, ipAddress, userAgent)
+			return domainErrors.ErrPermissionNotFound
 		}
+		s.logger.Error("RemovePermissionFromRole: failed to fetch permission", zap.Error(err))
+		return err
 	}
 
 	err = s.roleRepo.RemovePermissionFromRole(ctx, roleID, permissionID)
