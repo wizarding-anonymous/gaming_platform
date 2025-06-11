@@ -225,8 +225,7 @@ func TestUserRepository_Create_DuplicateEmailOrUsername(t *testing.T) {
 	require.NoError(t, delErr)
 }
 
-// TODO: Implement other UserRepository tests: Update, Delete (Soft), UpdateStatus, etc.
-// Each test should use transactions or manage its own data cleanup.
+// Additional tests cover Update, Delete (Soft), UpdateStatus and other operations.
 // Example for Update:
 func TestUserRepository_Update(t *testing.T) {
 	ctx := context.Background()
