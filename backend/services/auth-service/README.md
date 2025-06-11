@@ -103,8 +103,8 @@ auth-service/
 
 1. Клонировать репозиторий:
    ```bash
-   git clone https://github.com/gaiming/auth-service.git
-   cd auth-service
+   git clone https://github.com/wizarding-anonymous/gaming_platform.git
+   cd gaming_platform/backend/services/auth-service
    ```
 
 2. Установить зависимости:
@@ -112,25 +112,27 @@ auth-service/
    go mod download
    ```
 
-3. Запустить зависимости через Docker Compose:
+3. Запустить сервисы зависимостей:
    ```bash
    docker-compose up -d postgres redis kafka
    ```
 
-4. Применить миграции:
+4. Применить миграции (можно пропустить, если `auto_migrate: true`):
    ```bash
-   go run migrations/migrations.go up
+   make db-migrate-up
    ```
 
 5. Запустить сервис:
    ```bash
-   go run cmd/auth-service/main.go
+   make run
    ```
 
 Альтернативно, можно запустить весь сервис через Docker Compose:
 ```bash
 docker-compose up -d
 ```
+
+Более подробная инструкция по локальному запуску и тестированию расположена в [docs/local_setup_and_testing.md](docs/local_setup_and_testing.md).
 
 ## API
 
