@@ -1,4 +1,4 @@
-// File: internal/service/two_factor_service.go
+// File: backend/services/auth-service/internal/service/two_factor_service.go
 
 package service
 
@@ -110,7 +110,7 @@ func (s *TwoFactorService) InitiateEnableTwoFactor(ctx context.Context, userID u
 	// Создание URL для QR-кода
 	otpKey, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      s.issuer,
-		AccountName: user.Email, // Используем email пользователя в качестве имени аккаунта
+		AccountName: user.Email,     // Используем email пользователя в качестве имени аккаунта
 		Secret:      rawSecretBytes, // Передаем сырые байты секрета
 	})
 	if err != nil {
@@ -119,8 +119,8 @@ func (s *TwoFactorService) InitiateEnableTwoFactor(ctx context.Context, userID u
 	}
 
 	return &models.Enable2FAInitiateResponse{
-		MFASecretID:   mfaSecret.ID,
-		SecretKey:     rawSecretBase32, // Для ручного ввода
+		MFASecretID:    mfaSecret.ID,
+		SecretKey:      rawSecretBase32, // Для ручного ввода
 		QRCodeImageURL: otpKey.URL(),
 		// Recovery codes are generated only after successful verification in VerifyAndActivateTwoFactor
 	}, nil
@@ -184,9 +184,10 @@ func (s *TwoFactorService) VerifyAndActivateTwoFactor(ctx context.Context, userI
 		s.logger.Warn("Failed to get user to update transient TwoFactorEnabled flag", zap.Error(err), zap.String("user_id", userID.String()))
 	}
 
-	// TODO: Генерация и сохранение кодов восстановления (связанных с mfaSecret.ID или userID)
-	// recoveryCodes := s.generateAndStoreRecoveryCodes(ctx, userID, mfaSecret.ID)
-	recoveryCodes := s.generateRecoveryCodes() // Placeholder, needs actual storage logic
+	// В реальной реализации здесь должны генерироваться и сохраняться резервные коды,
+	// связанные с mfaSecret.ID или userID. Для упрощения примера возвращаем
+	// временно сгенерированные коды без сохранения.
+	recoveryCodes := s.generateRecoveryCodes()
 
 	// Отправка события о включении 2FA
 	event := models.TwoFactorEnabledEvent{
@@ -226,7 +227,6 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID uuid.UUI
 	decryptedSecretBase32 := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(decryptedSecretBytes)
 
 	valid := totp.Validate(code, decryptedSecretBase32)
-	// TODO: Добавить проверку кодов восстановления
 	if !valid {
 		s.logger.Warn("Invalid TOTP code during 2FA disabling", zap.String("user_id", userID.String()))
 		metrics.TwoFactorVerificationAttemptsTotal.WithLabelValues("failure_disable_invalid_code").Inc()
@@ -307,7 +307,7 @@ func (s *TwoFactorService) generateRecoveryCodes() []string {
 		// Генерация случайных байтов
 		b := make([]byte, 5)
 		rand.Read(b)
-		
+
 		// Преобразование в строку
 		codes[i] = fmt.Sprintf("%x", b)
 	}

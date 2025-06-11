@@ -3,6 +3,8 @@
 package http
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -384,7 +386,17 @@ func (h *UserHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	// TODO: Validate permissions in req.Permissions if they need to conform to a predefined set
+	var permissions []string
+	if err := json.Unmarshal(req.Permissions, &permissions); err != nil {
+		ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, "Permissions must be an array of strings", err)
+		return
+	}
+	for _, p := range permissions {
+		if !models.IsValidAPIPermission(p) {
+			ErrorResponse(c.Writer, h.logger, http.StatusBadRequest, fmt.Sprintf("invalid permission: %s", p), nil)
+			return
+		}
+	}
 
 	apiKeyModel, plainFullAPIKey, err := h.apiKeyService.CreateAPIKey(c.Request.Context(), userID, req)
 	if err != nil {
