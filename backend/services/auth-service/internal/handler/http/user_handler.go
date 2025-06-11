@@ -16,8 +16,8 @@ import (
 // UserHandler обрабатывает HTTP-запросы, связанные с пользователями, включая /me scope.
 type UserHandler struct {
 	userService     *service.UserService
-	authService     *service.AuthService    // For ChangePassword
-	sessionService  *service.SessionService // For session management
+	authService     *service.AuthService          // For ChangePassword
+	sessionService  *service.SessionService       // For session management
 	mfaLogicService domainService.MFALogicService // Added for 2FA management
 	apiKeyService   domainService.APIKeyService   // Added for API key management (interface)
 	logger          *zap.Logger
@@ -29,7 +29,7 @@ func NewUserHandler(
 	authService *service.AuthService,
 	sessionService *service.SessionService,
 	mfaLogicService domainService.MFALogicService, // Added
-	apiKeyService domainService.APIKeyService,   // Added
+	apiKeyService domainService.APIKeyService, // Added
 	logger *zap.Logger,
 ) *UserHandler {
 	return &UserHandler{
@@ -40,222 +40,6 @@ func NewUserHandler(
 		apiKeyService:   apiKeyService,   // Added
 		logger:          logger.Named("user_handler"),
 	}
-}
-
-// GetUser обрабатывает запрос на получение информации о пользователе
-func (h *UserHandler) GetUser(c *gin.Context) {
-	// Получение ID пользователя из URL
-	userIDStr := c.Param("id")
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid user ID",
-			"code":  "invalid_request",
-		})
-		return
-	}
-
-	// Получение пользователя
-	user, err := h.userService.GetUserByID(c.Request.Context(), userID)
-	if err != nil {
-		h.handleError(c, err)
-		return
-	}
-
-	// Формирование ответа
-	c.JSON(http.StatusOK, models.UserResponse{
-		ID:        user.ID,
-		Email:     user.Email,
-		Username:  user.Username,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-	})
-}
-
-// GetCurrentUser обрабатывает запрос на получение информации о текущем пользователе
-func (h *UserHandler) GetCurrentUser(c *gin.Context) {
-	// Получение ID пользователя из контекста
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "User not authenticated",
-			"code":  "unauthorized",
-		})
-		return
-	}
-
-	userID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid user ID",
-			"code":  "invalid_request",
-		})
-		return
-	}
-
-	// Получение пользователя
-	user, err := h.userService.GetUserByID(c.Request.Context(), userID)
-	if err != nil {
-		h.handleError(c, err)
-		return
-	}
-
-	// Формирование ответа
-	c.JSON(http.StatusOK, models.UserResponse{
-		ID:        user.ID,
-		Email:     user.Email,
-		Username:  user.Username,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-	})
-}
-
-// UpdateUser обрабатывает запрос на обновление информации о пользователе
-func (h *UserHandler) UpdateUser(c *gin.Context) {
-	// Получение ID пользователя из контекста
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "User not authenticated",
-			"code":  "unauthorized",
-		})
-		return
-	}
-
-	userID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid user ID",
-			"code":  "invalid_request",
-		})
-		return
-	}
-
-	// Получение данных из запроса
-	var req models.UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body",
-			"code":  "invalid_request",
-		})
-		return
-	}
-
-	// Валидация запроса
-	if err := validator.Validate(req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-			"code":  "validation_error",
-		})
-		return
-	}
-
-	// Обновление пользователя
-	user, err := h.userService.UpdateUser(c.Request.Context(), userID, req)
-	if err != nil {
-		h.handleError(c, err)
-		return
-	}
-
-	// Формирование ответа
-	c.JSON(http.StatusOK, models.UserResponse{
-		ID:        user.ID,
-		Email:     user.Email,
-		Username:  user.Username,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-	})
-}
-
-// ChangePassword обрабатывает запрос на изменение пароля
-func (h *UserHandler) ChangePassword(c *gin.Context) {
-	// Получение ID пользователя из контекста
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "User not authenticated",
-			"code":  "unauthorized",
-		})
-		return
-	}
-
-	userID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid user ID",
-			"code":  "invalid_request",
-		})
-		return
-	}
-
-	// Получение данных из запроса
-	var req models.ChangePasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body",
-			"code":  "invalid_request",
-		})
-		return
-	}
-
-	// Валидация запроса
-	if err := validator.Validate(req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-			"code":  "validation_error",
-		})
-		return
-	}
-
-	// Изменение пароля
-	err = h.authService.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword)
-	if err != nil {
-		if errors.Is(err, domainErrors.ErrInvalidCredentials) {
-			ErrorResponse(c.Writer, h.logger, http.StatusUnauthorized, "Invalid old password", err)
-			return
-		}
-		h.handleError(c, err) // handleError needs to be part of AuthHandler or a shared util
-		return
-	}
-
-	// Формирование ответа
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Password successfully changed",
-	})
-}
-
-// DeleteUser обрабатывает запрос на удаление пользователя
-func (h *UserHandler) DeleteUser(c *gin.Context) {
-	// Получение ID пользователя из контекста
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "User not authenticated",
-			"code":  "unauthorized",
-		})
-		return
-	}
-
-	userID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid user ID",
-			"code":  "invalid_request",
-		})
-		return
-	}
-
-	// Удаление пользователя
-	err = h.userService.DeleteUser(c.Request.Context(), userID)
-	if err != nil {
-		h.handleError(c, err)
-		return
-	}
-
-	// Формирование ответа
-	c.JSON(http.StatusOK, gin.H{
-		"message": "User successfully deleted",
-	})
 }
 
 // handleError обрабатывает ошибки и возвращает соответствующий HTTP-ответ
@@ -300,7 +84,6 @@ func (h *UserHandler) handleError(c *gin.Context, err error) {
 		errCode = "email_not_verified"
 	}
 
-
 	c.JSON(status, gin.H{
 		"error": errMsg,
 		"code":  errCode,
@@ -324,7 +107,7 @@ func (h *UserHandler) ListSessions(c *gin.Context) {
 	// Prepare params for listing (e.g., active only, pagination if needed)
 	// For now, list all, activeOnly true by default in service or repo if not specified.
 	// The SessionService.GetUserSessions expects ListSessionsParams
-	listParams := models.ListSessionsParams{ ActiveOnly: true, PageSize: 100, Page: 1 } // Example params
+	listParams := models.ListSessionsParams{ActiveOnly: true, PageSize: 100, Page: 1} // Example params
 
 	sessions, totalCount, err := h.sessionService.GetUserSessions(c.Request.Context(), userID, listParams)
 	if err != nil {
@@ -407,7 +190,6 @@ func (h *UserHandler) RevokeSession(c *gin.Context) {
 	SuccessResponse(c.Writer, h.logger, http.StatusNoContent, nil)
 }
 
-
 // --- 2FA Management Handlers ---
 
 // Enable2FAInitiate handles the request to start enabling TOTP 2FA.
@@ -450,9 +232,9 @@ func (h *UserHandler) Enable2FAInitiate(c *gin.Context) {
 	}
 
 	SuccessResponse(c.Writer, h.logger, http.StatusOK, models.Enable2FAInitiateResponse{
-		MFASecretID:  mfaSecretID.String(),
-		SecretKey:    secretBase32, // This is the key for manual entry
-		QRCodeImage:  otpAuthURL,   // This is the otpauth:// URL for QR code
+		MFASecretID: mfaSecretID.String(),
+		SecretKey:   secretBase32, // This is the key for manual entry
+		QRCodeImage: otpAuthURL,   // This is the otpauth:// URL for QR code
 	})
 }
 
