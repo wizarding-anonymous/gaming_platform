@@ -1,4 +1,4 @@
-// File: internal/service/oauth_service_test.go
+// File: backend/services/auth-service/internal/service/oauth_service_test.go
 package service
 
 import (

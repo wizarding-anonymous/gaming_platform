@@ -16,7 +16,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	// eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/models" // To be removed
 	// domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // Not typically returned by handlers
-	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
+	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/interfaces"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	// kafkaMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Handler does not publish
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // For kafka.CloudEvent
@@ -30,9 +30,12 @@ type MockUserRepository struct {
 	mock.Mock
 	repoInterfaces.UserRepository
 }
+
 func (m *MockUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	args := m.Called(ctx, id)
-	if args.Get(0) == nil { return nil, args.Error(1) }
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(*models.User), args.Error(1)
 }
 func (m *MockUserRepository) UpdateStatus(ctx context.Context, userID uuid.UUID, status models.UserStatus) error {
@@ -40,8 +43,8 @@ func (m *MockUserRepository) UpdateStatus(ctx context.Context, userID uuid.UUID,
 	return args.Error(0)
 }
 func (m *MockUserRepository) UpdateStatusReason(ctx context.Context, userID uuid.UUID, reason *string) error {
-    args := m.Called(ctx, userID, reason)
-    return args.Error(0)
+	args := m.Called(ctx, userID, reason)
+	return args.Error(0)
 }
 
 // MockAuthLogicService (subset for AdminEventsHandler)
@@ -49,6 +52,7 @@ type MockAuthLogicService struct {
 	mock.Mock
 	domainService.AuthLogicService // Embed interface
 }
+
 func (m *MockAuthLogicService) SystemLogoutAllUserSessions(ctx context.Context, userID uuid.UUID, reason string) error {
 	args := m.Called(ctx, userID, reason)
 	return args.Error(0)
@@ -59,17 +63,17 @@ type MockAuditLogRecorder struct {
 	mock.Mock
 	domainService.AuditLogRecorder
 }
+
 func (m *MockAuditLogRecorder) RecordEvent(ctx context.Context, actorUserID *uuid.UUID, eventName string, status models.AuditLogStatus, targetUserID *uuid.UUID, targetType models.AuditTargetType, details map[string]interface{}, ipAddress string, userAgent string) {
 	m.Called(ctx, actorUserID, eventName, status, targetUserID, targetType, details, ipAddress, userAgent)
 }
 
-
 // --- AdminEventsHandler Test Suite ---
 type AdminEventsHandlerTestSuite struct {
 	suite.Suite
-	handler           *AdminEventsHandler
-	mockUserRepo      *MockUserRepository
-	mockAuthLogicSvc  *MockAuthLogicService
+	handler          *AdminEventsHandler
+	mockUserRepo     *MockUserRepository
+	mockAuthLogicSvc *MockAuthLogicService
 	// mockKafkaProducer *kafkaMocks.MockProducer // Handler does not publish
 	mockAuditRecorder *MockAuditLogRecorder
 	cfg               *config.Config
@@ -173,7 +177,6 @@ func (s *AdminEventsHandlerTestSuite) TestHandleAdminUserBlock() {
 	s.mockAuthLogicSvc.On("SystemLogoutAllUserSessions", ctx, userID, payload.AdminUserID, "user_blocked_via_event").Return(nil).Once()
 	s.mockAuditRecorder.On("RecordEvent", ctx, &parsedAdminActorID, "admin_user_block_event_consumed", models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "", "").Once()
 
-
 	err := s.handler.HandleAdminUserBlock(ctx, cloudEvent)
 	assert.NoError(s.T(), err)
 	s.mockUserRepo.AssertExpectations(s.T())
@@ -223,5 +226,5 @@ func (s *AdminEventsHandlerTestSuite) TestHandleAdminUserUnblock() {
 
 // Helper function to get a pointer to time.Time, similar to PtrToString
 func PtrToTime(t time.Time) *time.Time {
-    return &t
+	return &t
 }

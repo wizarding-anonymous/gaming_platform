@@ -1,4 +1,4 @@
-// File: internal/service/telegram_auth_service_test.go
+// File: backend/services/auth-service/internal/service/telegram_auth_service_test.go
 package service
 
 import (
@@ -20,7 +20,7 @@ import (
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	eventMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Assuming kafka mock producer
-	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafkaEvents" // For actual event types if needed in assertions
+       kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // For actual event types if needed in assertions
 )
 
 // Mocks (similar to those in oauth_service_test.go, adapted for Telegram)
