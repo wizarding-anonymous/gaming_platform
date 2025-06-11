@@ -31,3 +31,19 @@ The configuration in `configs/config.yaml` expects the following environment var
 - `TOTP_ENCRYPTION_KEY` – 32‑byte key used to encrypt TOTP secrets
 
 A template for Helm secret values can be found at `backend/services/auth-service/deployments/helm/auth-service/values-secrets-template.yaml`.
+
+## Configuring Go Modules
+
+To prevent `Forbidden` errors when fetching dependencies, configure Go to bypass the default proxy and download modules directly from GitHub:
+
+```bash
+go env -w GOPROXY=direct
+```
+
+If your organization provides its own mirror, replace `direct` with that proxy URL:
+
+```bash
+go env -w GOPROXY=https://your.corp.proxy/,direct
+```
+
+The helper script `setup-go-proxy.sh` in the repository root automates this step.
