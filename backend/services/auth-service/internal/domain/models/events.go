@@ -272,6 +272,7 @@ const (
 	AuthRoleDeletedV1           = "auth.rbac.role_deleted.v1"
 	AuthUserRoleAssignedV1      = "auth.rbac.user_role_assigned.v1"
 	AuthUserRoleRevokedV1       = "auth.rbac.user_role_revoked.v1"
+	AuthUserRolesChangedV1      = "auth.user.roles_changed.v1"
 	AuthRolePermissionChangedV1 = "auth.rbac.role_permission_changed.v1"
 	// AuthPermissionAssignedToRoleV1 = "auth.rbac.permission_assigned_to_role.v1"
 	// AuthPermissionRevokedFromRoleV1 = "auth.rbac.permission_revoked_from_role.v1"

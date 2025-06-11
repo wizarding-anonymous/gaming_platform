@@ -6,9 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"sort" // For de-duplicating permissions
+	"time"
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/entity"
+	eventModels "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
+	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
+	"go.uber.org/zap"
 )
 
 // RBACService defines the interface for Role-Based Access Control operations.
@@ -26,6 +30,7 @@ type rbacServiceImpl struct {
 	roleRepo       repository.RoleRepository
 	permissionRepo repository.PermissionRepository
 	logger         *zap.Logger // Added logger
+	kafkaProducer  *kafkaPkg.Producer
 	// No direct need for user_roles or role_permissions repos if RoleRepository handles those relationships.
 }
 
@@ -35,6 +40,7 @@ type RBACServiceConfig struct {
 	RoleRepo       repository.RoleRepository
 	PermissionRepo repository.PermissionRepository
 	Logger         *zap.Logger // Added logger
+	KafkaProducer  *kafkaPkg.Producer
 }
 
 // NewRBACService creates a new rbacServiceImpl.
@@ -44,6 +50,7 @@ func NewRBACService(cfg RBACServiceConfig) RBACService {
 		roleRepo:       cfg.RoleRepo,
 		permissionRepo: cfg.PermissionRepo,
 		logger:         cfg.Logger.Named("rbac_service"), // Initialize logger
+		kafkaProducer:  cfg.KafkaProducer,
 	}
 }
 
@@ -67,14 +74,43 @@ func (s *rbacServiceImpl) AssignRoleToUser(ctx context.Context, userID string, r
 		return fmt.Errorf("failed to find role for assignment: %w", err)
 	}
 
+	// Capture roles before the change
+	oldRoles, _ := s.roleRepo.GetRolesForUser(ctx, userID)
+
 	// 3. Create entry in user_roles (handled by RoleRepository)
 	if err := s.roleRepo.AssignToUser(ctx, userID, roleID, assignedByUserID); err != nil {
 		// Handle potential duplicate assignment errors if the repo method doesn't UPSERT/ignore
 		return fmt.Errorf("failed to assign role to user: %w", err)
 	}
 
-	// TODO: Publish auth.user.roles_changed event
-	fmt.Printf("Event: auth.user.roles_changed for user %s (role %s assigned)\n", userID, roleID)
+	newRoles, _ := s.roleRepo.GetRolesForUser(ctx, userID)
+
+	if s.kafkaProducer != nil {
+		oldIDs := make([]string, len(oldRoles))
+		for i, r := range oldRoles {
+			oldIDs[i] = r.ID
+		}
+		newIDs := make([]string, len(newRoles))
+		for i, r := range newRoles {
+			newIDs[i] = r.ID
+		}
+		payload := eventModels.UserRolesChangedEvent{
+			UserID:     userID,
+			OldRoleIDs: oldIDs,
+			NewRoleIDs: newIDs,
+			ChangedByUserID: func() string {
+				if assignedByUserID != nil {
+					return *assignedByUserID
+				}
+				return ""
+			}(),
+			ChangeTimestamp: time.Now().UTC(),
+		}
+		subject := userID
+		contentType := "application/json"
+		_ = s.kafkaProducer.PublishCloudEvent(ctx, kafkaPkg.AuthEventsTopic, kafkaPkg.EventType(eventModels.AuthUserRolesChangedV1), &subject, &contentType, payload)
+	}
+
 	return nil
 }
 
@@ -82,13 +118,36 @@ func (s *rbacServiceImpl) RevokeRoleFromUser(ctx context.Context, userID string,
 	// 1. Check if user exists (optional, depends on desired strictness)
 	// 2. Check if role exists (optional)
 
+	oldRoles, _ := s.roleRepo.GetRolesForUser(ctx, userID)
+
 	if err := s.roleRepo.RemoveFromUser(ctx, userID, roleID); err != nil {
 		// Handle cases where the user didn't have the role (repo might not error)
 		return fmt.Errorf("failed to revoke role from user: %w", err)
 	}
 
-	// TODO: Publish auth.user.roles_changed event
-	fmt.Printf("Event: auth.user.roles_changed for user %s (role %s revoked)\n", userID, roleID)
+	newRoles, _ := s.roleRepo.GetRolesForUser(ctx, userID)
+
+	if s.kafkaProducer != nil {
+		oldIDs := make([]string, len(oldRoles))
+		for i, r := range oldRoles {
+			oldIDs[i] = r.ID
+		}
+		newIDs := make([]string, len(newRoles))
+		for i, r := range newRoles {
+			newIDs[i] = r.ID
+		}
+		payload := eventModels.UserRolesChangedEvent{
+			UserID:          userID,
+			OldRoleIDs:      oldIDs,
+			NewRoleIDs:      newIDs,
+			ChangedByUserID: "", // unknown admin
+			ChangeTimestamp: time.Now().UTC(),
+		}
+		subject := userID
+		contentType := "application/json"
+		_ = s.kafkaProducer.PublishCloudEvent(ctx, kafkaPkg.AuthEventsTopic, kafkaPkg.EventType(eventModels.AuthUserRolesChangedV1), &subject, &contentType, payload)
+	}
+
 	return nil
 }
 

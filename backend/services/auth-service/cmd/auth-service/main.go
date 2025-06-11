@@ -321,6 +321,7 @@ func main() {
 		RoleRepo:       roleRepo,
 		PermissionRepo: permissionRepo,
 		Logger:         logger,
+		KafkaProducer:  kafkaProducer,
 	})
 	// var userService *service.UserService // Placeholder - needs proper initialization with specific repos
 	userService := service.NewUserService(

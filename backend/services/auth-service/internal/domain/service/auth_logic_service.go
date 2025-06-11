@@ -390,7 +390,18 @@ func (s *authLogicServiceImpl) LoginWithTelegram(
 			// May need rollback or cleanup.
 			return nil, "", "", fmt.Errorf("user created, but failed to link telegram account: %w", errExtCreate)
 		}
-		// TODO: Publish auth.user.registered event (simplified)
+		if s.kafkaProducer != nil {
+			payload := eventModels.UserRegisteredEvent{
+				UserID:                user.ID,
+				Username:              user.Username,
+				Email:                 user.Email,
+				RegistrationTimestamp: now,
+				InitialStatus:         string(user.Status),
+			}
+			subject := user.ID
+			contentType := "application/json"
+			_ = s.kafkaProducer.PublishCloudEvent(ctx, kafkaPkg.AuthEventsTopic, kafkaPkg.EventType(eventModels.AuthUserRegisteredV1), &subject, &contentType, payload)
+		}
 		fmt.Printf("User registered via Telegram: %s\n", user.Username)
 
 	} else if err != nil { // Other error from FindByProviderAndExternalID
@@ -523,11 +534,29 @@ func (s *authLogicServiceImpl) LogoutUser(ctx context.Context, sessionID string,
 	} // else: no RT found for session, or error - proceed to delete session anyway
 
 	// 2. Delete the session
+	sess, _ := s.sessionRepo.FindByID(ctx, sessionID)
 	if err := s.sessionRepo.Delete(ctx, sessionID); err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
 
-	// TODO: Publish logout event
+	if s.kafkaProducer != nil && sess != nil {
+		payload := eventModels.UserLogoutEvent{
+			UserID:    sess.UserID,
+			SessionID: sess.ID,
+			LogoutAt:  time.Now().UTC(),
+		}
+		subject := sess.UserID
+		contentType := "application/json"
+		_ = s.kafkaProducer.PublishCloudEvent(ctx, kafkaPkg.AuthEventsTopic, kafkaPkg.EventType(eventModels.AuthUserLogoutSuccessV1), &subject, &contentType, payload)
+
+		sessPayload := eventModels.SessionRevokedEvent{
+			SessionID:           sess.ID,
+			UserID:              sess.UserID,
+			RevocationTimestamp: time.Now().UTC(),
+			Reason:              "user_logout",
+		}
+		_ = s.kafkaProducer.PublishCloudEvent(ctx, kafkaPkg.AuthEventsTopic, kafkaPkg.EventType(eventModels.AuthSessionRevokedV1), &subject, &contentType, sessPayload)
+	}
 
 	return nil
 }
@@ -552,7 +581,25 @@ func (s *authLogicServiceImpl) LogoutAllUserSessions(ctx context.Context, userID
 		return fmt.Errorf("failed to delete user sessions: %w", err)
 	}
 
-	// TODO: Publish relevant events
+	if s.kafkaProducer != nil {
+		now := time.Now().UTC()
+		subject := userID
+		contentType := "application/json"
+		payload := eventModels.UserLogoutAllEvent{
+			UserID:   userID,
+			LogoutAt: now,
+		}
+		_ = s.kafkaProducer.PublishCloudEvent(ctx, kafkaPkg.AuthEventsTopic, kafkaPkg.EventType(eventModels.AuthUserAllSessionsRevokedV1), &subject, &contentType, payload)
+		for _, session := range sessions {
+			sessPayload := eventModels.SessionRevokedEvent{
+				SessionID:           session.ID,
+				UserID:              session.UserID,
+				RevocationTimestamp: now,
+				Reason:              "logout_all",
+			}
+			_ = s.kafkaProducer.PublishCloudEvent(ctx, kafkaPkg.AuthEventsTopic, kafkaPkg.EventType(eventModels.AuthSessionRevokedV1), &subject, &contentType, sessPayload)
+		}
+	}
 
 	return nil
 }
