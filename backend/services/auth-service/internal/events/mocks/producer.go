@@ -1,3 +1,4 @@
+// File: backend/services/auth-service/internal/events/mocks/producer.go
 package mocks
 
 import (

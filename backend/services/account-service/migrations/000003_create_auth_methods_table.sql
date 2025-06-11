@@ -1,3 +1,4 @@
+# File: backend/services/account-service/migrations/000003_create_auth_methods_table.sql
 -- account-service/migrations/000003_create_auth_methods_table.sql
 
 -- Create auth_methods table

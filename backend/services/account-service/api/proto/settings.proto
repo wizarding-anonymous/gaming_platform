@@ -1,3 +1,4 @@
+// File: backend/services/account-service/api/proto/settings.proto
 // api/proto/settings.proto
 
 syntax = "proto3";
