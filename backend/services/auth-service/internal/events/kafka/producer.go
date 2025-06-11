@@ -1,4 +1,4 @@
-// File: internal/events/kafka/producer.go
+// File: backend/services/auth-service/internal/events/kafka/producer.go
 
 package kafka
 
@@ -10,20 +10,22 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 	// "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/models" // For CloudEvent and EventType constants
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/logger" // Assuming logger interface is here
 )
 
 // CloudEvent defines the structure for CloudEvents v1.0.
 type CloudEvent struct {
-	SpecVersion     string      `json:"specversion"`
-	Type            string      `json:"type"`
-	Source          string      `json:"source"`
-	Subject         *string     `json:"subject,omitempty"`
-	ID              string      `json:"id"`
-	Time            time.Time   `json:"time"`
-	DataContentType *string     `json:"datacontenttype,omitempty"`
-	Data            interface{} `json:"data,omitempty"`
+	SpecVersion     string                 `json:"specversion"`
+	Type            string                 `json:"type"`
+	Source          string                 `json:"source"`
+	Subject         *string                `json:"subject,omitempty"`
+	ID              string                 `json:"id"`
+	Time            time.Time              `json:"time"`
+	DataContentType *string                `json:"datacontenttype,omitempty"`
+	Data            interface{}            `json:"data,omitempty"`
+	Extensions      map[string]interface{} `json:"extensions,omitempty"`
 }
 
 // EventType is a string alias for event types.
@@ -51,8 +53,8 @@ func NewProducer(brokers []string, logger logger.Logger, cloudEventSource string
 	config.Producer.Return.Successes = true
 	config.Producer.Compression = sarama.CompressionSnappy // Or sarama.CompressionZSTD, etc.
 	config.Producer.Flush.Frequency = 500 * time.Millisecond
-	config.Producer.Idempotent = true    // Requires Kafka >= 0.11 & broker-side settings
-	config.Net.MaxOpenRequests = 1     // For idempotent producer, limit inflight messages
+	config.Producer.Idempotent = true // Requires Kafka >= 0.11 & broker-side settings
+	config.Net.MaxOpenRequests = 1    // For idempotent producer, limit inflight messages
 
 	producer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
@@ -79,8 +81,11 @@ func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventTyp
 		return fmt.Errorf("failed to generate CloudEvent ID: %w", err)
 	}
 
-	// TODO: Extract traceID from context if available and add as an extension attribute or in header.
-	// traceID, _ := ctx.Value("traceID").(string)
+	spanCtx := trace.SpanContextFromContext(ctx)
+	var traceID string
+	if spanCtx.IsValid() {
+		traceID = spanCtx.TraceID().String()
+	}
 
 	actualDataContentType := CloudEventDataContentType // Default
 	if dataContentType != nil && *dataContentType != "" {
@@ -96,6 +101,10 @@ func (p *Producer) PublishCloudEvent(ctx context.Context, topic string, eventTyp
 		Subject:         subject,
 		Time:            time.Now().UTC(),
 		Data:            dataPayload,
+	}
+
+	if traceID != "" {
+		cloudEvent.Extensions = map[string]interface{}{"trace_id": traceID}
 	}
 
 	eventJSON, err := json.Marshal(cloudEvent)
