@@ -1,5 +1,4 @@
 # File: backend/docker-compose.yml
-version: '3.8'
 
 services:
   # Инфраструктурные сервисы
