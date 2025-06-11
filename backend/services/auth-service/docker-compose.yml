@@ -1,7 +1,5 @@
 # File: backend/services/auth-service/docker-compose.yml
 
-version: '3.8'
-
 services:
   auth-service:
     build:
