@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // Added for ErrNotFound
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 )
 
 // SessionRepository defines the interface for managing user sessions in the data store.
@@ -24,9 +24,8 @@ type SessionRepository interface {
 	// Returns domainErrors.ErrNotFound if no session is found.
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
 
-	// FindByUserID retrieves all sessions for a specific user. (Changed from GetUserSessions)
-	// TODO: Consider if params models.ListSessionsParams is still needed or if this should return all (active) sessions.
-	// For now, keeping it simple. The original GetUserSessions with filters might be a separate, more specific method.
+	// FindByUserID retrieves all sessions for a specific user.
+	// It returns every session row for the user without additional filtering.
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Session, error)
 
 	// UpdateLastActivityAt updates the last activity timestamp for a given session ID.
@@ -53,11 +52,11 @@ type SessionRepository interface {
 	// The actual data stored might be minimal, just enough for quick validation or lookup.
 	// This can help reduce database load for frequent session checks.
 	StoreInCache(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID, ttl time.Duration) error // Renamed
-	
+
 	// GetUserIDFromCache retrieves the UserID associated with a sessionID from the cache.
 	// Returns domainErrors.ErrNotFound if the sessionID is not found in the cache or if it has expired.
 	GetUserIDFromCache(ctx context.Context, sessionID uuid.UUID) (uuid.UUID, error)
-	
+
 	// RemoveFromCache explicitly removes a session from the cache, e.g., on logout.
 	RemoveFromCache(ctx context.Context, sessionID uuid.UUID) error // Renamed
 }

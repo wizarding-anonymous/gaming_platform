@@ -1,4 +1,4 @@
-// File: internal/service/session_service.go
+// File: backend/services/auth-service/internal/service/session_service.go
 
 package service
 
@@ -114,16 +114,15 @@ func (s *SessionService) GetSession(ctx context.Context, sessionID uuid.UUID) (*
 }
 
 // GetUserSessions получает все сессии пользователя
-func (s *SessionService) GetUserSessions(ctx context.Context, userID uuid.UUID, params models.ListSessionsParams) ([]*models.Session, int, error) {
+func (s *SessionService) GetUserSessions(ctx context.Context, userID uuid.UUID) ([]*models.Session, error) {
 	// Проверка существования пользователя (userRepo.FindByID now)
 	_, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get user for sessions retrieval", zap.Error(err), zap.String("user_id", userID.String()))
-		return nil, 0, models.ErrUserNotFound
+		return nil, models.ErrUserNotFound
 	}
 
-	// Получение сессий (sessionRepo.GetUserSessions now)
-	sessions, total, err := s.sessionRepo.GetUserSessions(ctx, userID, params)
+	sessions, err := s.sessionRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get user sessions", zap.Error(err), zap.String("user_id", userID.String()))
 		return nil, err
@@ -137,18 +136,24 @@ func (s *SessionService) GetActiveUserSessions(ctx context.Context, userID uuid.
 	_, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get user for active sessions retrieval", zap.Error(err), zap.String("user_id", userID.String()))
-		return nil, 0, models.ErrUserNotFound
+		return nil, models.ErrUserNotFound
 	}
 
 	// Получение активных сессий
-	// sessionRepo.GetUserSessions handles filtering by activeOnly via ListSessionsParams
-	params := models.ListSessionsParams{ActiveOnly: true, PageSize: 0} // PageSize 0 to get all matching
-	sessions, _, err := s.sessionRepo.GetUserSessions(ctx, userID, params)
+	sessions, err := s.sessionRepo.FindByUserID(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to get active user sessions", zap.Error(err), zap.String("user_id", userID.String()))
+		s.logger.Error("Failed to get user sessions", zap.Error(err), zap.String("user_id", userID.String()))
 		return nil, err
 	}
-	return sessions, nil
+
+	now := time.Now()
+	var activeSessions []*models.Session
+	for _, s := range sessions {
+		if s.ExpiresAt.After(now) {
+			activeSessions = append(activeSessions, s)
+		}
+	}
+	return activeSessions, nil
 }
 
 // DeactivateSession деактивирует сессию

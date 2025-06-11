@@ -104,12 +104,8 @@ func (h *UserHandler) ListSessions(c *gin.Context) {
 		return
 	}
 
-	// Prepare params for listing (e.g., active only, pagination if needed)
-	// For now, list all, activeOnly true by default in service or repo if not specified.
-	// The SessionService.GetUserSessions expects ListSessionsParams
-	listParams := models.ListSessionsParams{ActiveOnly: true, PageSize: 100, Page: 1} // Example params
-
-	sessions, totalCount, err := h.sessionService.GetUserSessions(c.Request.Context(), userID, listParams)
+	// List active sessions for the user
+	sessions, err := h.sessionService.GetActiveUserSessions(c.Request.Context(), userID)
 	if err != nil {
 		h.handleError(c, err) // Use existing handleError or a more specific one
 		return
@@ -122,10 +118,7 @@ func (h *UserHandler) ListSessions(c *gin.Context) {
 	}
 
 	SuccessResponse(c.Writer, h.logger, http.StatusOK, gin.H{
-		"sessions":    sessionResponses,
-		"total_count": totalCount,
-		"page":        listParams.Page,
-		"page_size":   listParams.PageSize,
+		"sessions": sessionResponses,
 	})
 }
 
