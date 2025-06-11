@@ -45,31 +45,60 @@ import (
 // KafkaProducerHealthChecker adapts kafka.Producer for health checks.
 type KafkaProducerHealthChecker struct {
 	Producer *kafkaEvents.Producer // Your wrapper around sarama.SyncProducer
+	Brokers  []string
 }
 
 func (kphc *KafkaProducerHealthChecker) Healthy(ctx context.Context) error {
 	if kphc.Producer == nil {
 		return fmt.Errorf("Kafka producer client is nil")
 	}
-	// TODO: A more thorough check might try to get metadata or ensure topic exists.
-	// For now, simply checking if the Producer object itself (wrapper) is not nil is a basic check.
-	// If the Producer wrapper has internal status or a way to check underlying client, that would be better.
-	return nil // Basic check: producer object exists
+	if len(kphc.Brokers) == 0 {
+		return fmt.Errorf("no Kafka brokers configured")
+	}
+	cfg := sarama.NewConfig()
+	cfg.Version = sarama.V2_8_0_0
+	client, err := sarama.NewClient(kphc.Brokers, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create Kafka client: %w", err)
+	}
+	defer client.Close()
+	if err := client.RefreshMetadata(); err != nil {
+		return fmt.Errorf("failed to refresh Kafka metadata: %w", err)
+	}
+	return nil
 }
 
 // KafkaConsumerHealthChecker adapts kafka.ConsumerGroup for health checks.
 type KafkaConsumerHealthChecker struct {
 	ConsumerGroup *kafkaEvents.ConsumerGroup // Your wrapper around sarama.ConsumerGroup
+	Brokers       []string
+	Topics        []string
 }
 
 func (kchc *KafkaConsumerHealthChecker) Healthy(ctx context.Context) error {
 	if kchc.ConsumerGroup == nil {
 		return fmt.Errorf("Kafka consumer group client is nil")
 	}
-	// TODO: Actual health of a consumer group is complex.
-	// A simple check is that the object exists.
-	// If ConsumerGroup wrapper has an IsHealthy() or similar, use it.
-	return nil // Basic check: consumer group object exists
+	if len(kchc.Brokers) == 0 {
+		return fmt.Errorf("no Kafka brokers configured")
+	}
+	cfg := sarama.NewConfig()
+	cfg.Version = sarama.V2_8_0_0
+	client, err := sarama.NewClient(kchc.Brokers, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create Kafka client: %w", err)
+	}
+	defer client.Close()
+	if len(kchc.Topics) > 0 {
+		if _, err := client.Partitions(kchc.Topics[0]); err != nil {
+			return fmt.Errorf("failed to fetch topic metadata: %w", err)
+		}
+	} else {
+		if err := client.RefreshMetadata(); err != nil {
+			return fmt.Errorf("failed to refresh Kafka metadata: %w", err)
+		}
+	}
+	return nil
 }
 
 func main() {
@@ -133,7 +162,7 @@ func main() {
 	auditLogRepo := repoPostgres.NewAuditLogRepositoryPostgres(dbPool)
 	userRolesRepo := repoPostgres.NewUserRolesRepositoryPostgres(dbPool) // Added
 	roleRepo := repoPostgres.NewRoleRepositoryPostgres(dbPool)           // Added (needed for RoleService)
-	// TODO: Initialize PermissionRepository for RoleService if RoleService needs it directly for more complex ops
+	permissionRepo := repoPostgres.NewPermissionRepositoryPostgres(dbPool)
 
 	// Инициализация подключения к Redis
 	redisClient, err := redis.NewRedisClient(cfg.Redis)
@@ -280,11 +309,19 @@ func main() {
 		roleRepo,
 		userRepo,
 		userRolesRepo,
+		permissionRepo,
 		kafkaProducer,
 		cfg,
 		logger,
 		auditLogService, // Added
 	)
+
+	rbacService := domainService.NewRBACService(domainService.RBACServiceConfig{
+		UserRepo:       userRepo,
+		RoleRepo:       roleRepo,
+		PermissionRepo: permissionRepo,
+		Logger:         logger,
+	})
 	// var userService *service.UserService // Placeholder - needs proper initialization with specific repos
 	userService := service.NewUserService(
 		userRepo,
@@ -393,27 +430,31 @@ func main() {
 		),
 	)
 
-	// TODO: Update NewAuthServer if its dependencies (authService, userService, roleService, tokenService) change structure
-	// The old authGRPCServer is replaced by the new AuthV1Service
-	// authGRPCServer := grpcHandler.NewAuthServer(authService, userService, roleService, tokenService, logger)
-	// authGRPCServer.RegisterServer(grpcServer)
+	// gRPC authentication service initialization
 
 	// Инициализация и регистрация нового AuthV1Service (gRPC)
 
 	// Health Checkers
 	// dbPool (*pgxpool.Pool) directly implements healthcheck.DBPinger via its Ping method.
 	// redisClient (*redis.Client) directly implements healthcheck.RedisPinger via its Ping method.
-	kafkaProducerChecker := &KafkaProducerHealthChecker{Producer: kafkaProducer}
-	kafkaConsumerChecker := &KafkaConsumerHealthChecker{ConsumerGroup: kafkaConsumer}
+	kafkaProducerChecker := &KafkaProducerHealthChecker{
+		Producer: kafkaProducer,
+		Brokers:  cfg.Kafka.Brokers,
+	}
+	kafkaConsumerChecker := &KafkaConsumerHealthChecker{
+		ConsumerGroup: kafkaConsumer,
+		Brokers:       cfg.Kafka.Brokers,
+		Topics:        cfg.Kafka.Consumer.Topics,
+	}
 
 	authV1GrpcService := grpcHandler.NewAuthV1Service(
 		logger,
 		authService, // This is AuthLogicService
 		userService,
 		tokenService, // This is service.TokenService
-		roleService,  // This is service.RoleService acting as RBACService
-		dbPool,       // pgxpool.Pool directly usable as healthcheck.DBPinger
-		redisClient,  // redis.Client directly usable as healthcheck.RedisPinger
+		rbacService,
+		dbPool,      // pgxpool.Pool directly usable as healthcheck.DBPinger
+		redisClient, // redis.Client directly usable as healthcheck.RedisPinger
 		kafkaProducerChecker,
 		kafkaConsumerChecker,
 	)

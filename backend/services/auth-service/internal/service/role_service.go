@@ -15,7 +15,8 @@ type RoleService struct {
 	roleRepo         interfaces.RoleRepository
 	userRepo         interfaces.UserRepository      // Still needed for validating user existence in some flows
 	userRolesRepo    interfaces.UserRolesRepository // Added
-	kafkaClient      *kafkaEvents.Producer          // Changed to Sarama-based producer
+	permissionRepo   interfaces.PermissionRepository
+	kafkaClient      *kafkaEvents.Producer // Changed to Sarama-based producer
 	cfg              *config.Config
 	logger           *zap.Logger
 	auditLogRecorder domainService.AuditLogRecorder // Added for audit logging
@@ -26,6 +27,7 @@ func NewRoleService(
 	roleRepo interfaces.RoleRepository,
 	userRepo interfaces.UserRepository,
 	userRolesRepo interfaces.UserRolesRepository, // Added
+	permissionRepo interfaces.PermissionRepository,
 	kafkaClient *kafkaEvents.Producer, // Changed to Sarama-based producer
 	cfg *config.Config,
 	logger *zap.Logger,
@@ -35,7 +37,8 @@ func NewRoleService(
 		roleRepo:         roleRepo,
 		userRepo:         userRepo,
 		userRolesRepo:    userRolesRepo, // Added
-		kafkaClient:      kafkaClient,   // Assign Sarama-based producer
+		permissionRepo:   permissionRepo,
+		kafkaClient:      kafkaClient, // Assign Sarama-based producer
 		cfg:              cfg,
 		logger:           logger,
 		auditLogRecorder: auditLogRecorder, // Added
