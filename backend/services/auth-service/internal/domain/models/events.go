@@ -242,6 +242,10 @@ const (
 	AuthUserLogoutSuccessV1                  = "auth.user.logout_success.v1"
 	AuthUserAllSessionsRevokedV1             = "auth.user.all_sessions_revoked.v1"
 	AuthUserPasswordChangedV1                = "auth.user.password_changed.v1"
+	AuthUserProfileUpdatedV1                 = "auth.user.profile_updated.v1"
+	AuthUserAccountDeactivatedV1             = "auth.user.account_deactivated.v1"
+	AuthUserAccountBlockedV1                 = "auth.user.account_blocked.v1"
+	AuthUserAccountUnblockedV1               = "auth.user.account_unblocked.v1"
 	AuthUserPasswordResetV1                  = "auth.user.password_reset.v1"
 	AuthSecurityEmailVerificationRequestedV1 = "auth.security.email_verification_requested.v1"
 	AuthSecurityPasswordResetRequestedV1     = "auth.security.password_reset_requested.v1"
@@ -283,4 +287,41 @@ const (
 type AllSessionsDeactivatedEvent struct {
 	UserID        string    `json:"user_id"`
 	DeactivatedAt time.Time `json:"deactivated_at"`
+}
+
+// UserProfileUpdatedPayload represents profile updates initiated in Auth Service.
+type UserProfileUpdatedPayload struct {
+	UserID        string    `json:"user_id"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	ChangedFields []string  `json:"changed_fields"`
+	ActorID       *string   `json:"actor_id,omitempty"`
+}
+
+// UserAccountDeactivatedPayload represents a user account deactivation event.
+type UserAccountDeactivatedPayload struct {
+	UserID        string    `json:"user_id"`
+	DeactivatedAt time.Time `json:"deactivated_at"`
+	ActorID       *string   `json:"actor_id,omitempty"`
+}
+
+// UserPasswordChangedPayload represents a password change.
+type UserPasswordChangedPayload struct {
+	UserID    string    `json:"user_id"`
+	ChangedAt time.Time `json:"changed_at"`
+	Source    string    `json:"source"`
+}
+
+// UserAccountBlockedPayload represents account blocking by an admin.
+type UserAccountBlockedPayload struct {
+	UserID    string    `json:"user_id"`
+	BlockedAt time.Time `json:"blocked_at"`
+	Reason    *string   `json:"reason,omitempty"`
+	ActorID   *string   `json:"actor_id,omitempty"`
+}
+
+// UserAccountUnblockedPayload represents account unblocking.
+type UserAccountUnblockedPayload struct {
+	UserID      string    `json:"user_id"`
+	UnblockedAt time.Time `json:"unblocked_at"`
+	ActorID     *string   `json:"actor_id,omitempty"`
 }

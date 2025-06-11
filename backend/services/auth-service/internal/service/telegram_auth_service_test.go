@@ -16,11 +16,11 @@ import (
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
-	eventMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks" // Assuming kafka mock producer
-       kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // For actual event types if needed in assertions
+	kafkaEvents "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka" // For actual event types if needed in assertions
+	eventMocks "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/mocks"  // Assuming kafka mock producer
 )
 
 // Mocks (similar to those in oauth_service_test.go, adapted for Telegram)
@@ -38,17 +38,17 @@ func (m *MockUserRepositoryForTelegram) Create(ctx context.Context, user *models
 	return args.Error(0)
 }
 func (m *MockUserRepositoryForTelegram) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
-    args := m.Called(ctx, id)
-    if args.Get(0) == nil {
-        return nil, args.Error(1)
-    }
-    return args.Get(0).(*models.User), args.Error(1)
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.User), args.Error(1)
 }
-
 
 type MockExternalAccountRepositoryForTelegram struct {
 	mock.Mock
 }
+
 func (m *MockExternalAccountRepositoryForTelegram) WithTx(tx domain.Transaction) domain.ExternalAccountRepository {
 	args := m.Called(tx)
 	return args.Get(0).(domain.ExternalAccountRepository)
@@ -69,10 +69,10 @@ func (m *MockExternalAccountRepositoryForTelegram) Update(ctx context.Context, a
 	return args.Error(0)
 }
 
-
 type MockSessionServiceForTelegram struct {
 	mock.Mock
 }
+
 func (m *MockSessionServiceForTelegram) CreateSession(ctx context.Context, userID uuid.UUID, userAgent string, ipAddress string) (*models.Session, error) {
 	args := m.Called(ctx, userID, userAgent, ipAddress)
 	if args.Get(0) == nil {
@@ -84,6 +84,7 @@ func (m *MockSessionServiceForTelegram) CreateSession(ctx context.Context, userI
 type MockTokenServiceForTelegram struct {
 	mock.Mock
 }
+
 func (m *MockTokenServiceForTelegram) CreateTokenPairWithSession(ctx context.Context, user *models.User, sessionID uuid.UUID) (*models.TokenPair, error) {
 	args := m.Called(ctx, user, sessionID)
 	if args.Get(0) == nil {
@@ -95,6 +96,7 @@ func (m *MockTokenServiceForTelegram) CreateTokenPairWithSession(ctx context.Con
 type MockTelegramVerifierServiceForTest struct {
 	mock.Mock
 }
+
 func (m *MockTelegramVerifierServiceForTest) Verify(ctx context.Context, telegramData models.TelegramAuthData) (*models.TelegramProfile, error) {
 	args := m.Called(ctx, telegramData)
 	if args.Get(0) == nil {
@@ -103,10 +105,10 @@ func (m *MockTelegramVerifierServiceForTest) Verify(ctx context.Context, telegra
 	return args.Get(0).(*models.TelegramProfile), args.Error(1)
 }
 
-
 type MockTransactionManagerForTelegram struct {
 	mock.Mock
 }
+
 func (m *MockTransactionManagerForTelegram) Begin(ctx context.Context) (domain.Transaction, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
@@ -125,25 +127,26 @@ func (m *MockTransactionManagerForTelegram) Rollback(tx domain.Transaction) erro
 
 // MockTransaction is a simple mock for domain.Transaction (can be shared if in common test util)
 type MockTransactionForTelegram struct {
-    mock.Mock
-}
-func (m *MockTransactionForTelegram) Commit() error {
-    args := m.Called()
-    return args.Error(0)
-}
-func (m *MockTransactionForTelegram) Rollback() error {
-    args := m.Called()
-    return args.Error(0)
-}
-func (m *MockTransactionForTelegram) DB() interface{} {
-    args := m.Called()
-    return args.Get(0)
+	mock.Mock
 }
 
+func (m *MockTransactionForTelegram) Commit() error {
+	args := m.Called()
+	return args.Error(0)
+}
+func (m *MockTransactionForTelegram) Rollback() error {
+	args := m.Called()
+	return args.Error(0)
+}
+func (m *MockTransactionForTelegram) DB() interface{} {
+	args := m.Called()
+	return args.Get(0)
+}
 
 type MockAuditLogRecorderForTelegram struct {
 	mock.Mock
 }
+
 func (m *MockAuditLogRecorderForTelegram) RecordEvent(ctx context.Context, tx domain.Transaction, actorUserID *uuid.UUID, eventName string, status models.AuditLogStatus, targetUserID *uuid.UUID, targetType models.AuditTargetType, details map[string]interface{}, ipAddress string, userAgent string) {
 	// Adjusted signature to match the one in auth_service_test.go for consistency
 	// The TelegramAuthService uses a slightly different signature for RecordEvent (without tx, actorUserID, etc. directly, but wrapped in AuditLogEvent)
@@ -162,20 +165,19 @@ func (m *MockAuditLogRecorderForTelegram) RecordEvent(ctx context.Context, tx do
 	m.Called(tx, actorUserID, eventName, status, targetUserID, targetType, details, ipAddress, userAgent)
 }
 
-
 type TelegramAuthServiceTestSuite struct {
 	suite.Suite
-	service             *TelegramAuthService
-	mockUserRepo        *MockUserRepositoryForTelegram
-	mockExtAccRepo      *MockExternalAccountRepositoryForTelegram
-	mockSessionService  *MockSessionServiceForTelegram
-	mockTokenService    *MockTokenServiceForTelegram
+	service              *TelegramAuthService
+	mockUserRepo         *MockUserRepositoryForTelegram
+	mockExtAccRepo       *MockExternalAccountRepositoryForTelegram
+	mockSessionService   *MockSessionServiceForTelegram
+	mockTokenService     *MockTokenServiceForTelegram
 	mockTelegramVerifier *MockTelegramVerifierServiceForTest
-	mockTransactionMgr  *MockTransactionManagerForTelegram
-	mockKafkaProducer   *eventMocks.MockProducer
-	mockAuditRecorder   *MockAuditLogRecorderForTelegram
-	cfg                 *config.Config
-	logger              *zap.Logger
+	mockTransactionMgr   *MockTransactionManagerForTelegram
+	mockKafkaProducer    *eventMocks.MockProducer
+	mockAuditRecorder    *MockAuditLogRecorderForTelegram
+	cfg                  *config.Config
+	logger               *zap.Logger
 }
 
 func (s *TelegramAuthServiceTestSuite) SetupTest() {
@@ -188,7 +190,7 @@ func (s *TelegramAuthServiceTestSuite) SetupTest() {
 	s.mockKafkaProducer = new(eventMocks.MockProducer)
 	s.mockAuditRecorder = new(MockAuditLogRecorderForTelegram)
 	s.logger, _ = zap.NewDevelopment()
-	s.cfg = &config.Config{Kafka: config.KafkaConfig{Producer: config.KafkaProducerConfig{Topic: "auth-events"}}}
+	s.cfg = &config.Config{Kafka: config.KafkaConfig{Producer: config.KafkaProducerConfig{Topic: "auth.events"}}}
 
 	s.service = NewTelegramAuthService(
 		s.cfg,
@@ -237,7 +239,6 @@ func (s *TelegramAuthServiceTestSuite) TestTelegramAuthService_AuthenticateViaTe
 	profileDataBytes, _ := json.Marshal(verifiedProfile)
 	profileDataRaw := json.RawMessage(profileDataBytes)
 
-
 	// Mock TelegramVerifier
 	s.mockTelegramVerifier.On("Verify", ctx, authData).Return(verifiedProfile, nil).Once()
 
@@ -279,7 +280,6 @@ func (s *TelegramAuthServiceTestSuite) TestTelegramAuthService_AuthenticateViaTe
 	// Mock AuditLogRecorder
 	s.mockAuditRecorder.On("RecordEvent", mockTx, mock.AnythingOfType("*uuid.UUID"), "user_telegram_register_login", models.AuditLogStatusSuccess, mock.AnythingOfType("*uuid.UUID"), models.AuditTargetTypeUser, mock.Anything, ipAddress, userAgent).Once()
 
-
 	user, tokenPair, err := s.service.AuthenticateViaTelegram(ctx, authData, ipAddress, userAgent)
 
 	assert.NoError(s.T(), err)
@@ -304,4 +304,3 @@ func (s *TelegramAuthServiceTestSuite) TestTelegramAuthService_AuthenticateViaTe
 // - AuthenticateViaTelegram: DB errors during user/external account creation or update
 // - AuthenticateViaTelegram: Session or Token creation errors
 // - Correct transaction rollback on any critical error.
-[end of backend/services/auth-service/internal/service/telegram_auth_service_test.go]

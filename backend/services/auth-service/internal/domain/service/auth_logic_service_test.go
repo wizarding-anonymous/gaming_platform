@@ -257,7 +257,7 @@ func TestLoginUser_PublishesLoginEvent(t *testing.T) {
 	d.refreshTokenRepo.On("Create", ctx, mock.AnythingOfType("*entity.RefreshToken")).Return(nil).Once()
 	d.userRepo.On("UpdateLastLogin", ctx, mock.AnythingOfType("uuid.UUID"), mock.Anything).Return(nil).Once()
 	d.userRepo.On("ResetFailedLoginAttempts", ctx, mock.AnythingOfType("uuid.UUID")).Return(nil).Once()
-	d.kafkaProducer.On("PublishCloudEvent", ctx, "auth-events", kafkaPkg.EventType(models.AuthUserLoginSuccessV1), mock.AnythingOfType("*string"), mock.AnythingOfType("*string"), mock.Anything).Return(nil).Once()
+	d.kafkaProducer.On("PublishCloudEvent", ctx, "auth.events", kafkaPkg.EventType(models.AuthUserLoginSuccessV1), mock.AnythingOfType("*string"), mock.AnythingOfType("*string"), mock.Anything).Return(nil).Once()
 
 	u, access, refresh, err := svc.LoginUser(ctx, "test@example.com", "password", nil)
 	require.NoError(t, err)

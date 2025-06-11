@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	appConfig "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
-        domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
-        "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	kafkaPkg "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
 	// infrastructureSecurity "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"
 )
@@ -140,11 +140,21 @@ func (m *MockUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*model
 	}
 	return args.Get(0).(*models.User), args.Error(1)
 }
+
 // Add other UserRepo methods if they become necessary for mfaLogicService tests
-func (m *MockUserRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) { panic("not implemented") }
-func (m *MockUserRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) { panic("not implemented") }
-func (m *MockUserRepository) Create(ctx context.Context, user *models.User) error { panic("not implemented") }
-func (m *MockUserRepository) Update(ctx context.Context, user *models.User) error { panic("not implemented") }
+func (m *MockUserRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
+	panic("not implemented")
+}
+func (m *MockUserRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
+	panic("not implemented")
+}
+func (m *MockUserRepository) Create(ctx context.Context, user *models.User) error {
+	panic("not implemented")
+}
+func (m *MockUserRepository) Update(ctx context.Context, user *models.User) error {
+	panic("not implemented")
+}
+
 // ... and so on for all methods of UserRepository interface
 
 // MockPasswordService
@@ -184,7 +194,6 @@ func (m *MockKafkaProducer) Close() error {
 	return args.Error(0)
 }
 
-
 // MockRateLimiter
 type MockRateLimiter struct {
 	mock.Mock
@@ -195,18 +204,17 @@ func (m *MockRateLimiter) Allow(ctx context.Context, key string, rule appConfig.
 	return args.Bool(0), args.Error(1)
 }
 
-
 // --- Test Setup Helper ---
 type mfalsTestDeps struct {
-	mockTOTPService           *MockTOTPService
-	mockEncryptionService     *MockEncryptionService
-	mockMFASecretRepo         *MockMFASecretRepository
-	mockMFABackupCodeRepo     *MockMFABackupCodeRepository
-	mockUserRepo              *MockUserRepository
-	mockPasswordService       *MockPasswordService
-	mockAuditLogRecorder      *MockAuditLogRecorder
-	mockKafkaProducer         *MockKafkaProducer
-	mockRateLimiter           *MockRateLimiter
+	mockTOTPService       *MockTOTPService
+	mockEncryptionService *MockEncryptionService
+	mockMFASecretRepo     *MockMFASecretRepository
+	mockMFABackupCodeRepo *MockMFABackupCodeRepository
+	mockUserRepo          *MockUserRepository
+	mockPasswordService   *MockPasswordService
+	mockAuditLogRecorder  *MockAuditLogRecorder
+	mockKafkaProducer     *MockKafkaProducer
+	mockRateLimiter       *MockRateLimiter
 }
 
 func setupMFALogicServiceWithMocks(t *testing.T) (service.MFALogicService, *mfalsTestDeps, *appConfig.Config) {
@@ -229,19 +237,18 @@ func setupMFALogicServiceWithMocks(t *testing.T) (service.MFALogicService, *mfal
 	}
 
 	deps := &mfalsTestDeps{
-		mockTOTPService:           new(MockTOTPService),
-		mockEncryptionService:     new(MockEncryptionService),
-		mockMFASecretRepo:         new(MockMFASecretRepository),
-		mockMFABackupCodeRepo:     new(MockMFABackupCodeRepository),
-		mockUserRepo:              new(MockUserRepository),
-		mockPasswordService:       new(MockPasswordService),
-		mockAuditLogRecorder:      new(MockAuditLogRecorder),
-		mockKafkaProducer:         new(MockKafkaProducer),
-		mockRateLimiter:           new(MockRateLimiter),
+		mockTOTPService:       new(MockTOTPService),
+		mockEncryptionService: new(MockEncryptionService),
+		mockMFASecretRepo:     new(MockMFASecretRepository),
+		mockMFABackupCodeRepo: new(MockMFABackupCodeRepository),
+		mockUserRepo:          new(MockUserRepository),
+		mockPasswordService:   new(MockPasswordService),
+		mockAuditLogRecorder:  new(MockAuditLogRecorder),
+		mockKafkaProducer:     new(MockKafkaProducer),
+		mockRateLimiter:       new(MockRateLimiter),
 	}
 
 	deps.mockAuditLogRecorder.On("RecordEvent", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe()
-
 
 	mfaService := service.NewMFALogicService(
 		cfg,
@@ -275,7 +282,6 @@ func TestEnable2FAInitiate_Success_NewSetup(t *testing.T) {
 	})).Return(nil)
 	deps.mockAuditLogRecorder.On("RecordEvent", ctx, &userID, models.AuditLogMFARegisterAttempt, models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "unknown", "unknown").Once()
 
-
 	secretID, base32Secret, otpAuthURL, err := mfaService.Enable2FAInitiate(ctx, userID, accountName)
 
 	require.NoError(t, err)
@@ -301,7 +307,6 @@ func TestEnable2FAInitiate_Success_PreviousUnverifiedExists(t *testing.T) {
 	deps.mockEncryptionService.On("Encrypt", "newSecret", mock.AnythingOfType("string")).Return("newEncrypted", nil)
 	deps.mockMFASecretRepo.On("Create", ctx, mock.AnythingOfType("*models.MFASecret")).Return(nil) // Simplified matcher for brevity
 	deps.mockAuditLogRecorder.On("RecordEvent", ctx, &userID, models.AuditLogMFARegisterAttempt, models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "unknown", "unknown").Once()
-
 
 	_, _, _, err := mfaService.Enable2FAInitiate(ctx, userID, accountName)
 	require.NoError(t, err)
@@ -350,9 +355,8 @@ func TestVerifyAndActivate2FA_Success(t *testing.T) {
 	deps.mockMFABackupCodeRepo.On("CreateMultiple", ctx, mock.MatchedBy(func(codes []*models.MFABackupCode) bool {
 		return len(codes) == cfg.MFA.TOTPBackupCodeCount
 	})).Return(nil)
-	deps.mockKafkaProducer.On("PublishCloudEvent", ctx, "auth-events", kafkaPkg.EventType(models.AuthMFAEnabledV1), mock.AnythingOfType("*string"), mock.AnythingOfType("*string"), mock.AnythingOfType("models.MFAEnabledPayload")).Return(nil)
+	deps.mockKafkaProducer.On("PublishCloudEvent", ctx, "auth.events", kafkaPkg.EventType(models.AuthMFAEnabledV1), mock.AnythingOfType("*string"), mock.AnythingOfType("*string"), mock.AnythingOfType("models.MFAEnabledPayload")).Return(nil)
 	deps.mockAuditLogRecorder.On("RecordEvent", ctx, &userID, models.AuditLogMFAEnableFinalize, models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "unknown", "unknown").Once()
-
 
 	backupCodes, err := mfaService.VerifyAndActivate2FA(ctx, userID, totpCode, mfaSecretID)
 	require.NoError(t, err)
@@ -366,7 +370,6 @@ func TestVerifyAndActivate2FA_Success(t *testing.T) {
 	deps.mockKafkaProducer.AssertExpectations(t)
 	deps.mockAuditLogRecorder.AssertExpectations(t)
 }
-
 
 func TestVerify2FACode_TOTP_Success(t *testing.T) {
 	ctx := context.Background()
@@ -400,60 +403,61 @@ func TestVerify2FACode_TOTP_Success(t *testing.T) {
 }
 
 func TestVerify2FACode_TOTP_RateLimited(t *testing.T) {
-    ctx := context.Background()
-    mfaService, deps, cfg := setupMFALogicServiceWithMocks(t)
-    userID := uuid.New()
-    totpCode := "123456"
+	ctx := context.Background()
+	mfaService, deps, cfg := setupMFALogicServiceWithMocks(t)
+	userID := uuid.New()
+	totpCode := "123456"
 
-    cfg.Security.RateLimiting.TwoFAVerificationPerUser.Enabled = true
-    rateLimitRule := cfg.Security.RateLimiting.TwoFAVerificationPerUser
+	cfg.Security.RateLimiting.TwoFAVerificationPerUser.Enabled = true
+	rateLimitRule := cfg.Security.RateLimiting.TwoFAVerificationPerUser
 
-    deps.mockRateLimiter.On("Allow", ctx, "2faverify_user:"+userID.String(), rateLimitRule).Return(false, nil) // Rate limit exceeded
-    deps.mockAuditLogRecorder.On("RecordEvent", ctx, &userID, models.AuditLogMFACodeVerify, models.AuditLogStatusFailure, &userID, models.AuditTargetTypeUser, mock.MatchedBy(func(m map[string]interface{}) bool {
+	deps.mockRateLimiter.On("Allow", ctx, "2faverify_user:"+userID.String(), rateLimitRule).Return(false, nil) // Rate limit exceeded
+	deps.mockAuditLogRecorder.On("RecordEvent", ctx, &userID, models.AuditLogMFACodeVerify, models.AuditLogStatusFailure, &userID, models.AuditTargetTypeUser, mock.MatchedBy(func(m map[string]interface{}) bool {
 		return m["error"] == domainErrors.ErrRateLimitExceeded.Error()
 	}), "unknown", "unknown").Once()
 
-
-    valid, err := mfaService.Verify2FACode(ctx, userID, totpCode, models.MFATypeTOTP)
-    assert.ErrorIs(t, err, domainErrors.ErrRateLimitExceeded)
-    assert.False(t, valid)
-    deps.mockRateLimiter.AssertExpectations(t)
+	valid, err := mfaService.Verify2FACode(ctx, userID, totpCode, models.MFATypeTOTP)
+	assert.ErrorIs(t, err, domainErrors.ErrRateLimitExceeded)
+	assert.False(t, valid)
+	deps.mockRateLimiter.AssertExpectations(t)
 	deps.mockAuditLogRecorder.AssertExpectations(t)
 }
 
-
 func TestVerify2FACode_BackupCode_Success(t *testing.T) {
-    ctx := context.Background()
-    mfaService, deps, cfg := setupMFALogicServiceWithMocks(t)
-    userID := uuid.New()
-    backupCodePlain := "backup123"
+	ctx := context.Background()
+	mfaService, deps, cfg := setupMFALogicServiceWithMocks(t)
+	userID := uuid.New()
+	backupCodePlain := "backup123"
 
-    cfg.Security.RateLimiting.TwoFAVerificationPerUser.Enabled = false // Disable rate limiting for this specific test focus
+	cfg.Security.RateLimiting.TwoFAVerificationPerUser.Enabled = false // Disable rate limiting for this specific test focus
 
-    hashedBackupCode := "hashed-" + backupCodePlain
-    backupCodesInDB := []*models.MFABackupCode{
-        {ID: uuid.New(), UserID: userID, CodeHash: hashedBackupCode, UsedAt: nil},
-        {ID: uuid.New(), UserID: userID, CodeHash: "some-other-hash", UsedAt: nil},
-    }
+	hashedBackupCode := "hashed-" + backupCodePlain
+	backupCodesInDB := []*models.MFABackupCode{
+		{ID: uuid.New(), UserID: userID, CodeHash: hashedBackupCode, UsedAt: nil},
+		{ID: uuid.New(), UserID: userID, CodeHash: "some-other-hash", UsedAt: nil},
+	}
 
-    deps.mockMFABackupCodeRepo.On("FindByUserID", ctx, userID).Return(backupCodesInDB, nil)
-    deps.mockPasswordService.On("CheckPasswordHash", backupCodePlain, hashedBackupCode).Return(true, nil)
-    deps.mockPasswordService.On("CheckPasswordHash", backupCodePlain, "some-other-hash").Return(false, nil) // For the other code
-    deps.mockMFABackupCodeRepo.On("MarkAsUsed", ctx, backupCodesInDB[0].ID, mock.AnythingOfType("time.Time")).Return(nil)
+	deps.mockMFABackupCodeRepo.On("FindByUserID", ctx, userID).Return(backupCodesInDB, nil)
+	deps.mockPasswordService.On("CheckPasswordHash", backupCodePlain, hashedBackupCode).Return(true, nil)
+	deps.mockPasswordService.On("CheckPasswordHash", backupCodePlain, "some-other-hash").Return(false, nil) // For the other code
+	deps.mockMFABackupCodeRepo.On("MarkAsUsed", ctx, backupCodesInDB[0].ID, mock.AnythingOfType("time.Time")).Return(nil)
 	deps.mockAuditLogRecorder.On("RecordEvent", ctx, &userID, models.AuditLogMFACodeVerify, models.AuditLogStatusSuccess, &userID, models.AuditTargetTypeUser, mock.Anything, "unknown", "unknown").Once()
 
-
-    valid, err := mfaService.Verify2FACode(ctx, userID, backupCodePlain, models.MFATypeBackup)
-    require.NoError(t, err)
-    assert.True(t, valid)
-    deps.mockMFABackupCodeRepo.AssertExpectations(t)
-    deps.mockPasswordService.AssertExpectations(t)
+	valid, err := mfaService.Verify2FACode(ctx, userID, backupCodePlain, models.MFATypeBackup)
+	require.NoError(t, err)
+	assert.True(t, valid)
+	deps.mockMFABackupCodeRepo.AssertExpectations(t)
+	deps.mockPasswordService.AssertExpectations(t)
 	deps.mockAuditLogRecorder.AssertExpectations(t)
 }
 
 // Minimal stubs for other tests to make the file compile
-func TestDisable2FA_PasswordAuth_Success(t *testing.T) { t.Skip("Disable2FA test not fully implemented for brevity") }
-func TestRegenerateBackupCodes_PasswordAuth_Success(t *testing.T) { t.Skip("RegenerateBackupCodes test not fully implemented for brevity") }
-func TestGetActiveBackupCodeCount_Success(t *testing.T) { t.Skip("GetActiveBackupCodeCount test not fully implemented for brevity") }
-
-[end of backend/services/auth-service/internal/domain/service/mfa_logic_service_test.go]
+func TestDisable2FA_PasswordAuth_Success(t *testing.T) {
+	t.Skip("Disable2FA test not fully implemented for brevity")
+}
+func TestRegenerateBackupCodes_PasswordAuth_Success(t *testing.T) {
+	t.Skip("RegenerateBackupCodes test not fully implemented for brevity")
+}
+func TestGetActiveBackupCodeCount_Success(t *testing.T) {
+	t.Skip("GetActiveBackupCodeCount test not fully implemented for brevity")
+}

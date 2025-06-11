@@ -514,7 +514,7 @@ func (s *AuthServiceTestSuite) SetupTest() {
 				TwoFAVerificationPerUser: config.RateLimitRule{Enabled: true, Limit: 5, Window: time.Minute * 15}, // Though not directly tested in AuthService tests
 			},
 		},
-		Kafka: config.KafkaConfig{Producer: config.KafkaProducerConfig{Topic: "auth-events"}},
+		Kafka: config.KafkaConfig{Producer: config.KafkaProducerConfig{Topic: "auth.events"}},
 	}
 	s.logger, _ = zap.NewDevelopment()
 
