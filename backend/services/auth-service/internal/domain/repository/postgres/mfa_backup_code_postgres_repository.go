@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository"
 )
 
@@ -42,7 +42,7 @@ func (r *MFABackupCodeRepositoryPostgres) Create(ctx context.Context, code *mode
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == "23505" { // unique_violation (user_id, code_hash)
-				if strings.Contains(pgErr.ConstraintName, "mfa_backup_codes_user_id_code_hash_key") || strings.Contains(pgErr.ConstraintName, "idx_mfa_backup_codes_user_id_code_hash"){
+				if strings.Contains(pgErr.ConstraintName, "mfa_backup_codes_user_id_code_hash_key") || strings.Contains(pgErr.ConstraintName, "idx_mfa_backup_codes_user_id_code_hash") {
 					return fmt.Errorf("backup code hash already exists for this user: %w", domainErrors.ErrDuplicateValue)
 				}
 				return fmt.Errorf("failed to create MFA backup code due to unique constraint %s: %w", pgErr.ConstraintName, domainErrors.ErrDuplicateValue)
@@ -106,6 +106,33 @@ func (r *MFABackupCodeRepositoryPostgres) FindByUserIDAndCodeHash(ctx context.Co
 	return code, nil
 }
 
+// FindByUserID retrieves all unused MFA backup codes for a user.
+func (r *MFABackupCodeRepositoryPostgres) FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.MFABackupCode, error) {
+	query := `
+               SELECT id, user_id, code_hash, used_at, created_at
+               FROM mfa_backup_codes
+               WHERE user_id = $1 AND used_at IS NULL
+       `
+	rows, err := r.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query MFA backup codes by user ID: %w", err)
+	}
+	defer rows.Close()
+
+	var codes []*models.MFABackupCode
+	for rows.Next() {
+		c := &models.MFABackupCode{}
+		if err := rows.Scan(&c.ID, &c.UserID, &c.CodeHash, &c.UsedAt, &c.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan MFA backup code: %w", err)
+		}
+		codes = append(codes, c)
+	}
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("error iterating MFA backup code rows: %w", rows.Err())
+	}
+	return codes, nil
+}
+
 // MarkAsUsed marks a specific backup code (by ID) as used.
 func (r *MFABackupCodeRepositoryPostgres) MarkAsUsed(ctx context.Context, id uuid.UUID, usedAt time.Time) error {
 	query := `
@@ -139,7 +166,6 @@ func (r *MFABackupCodeRepositoryPostgres) MarkAsUsedByCodeHash(ctx context.Conte
 	}
 	return nil
 }
-
 
 // DeleteByUserID removes all backup codes for a given user ID.
 func (r *MFABackupCodeRepositoryPostgres) DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {

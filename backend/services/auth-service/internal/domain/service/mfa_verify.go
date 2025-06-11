@@ -205,7 +205,14 @@ func (s *mfaLogicService) isUserAuthorizedForSensitiveAction(ctx context.Context
 		}
 		return match, nil
 	case "totp":
-		return s.Verify2FACode(ctx, userID, verificationToken, models.MFATypeTOTP)
+		valid, err := s.Verify2FACode(ctx, userID, verificationToken, models.MFATypeTOTP)
+		if err != nil {
+			if errors.Is(err, domainErrors.ErrInvalid2FACode) {
+				return s.Verify2FACode(ctx, userID, verificationToken, models.MFATypeBackup)
+			}
+			return false, err
+		}
+		return valid, nil
 	case "backup":
 		return s.Verify2FACode(ctx, userID, verificationToken, models.MFATypeBackup)
 	default:

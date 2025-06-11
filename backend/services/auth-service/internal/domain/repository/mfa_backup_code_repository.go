@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors" // Ensure this import
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 )
 
 // MFABackupCodeRepository defines the interface for interacting with MFA backup code data.
@@ -22,6 +22,10 @@ type MFABackupCodeRepository interface {
 	// FindByUserIDAndCodeHash retrieves an unused MFA backup code by the user's ID and the hashed code.
 	// Returns domainErrors.ErrNotFound if not found or already used.
 	FindByUserIDAndCodeHash(ctx context.Context, userID uuid.UUID, codeHash string) (*models.MFABackupCode, error)
+
+	// FindByUserID retrieves all MFA backup codes for a user that have not been used yet.
+	// Returns an empty slice if none exist.
+	FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.MFABackupCode, error)
 
 	// MarkAsUsed marks a specific backup code (by its primary ID) as used.
 	MarkAsUsed(ctx context.Context, id uuid.UUID, usedAt time.Time) error
