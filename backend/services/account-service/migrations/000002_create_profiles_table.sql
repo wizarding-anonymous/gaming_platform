@@ -1,6 +1,4 @@
-# File: backend/services/account-service/migrations/000002_create_profiles_table.sql
--- account-service\migrations\000002_create_profiles_table.sql
--- migrations/000002_create_profiles_table.sql
+-- File: backend/services/account-service/migrations/000002_create_profiles_table.sql
 
 -- Create profiles table
 CREATE TABLE IF NOT EXISTS profiles (

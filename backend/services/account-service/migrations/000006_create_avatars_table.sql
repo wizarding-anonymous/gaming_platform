@@ -1,6 +1,4 @@
-# File: backend/services/account-service/migrations/000006_create_avatars_table.sql
--- account-service\migrations\000006_create_avatars_table.sql
--- migrations/000006_create_avatars_table.sql
+-- File: backend/services/account-service/migrations/000006_create_avatars_table.sql
 
 -- Create avatars table
 CREATE TABLE IF NOT EXISTS avatars (

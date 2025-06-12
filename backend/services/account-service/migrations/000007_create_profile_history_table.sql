@@ -1,6 +1,4 @@
-# File: backend/services/account-service/migrations/000007_create_profile_history_table.sql
--- account-service\migrations\000007_create_profile_history_table.sql
--- migrations/000007_create_profile_history_table.sql
+-- File: backend/services/account-service/migrations/000007_create_profile_history_table.sql
 
 -- Create profile_history table
 CREATE TABLE IF NOT EXISTS profile_history (

@@ -1,4 +1,4 @@
-// File: backend/services/auth-service/migrations/000001_create_initial_tables.down.sql
+-- File: backend/services/auth-service/migrations/000001_create_initial_tables.down.sql
 
 -- Удаление таблицы кодов восстановления
 DROP TABLE IF EXISTS recovery_codes;

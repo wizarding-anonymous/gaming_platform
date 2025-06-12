@@ -1,4 +1,4 @@
-// File: backend/services/auth-service/migrations/000003_add_user_roles.down.sql
+-- File: backend/services/auth-service/migrations/000003_add_user_roles.down.sql
 
 -- Удаление триггеров
 DROP TRIGGER IF EXISTS trigger_audit_user_roles ON user_roles;

@@ -1,6 +1,4 @@
-# File: backend/services/account-service/migrations/000008_create_banners_table.sql
--- account-service\migrations\000008_create_banners_table.sql
--- migrations/000008_create_banners_table.sql
+-- File: backend/services/account-service/migrations/000008_create_banners_table.sql
 
 -- Create banners table
 CREATE TABLE IF NOT EXISTS banners (

@@ -1,5 +1,4 @@
-# File: backend/services/account-service/migrations/000001_create_accounts_table.sql
--- account-service/migrations/000001_create_accounts_table.sql
+-- File: backend/services/account-service/migrations/000001_create_accounts_table.sql
 
 -- Create accounts table
 CREATE TABLE IF NOT EXISTS accounts (
