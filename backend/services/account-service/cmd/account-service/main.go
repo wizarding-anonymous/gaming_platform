@@ -30,7 +30,7 @@ import (
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/kafka"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/repository/postgres"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/repository/redis"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/utils/logger"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/metrics"
 )
 

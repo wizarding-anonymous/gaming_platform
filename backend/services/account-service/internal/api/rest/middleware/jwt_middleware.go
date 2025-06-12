@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/client/auth"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/utils/logger"
 )
 
 type contextKey string

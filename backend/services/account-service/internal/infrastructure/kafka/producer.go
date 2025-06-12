@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/pkg/logger"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/utils/logger"
 )
 
 // CloudEvent представляет структуру события в формате CloudEvents
