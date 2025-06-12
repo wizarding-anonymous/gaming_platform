@@ -1,7 +1,7 @@
 # File: backend/Makefile
 # Makefile для корневого уровня монорепозитория
 
-.PHONY: all build test clean up down migrate lint help
+.PHONY: all build test clean up down migrate lint vet licenses help
 
 # Переменные
 SERVICES := auth-service account-service
@@ -55,8 +55,22 @@ migrate:
 lint:
 	@echo "Linting all services..."
 	@for service in $(SERVICES); do \
-		echo "Linting $$service..."; \
-		$(MAKE) -C backend/services/$$service lint || exit 1; \
+	        echo "Linting $$service..."; \
+	        $(MAKE) -C backend/services/$$service lint || exit 1; \
+	done
+
+vet:
+	@echo "Running go vet for all services..."
+	@for service in $(SERVICES); do \
+	        echo "Running go vet for $$service..."; \
+	        (cd backend/services/$$service && go vet ./...) || exit 1; \
+	done
+
+licenses:
+	@echo "Checking licenses for all services..."
+	@for service in $(SERVICES); do \
+	        echo "Checking licenses for $$service..."; \
+	        (cd backend/services/$$service && go-licenses check ./...) || exit 1; \
 	done
 
 # Справка
@@ -69,4 +83,6 @@ help:
 	@echo "  make down     - Stop all services"
 	@echo "  make migrate  - Run database migrations"
 	@echo "  make lint     - Run linters"
+	@echo "  make vet      - Run go vet"
+	@echo "  make licenses - Check dependency licenses"
 	@echo "  make help     - Show this help message"
