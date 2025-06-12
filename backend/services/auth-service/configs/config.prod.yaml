@@ -1,0 +1,129 @@
+# File: backend/services/auth-service/configs/config.prod.yaml
+server:
+  port: 8080
+  read_timeout: "10s"
+  write_timeout: "10s"
+  idle_timeout: "60s"
+  shutdown_timeout: "30s"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "auth_user"
+  password: "auth_password"
+  dbname: "auth_db"
+  sslmode: "disable"
+  auto_migrate: true
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+kafka:
+  brokers: ["localhost:9092"]
+  producer:
+    topic: "auth.events"
+    role_topic: "auth-role-events"
+    user_role_topic: "auth-user-role-events"
+    role_permission_topic: "auth-role-permission-events"
+  consumer:
+    topics: ["account-events", "admin-events"]
+    group_id: "auth_service_consumer_group"
+
+jwt:
+  access_token_ttl: "15m"
+  refresh_token_ttl: "168h"
+  email_verification_token:
+    expires_in: "24h"
+  password_reset_token:
+    expires_in: "1h"
+  rsa_private_key_path: "${JWT_PRIVATE_KEY_PATH}"
+  rsa_public_key_path: "${JWT_PUBLIC_KEY_PATH}"
+  jwks_key_id: "auth-service-main-key"
+  issuer: "yourplatform.com/auth"
+  audience: "yourplatform.com/api"
+  refresh_token_byte_length: 32
+  hmac_secret_key: "${JWT_HMAC_SECRET_KEY}"
+  oauth_state_cookie_ttl: "10m"
+  oauth_state_secret: "${OAUTH_STATE_SECRET}"
+  mfa_challenge_token_ttl: "5m"
+
+security:
+  lockout:
+    max_failed_attempts: 5
+    lockout_duration: "15m"
+  password_hash:
+    memory: 65536
+    iterations: 1
+    parallelism: 2
+    salt_length: 16
+    key_length: 32
+  rate_limiting:
+    enabled: true
+    # default_limit: 100 # Removed default as it might be too broad
+    # default_window: "1h"
+    password_reset_per_email:
+      enabled: true
+      limit: 5
+      window: "1h"
+    password_reset_per_ip:
+      enabled: true
+      limit: 10
+      window: "1h"
+    two_fa_verification_per_user:
+      enabled: true
+      limit: 5
+      window: "15m"
+    general_auth: # For general public auth endpoints like /register, /login, /forgot-password etc.
+      enabled: true
+      limit: 20 # Example: 20 requests
+      window: "1m" # Example: per minute
+
+mfa:
+  enabled: true
+  totp_issuer_name: "YourPlatform"
+  totp_encryption_key: "${TOTP_ENCRYPTION_KEY}"
+  totp_backup_code_count: 10
+
+logging:
+  level: "debug"
+  format: "json"
+
+telemetry:
+  service_name: "auth-service"
+  tracing:
+    enabled: true
+    jaeger:
+      agent_host: "localhost"
+      agent_port: "6831"
+  metrics:
+    enabled: true
+    port: 9090
+
+oauth_providers:
+  vk:
+    client_id: "${VK_APP_ID}"
+    client_secret: "${VK_APP_SECRET}"
+    redirect_url: "http://localhost:8080/api/v1/auth/oauth/vk/callback"
+    auth_url: "https://oauth.vk.com/authorize"
+    token_url: "https://oauth.vk.com/access_token"
+    user_info_url: "https://api.vk.com/method/users.get"
+    scopes: ["email", "offline"]
+    provider_specific:
+      v: "5.199"
+      request_email_scope: "true"
+  odnoklassniki:
+    client_id: "${OK_APP_ID}"
+    client_secret: "${OK_APP_SECRET_KEY}"
+    redirect_url: "http://localhost:8080/api/v1/auth/oauth/ok/callback"
+    auth_url: "https://connect.ok.ru/oauth/authorize"
+    token_url: "https://api.ok.ru/oauth/token.do"
+    user_info_url: "https://api.ok.ru/fb.do"
+    scopes: ["GET_EMAIL", "VALUABLE_ACCESS"]
+    provider_specific:
+      application_public_key: "${OK_APP_PUBLIC_KEY}"
+
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
