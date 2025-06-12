@@ -1,4 +1,4 @@
-// File: internal/utils/device/device.go
+// File: backend/services/auth-service/internal/utils/device/device.go
 
 package device
 

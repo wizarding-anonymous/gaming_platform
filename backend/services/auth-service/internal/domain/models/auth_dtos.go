@@ -1,4 +1,4 @@
-// File: internal/domain/models/auth_dtos.go
+// File: backend/services/auth-service/internal/domain/models/auth_dtos.go
 package models
 
 // LoginRequest DTO for user login.

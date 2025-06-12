@@ -1,4 +1,4 @@
-// File: internal/utils/time/time.go
+// File: backend/services/auth-service/internal/utils/time/time.go
 
 package time
 

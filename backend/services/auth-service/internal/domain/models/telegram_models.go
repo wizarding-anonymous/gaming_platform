@@ -1,4 +1,4 @@
-// File: internal/domain/models/telegram_models.go
+// File: backend/services/auth-service/internal/domain/models/telegram_models.go
 package models
 
 // TelegramAuthData represents the data received from Telegram for authentication.

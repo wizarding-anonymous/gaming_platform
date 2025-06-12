@@ -107,22 +107,27 @@ auth-service/
    cd gaming_platform/backend/services/auth-service
    ```
 
-2. Установить зависимости:
+2. При возникновении ошибок 403 при скачивании зависимостей настройте GOPROXY:
+   ```bash
+   ../../setup-go-proxy.sh
+   ```
+
+3. Установить зависимости:
    ```bash
    go mod download
    ```
 
-3. Запустить сервисы зависимостей:
+4. Запустить сервисы зависимостей:
    ```bash
    docker-compose up -d postgres redis kafka
    ```
 
-4. Применить миграции (можно пропустить, если `auto_migrate: true`):
+5. Применить миграции (можно пропустить, если `auto_migrate: true`):
    ```bash
    make db-migrate-up
    ```
 
-5. Запустить сервис:
+6. Запустить сервис:
    ```bash
    make run
    ```

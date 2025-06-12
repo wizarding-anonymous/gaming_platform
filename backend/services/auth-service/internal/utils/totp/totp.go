@@ -1,4 +1,4 @@
-// File: internal/utils/totp/totp.go
+// File: backend/services/auth-service/internal/utils/totp/totp.go
 
 package totp
 
@@ -16,20 +16,20 @@ import (
 
 // Config содержит конфигурацию для TOTP
 type Config struct {
-	Issuer  string
-	Period  uint
-	Digits  otp.Digits
-	Skew    uint
-	Secret  string
+	Issuer string
+	Period uint
+	Digits otp.Digits
+	Skew   uint
+	Secret string
 }
 
 // DefaultConfig возвращает конфигурацию по умолчанию
 func DefaultConfig() *Config {
 	return &Config{
-		Issuer:  "RussianSteam",
-		Period:  30,
-		Digits:  otp.DigitsSix,
-		Skew:    1,
+		Issuer: "RussianSteam",
+		Period: 30,
+		Digits: otp.DigitsSix,
+		Skew:   1,
 	}
 }
 

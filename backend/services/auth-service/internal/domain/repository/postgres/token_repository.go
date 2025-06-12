@@ -1,4 +1,4 @@
-// File: internal/repository/postgres/token_repository.go
+// File: backend/services/auth-service/internal/domain/repository/postgres/token_repository.go
 
 package postgres
 

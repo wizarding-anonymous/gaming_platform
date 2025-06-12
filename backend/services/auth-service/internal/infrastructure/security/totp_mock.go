@@ -8,7 +8,7 @@ import (
 	"net/url"
 
 	// "github.com/pquerna/otp/totp" // Would be used in a real implementation
-        domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 )
 
 // mockTOTPService provides a placeholder implementation for TOTPService.
@@ -47,8 +47,8 @@ func (s *mockTOTPService) GenerateSecret(accountName, issuerName string) (string
 	query.Set("secret", secretB32)
 	query.Set("issuer", issuerName)
 	query.Set("algorithm", "SHA1") // Common default
-	query.Set("digits", "6")      // Common default
-	query.Set("period", "30")     // Common default
+	query.Set("digits", "6")       // Common default
+	query.Set("period", "30")      // Common default
 	otpURL.RawQuery = query.Encode()
 
 	// In a real implementation using pquerna/otp:
@@ -153,4 +153,3 @@ func DecryptSecret(encryptedSecret, encryptionKey string) (string, error) {
 // but using the existing PasswordService is also acceptable if its output format is stored.
 // For backup codes, we need one-way hashing.
 // The current PasswordService interface is fine for this.
-import "strings" // Used by ValidateCode mock

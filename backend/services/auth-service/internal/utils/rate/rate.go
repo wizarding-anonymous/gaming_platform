@@ -1,4 +1,4 @@
-// File: internal/utils/rate/rate.go
+// File: backend/services/auth-service/internal/utils/rate/rate.go
 
 package rate
 
@@ -133,41 +133,41 @@ func (l *Limiter) ResetByUserID(ctx context.Context, userID string) error {
 // GetRemainingAttempts возвращает оставшееся количество попыток для данного ключа
 func (l *Limiter) GetRemainingAttempts(ctx context.Context, key string, limit int) (int, error) {
 	redisKey := fmt.Sprintf("rate:%s", key)
-	
+
 	// Получаем текущее количество запросов
 	count, err := l.client.Get(ctx, redisKey).Int()
 	if err != nil && err != redis.Nil {
 		return 0, err
 	}
-	
+
 	// Если ключ не существует, возвращаем максимальное количество попыток
 	if err == redis.Nil {
 		return limit, nil
 	}
-	
+
 	// Вычисляем оставшееся количество попыток
 	remaining := limit - count
 	if remaining < 0 {
 		remaining = 0
 	}
-	
+
 	return remaining, nil
 }
 
 // GetRemainingTime возвращает оставшееся время до сброса ограничения для данного ключа
 func (l *Limiter) GetRemainingTime(ctx context.Context, key string) (time.Duration, error) {
 	redisKey := fmt.Sprintf("rate:%s", key)
-	
+
 	// Получаем оставшееся время жизни ключа
 	ttl, err := l.client.TTL(ctx, redisKey).Result()
 	if err != nil {
 		return 0, err
 	}
-	
+
 	// Если ключ не существует или TTL не установлен, возвращаем 0
 	if ttl < 0 {
 		return 0, nil
 	}
-	
+
 	return ttl, nil
 }

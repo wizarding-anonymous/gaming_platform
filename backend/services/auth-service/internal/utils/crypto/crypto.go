@@ -1,4 +1,4 @@
-// File: internal/utils/crypto/crypto.go
+// File: backend/services/auth-service/internal/utils/crypto/crypto.go
 
 package crypto
 

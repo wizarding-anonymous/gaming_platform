@@ -1,4 +1,4 @@
-// File: internal/utils/crypto/encryption.go
+// File: backend/services/auth-service/internal/utils/crypto/encryption.go
 package crypto
 
 import (

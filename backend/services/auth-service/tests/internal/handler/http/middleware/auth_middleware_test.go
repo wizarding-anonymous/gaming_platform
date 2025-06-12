@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	stdlib_errors "errors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -136,7 +137,6 @@ func TestAuthMiddleware_InvalidAuthFormat_BearerSpaceOnly(t *testing.T) {
 	// Let's assume ValidateAccessToken is called with empty string.
 	mockService.On("ValidateAccessToken", mock.Anything, "").Return(nil, nil, errors.ErrInvalidToken)
 
-
 	router.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 	var errResp ErrorResponse
@@ -150,16 +150,15 @@ func TestAuthMiddleware_InvalidAuthFormat_BearerSpaceOnly(t *testing.T) {
 	mockService.AssertExpectations(t)
 }
 
-
 func TestAuthMiddleware_ValidToken(t *testing.T) {
 	mockService := new(MockTokenService)
 	router := setupAuthRouter(mockService)
 
 	sampleToken := &jwt.Token{Raw: "sampletokenstring", Method: jwt.SigningMethodHS256, Valid: true}
 	sampleClaims := map[string]interface{}{
-		"sub": "test-user-id",
-		"iss": "auth-service",
-		"exp": float64(jwt.NewNumericDate(nil).AddDate(0,0,1).Unix()), // Example, ensure it's float64
+		"sub":          "test-user-id",
+		"iss":          "auth-service",
+		"exp":          float64(jwt.NewNumericDate(nil).AddDate(0, 0, 1).Unix()), // Example, ensure it's float64
 		"custom_claim": "test_value",
 	}
 
@@ -189,7 +188,6 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	tokenObjInResponse, ok := respBody["token_obj"].(map[string]interface{}) // jwt.Token serializes to map
 	assert.True(t, ok)
 	assert.Equal(t, sampleToken.Raw, tokenObjInResponse["Raw"])
-
 
 	mockService.AssertExpectations(t)
 }
@@ -251,7 +249,7 @@ func TestAuthMiddleware_OtherValidationError(t *testing.T) {
 	err := json.Unmarshal(rr.Body.Bytes(), &errResp)
 	assert.NoError(t, err)
 	assert.Equal(t, "Invalid token", errResp.Error) // Default message for other errors
-	assert.Equal(t, "unauthorized", errResp.Code)  // Default code for other errors
+	assert.Equal(t, "unauthorized", errResp.Code)   // Default code for other errors
 	mockService.AssertExpectations(t)
 }
 
@@ -277,29 +275,28 @@ func TestAuthMiddleware_GenericError(t *testing.T) {
 }
 
 // Standard library errors for the generic error test
-import stdlib_errors "errors"
 
 func TestAuthMiddleware_EmptyTokenString(t *testing.T) {
-    mockService := new(MockTokenService)
-    router := setupAuthRouter(mockService)
+	mockService := new(MockTokenService)
+	router := setupAuthRouter(mockService)
 
-    // This situation arises if Authorization header is "Bearer " (with a trailing space)
-    // The split logic in the middleware would pass " " as tokenString.
-    // Or if it's "Bearer" (no space, no token), it's caught by len(parts) !=2.
-    // If "Bearer ", parts is ["Bearer", ""]. tokenString is "".
-    mockService.On("ValidateAccessToken", mock.Anything, "").Return(nil, nil, errors.ErrInvalidToken)
+	// This situation arises if Authorization header is "Bearer " (with a trailing space)
+	// The split logic in the middleware would pass " " as tokenString.
+	// Or if it's "Bearer" (no space, no token), it's caught by len(parts) !=2.
+	// If "Bearer ", parts is ["Bearer", ""]. tokenString is "".
+	mockService.On("ValidateAccessToken", mock.Anything, "").Return(nil, nil, errors.ErrInvalidToken)
 
-    req, _ := http.NewRequest("GET", "/test", nil)
-    req.Header.Set("Authorization", "Bearer ") // Token string is effectively empty
-    rr := httptest.NewRecorder()
-    router.ServeHTTP(rr, req)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer ") // Token string is effectively empty
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
 
-    assert.Equal(t, http.StatusUnauthorized, rr.Code)
-    var errResp ErrorResponse
-    _ = json.Unmarshal(rr.Body.Bytes(), &errResp)
-    assert.Equal(t, "Invalid token", errResp.Error)
-    assert.Equal(t, "unauthorized", errResp.Code)
-    mockService.AssertExpectations(t)
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	var errResp ErrorResponse
+	_ = json.Unmarshal(rr.Body.Bytes(), &errResp)
+	assert.Equal(t, "Invalid token", errResp.Error)
+	assert.Equal(t, "unauthorized", errResp.Code)
+	mockService.AssertExpectations(t)
 }
 
 // Ensure MockTokenService satisfies the interface implicitly expected by AuthMiddleware.
@@ -314,7 +311,7 @@ func TestAuthMiddleware_EmptyTokenString(t *testing.T) {
 // This is relevant for `sampleClaims` in `TestAuthMiddleware_ValidToken`
 func TestJwtNumericDateIsFloat64(t *testing.T) {
 	claims := jwt.MapClaims{
-		"exp": jwt.NewNumericDate(nil).AddDate(0,0,1),
+		"exp": jwt.NewNumericDate(nil).AddDate(0, 0, 1),
 	}
 	jsonData, err := json.Marshal(claims)
 	assert.NoError(t, err)

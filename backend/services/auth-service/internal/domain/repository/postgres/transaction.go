@@ -1,4 +1,4 @@
-// File: internal/repository/postgres/transaction.go
+// File: backend/services/auth-service/internal/domain/repository/postgres/transaction.go
 
 package postgres
 

@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v5" // For pgx.ErrNoRows
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	domainErrors "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/errors"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository/interfaces"
 	// "go.uber.org/zap" // Logger can be added if necessary
 )
@@ -43,7 +43,7 @@ func (r *RoleRepositoryPostgres) Create(ctx context.Context, role *models.Role) 
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
-			if strings.Contains(pgErr.ConstraintName, "roles_name_key") || strings.Contains(pgErr.ConstraintName, "roles_name_idx"){
+			if strings.Contains(pgErr.ConstraintName, "roles_name_key") || strings.Contains(pgErr.ConstraintName, "roles_name_idx") {
 				return fmt.Errorf("role with name '%s' already exists: %w", role.Name, domainErrors.ErrDuplicateValue)
 			}
 			if strings.Contains(pgErr.ConstraintName, "roles_pkey") {
@@ -110,9 +110,9 @@ func (r *RoleRepositoryPostgres) Update(ctx context.Context, role *models.Role) 
 	result, err := r.pool.Exec(ctx, query, role.Name, role.Description, role.ID)
 	if err != nil {
 		var pgErr *pgconn.PgError
-        if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation for name
-            return fmt.Errorf("role name '%s' already exists: %w", role.Name, domainErrors.ErrDuplicateValue)
-        }
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation for name
+			return fmt.Errorf("role name '%s' already exists: %w", role.Name, domainErrors.ErrDuplicateValue)
+		}
 		// r.logger.Error("Failed to update role", zap.Error(err), zap.String("role_id", role.ID))
 		return fmt.Errorf("failed to update role: %w", err)
 	}
@@ -164,9 +164,9 @@ func (r *RoleRepositoryPostgres) List(ctx context.Context) ([]*models.Role, erro
 		roles = append(roles, role)
 	}
 	if err = rows.Err(); err != nil {
-        // r.logger.Error("Error iterating role rows", zap.Error(err))
-        return nil, fmt.Errorf("error iterating role rows: %w", err)
-    }
+		// r.logger.Error("Error iterating role rows", zap.Error(err))
+		return nil, fmt.Errorf("error iterating role rows: %w", err)
+	}
 	return roles, nil
 }
 
@@ -199,9 +199,9 @@ func (r *RoleRepositoryPostgres) GetPermissionsForRole(ctx context.Context, role
 		permissions = append(permissions, p)
 	}
 	if err = rows.Err(); err != nil {
-        // r.logger.Error("Error iterating role permissions rows", zap.Error(err))
-        return nil, fmt.Errorf("error iterating role permissions rows: %w", err)
-    }
+		// r.logger.Error("Error iterating role permissions rows", zap.Error(err))
+		return nil, fmt.Errorf("error iterating role permissions rows: %w", err)
+	}
 	return permissions, nil
 }
 
@@ -266,40 +266,3 @@ func (r *RoleRepositoryPostgres) RoleHasPermission(ctx context.Context, roleID s
 
 // Ensure RoleRepositoryPostgres implements interfaces.RoleRepository
 var _ interfaces.RoleRepository = (*RoleRepositoryPostgres)(nil)
-
-// The old postgres/role_repository.go also contained methods for user-role assignments.
-// These (GetUserRoles, AssignRoleToUser, RemoveRoleFromUser, UserHasRole)
-// will be moved to a dedicated UserRolesRepository.
-// Methods like GetAll, and specific GetUserRoles, AssignRoleToUser etc. from the old file
-// are either adapted here or will be moved.
-// The original file used sqlx.DB, this uses pgxpool.Pool.
-// Soft delete logic for roles (using deleted_at) was removed as it's not in the schema spec for roles.
-// Logger usage has been commented out but can be re-added if a logger instance is passed to the repo.
-// Error checking for unique constraints in Create/Update is added.
-// ON CONFLICT DO NOTHING is used for AssignPermissionToRole to make it idempotent.
-// RemovePermissionFromRole now returns nil if the link wasn't there (idempotency).The `RoleRepositoryPostgres` implementation in `backend/services/auth-service/internal/domain/repository/postgres/role_repository.go` has been updated.
-
-**Summary of `RolesRepository` changes:**
-1.  **Models (`models/role.go`, `models/permission.go`):** Updated `ID` fields to `string`. Added `Resource` and `Action` to `Permission` model.
-2.  **Interface (`interfaces/role_repository.go`):**
-    *   Updated to use `string` for `roleID` and `permissionID`.
-    *   `Create` method now returns `error` only.
-    *   Focused on role-specific and role-permission linkage methods. User-role methods are to be handled by `UserRolesRepository`.
-3.  **Implementation (`postgres/role_repository.go`):**
-    *   Renamed struct to `RoleRepositoryPostgres` and updated constructor to use `*pgxpool.Pool`.
-    *   Changed `roleID` and `permissionID` parameters and internal handling to `string`.
-    *   SQL queries updated for `string` IDs.
-    *   Removed `deleted_at` handling for the `roles` table (hard deletes).
-    *   Ensured `created_at` and `updated_at` are handled by DB defaults/triggers by not setting them explicitly in `Create` and `Update` (except where the model itself carries this data from a previous read, which is fine for `Update`).
-    *   Methods related to user-role linkage were conceptually separated (to be implemented in `UserRolesRepository`).
-    *   Implemented role-permission linkage methods (`GetPermissionsForRole`, `AssignPermissionToRole`, `RemovePermissionFromRole`, `RoleHasPermission`).
-    *   Improved error handling for unique constraints.
-
-This largely completes the `RolesRepository` part of Task 4.
-
-Next, I'll address **`PermissionsRepository`**.
-*   Interface: `backend/services/auth-service/internal/domain/repository/permission_repository.go` (exists, based on `ls` output).
-*   Implementation: No dedicated `postgres/permission_repository.go` was seen. Methods might be in the old `postgres/user_repository.go` or `postgres/role_repository.go`, or it needs to be created. The task implies creating it in `internal/infrastructure/database/` or `internal/domain/repository/postgres/`. I'll use the latter for consistency.
-*   Model: `backend/services/auth-service/internal/domain/models/permission.go` (already updated).
-
-I'll start by reading the existing `permission_repository.go` interface file.

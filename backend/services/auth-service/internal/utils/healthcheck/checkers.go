@@ -1,4 +1,4 @@
-// File: internal/utils/healthcheck/checkers.go
+// File: backend/services/auth-service/internal/utils/healthcheck/checkers.go
 package healthcheck
 
 import (

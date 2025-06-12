@@ -1,4 +1,4 @@
-// File: internal/utils/telegram/telegram.go
+// File: backend/services/auth-service/internal/utils/telegram/telegram.go
 
 package telegram
 
@@ -170,7 +170,7 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) err
 
 	// Парсим ответ
 	var response struct {
-		OK     bool   `json:"ok"`
+		OK     bool `json:"ok"`
 		Result struct {
 			MessageID int `json:"message_id"`
 		} `json:"result"`
