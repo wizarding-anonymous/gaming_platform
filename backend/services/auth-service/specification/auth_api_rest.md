@@ -1,4 +1,4 @@
-<!-- File: backend/services/auth-service/specification_final/auth_api_rest.md -->
+<!-- File: backend/services/auth-service/specification/auth_api_rest.md -->
 # Auth Service: REST API Specification
 
 **Version:** 1.0

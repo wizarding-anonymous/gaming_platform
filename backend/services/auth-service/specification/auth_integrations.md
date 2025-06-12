@@ -1,4 +1,4 @@
-<!-- File: backend/services/auth-service/specification_final/auth_integrations.md -->
+<!-- File: backend/services/auth-service/specification/auth_integrations.md -->
 # Auth Service: Integrations Specification
 
 **Version:** 1.0

@@ -1,4 +1,4 @@
-<!-- File: backend/services/auth-service/specification_final/auth_service_overview.md -->
+<!-- File: backend/services/auth-service/specification/auth_service_overview.md -->
 # Auth Service Overview
 
 **Version:** 1.0

@@ -1,4 +1,4 @@
-// File: migrations/000001_create_initial_tables.up.sql
+// File: backend/services/auth-service/migrations/000001_create_initial_tables.up.sql
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
