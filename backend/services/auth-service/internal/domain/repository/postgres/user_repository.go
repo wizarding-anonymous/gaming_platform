@@ -63,7 +63,7 @@ func (r *UserRepositoryPostgres) Create(ctx context.Context, user *models.User) 
 				if strings.Contains(pgErr.ConstraintName, "users_email_key") || strings.Contains(pgErr.ConstraintName, "users_email_idx") { // Adjusted for common index names
 					return domainErrors.ErrEmailExists
 				}
-				if strings.Contains(pgErr.ConstraintName, "users_username_key") || strings.Contains(pgErr.ConstraintName, "users_username_idx"){
+				if strings.Contains(pgErr.ConstraintName, "users_username_key") || strings.Contains(pgErr.ConstraintName, "users_username_idx") {
 					return domainErrors.ErrUsernameExists
 				}
 				return fmt.Errorf("failed to create user due to unique constraint %s: %w", pgErr.ConstraintName, domainErrors.ErrDuplicateValue)
@@ -283,7 +283,6 @@ func (r *UserRepositoryPostgres) IncrementFailedLoginAttempts(ctx context.Contex
 	return nil
 }
 
-
 // ResetFailedLoginAttempts resets the failed login counter and lockout_until for a user.
 func (r *UserRepositoryPostgres) ResetFailedLoginAttempts(ctx context.Context, id uuid.UUID) error {
 	query := `
@@ -321,20 +320,20 @@ func (r *UserRepositoryPostgres) UpdateLastLogin(ctx context.Context, id uuid.UU
 
 // UpdateLockout sets/clears the lockout_until timestamp for a user.
 func (r *UserRepositoryPostgres) UpdateLockout(ctx context.Context, id uuid.UUID, lockoutUntil *time.Time) error {
-    query := `
+	query := `
         UPDATE users
         SET lockout_until = $1
         WHERE id = $2 AND deleted_at IS NULL
     `
-    // updated_at will be set by the trigger
-    result, err := r.pool.Exec(ctx, query, lockoutUntil, id)
-    if err != nil {
-        return fmt.Errorf("failed to update lockout status: %w", err)
-    }
-    if result.RowsAffected() == 0 {
-        return domainErrors.ErrUserNotFound
-    }
-    return nil
+	// updated_at will be set by the trigger
+	result, err := r.pool.Exec(ctx, query, lockoutUntil, id)
+	if err != nil {
+		return fmt.Errorf("failed to update lockout status: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return domainErrors.ErrUserNotFound
+	}
+	return nil
 }
 
 // List retrieves a paginated and filtered list of users.
@@ -426,7 +425,6 @@ func (r *UserRepositoryPostgres) List(ctx context.Context, params models.ListUse
 	return users, totalCount, nil
 }
 
-
 // --- Methods from the old PostgresRepository that are not part of UserRepository or RoleRepository ---
 // These methods (GetUserRoles, AssignRole, RemoveRole, HasRole, HasPermission, GetRoleByID, GetByName, etc.)
 // belong to RoleRepository, UserRolesRepository, or PermissionRepository.
@@ -455,7 +453,6 @@ func (r *PostgresRepository) RemovePermissionFromRole(ctx context.Context, roleI
 func (r *PostgresRepository) RoleHasPermission(ctx context.Context, roleID uuid.UUID, permissionName string) (bool, error) { ... }
 func (r *PostgresRepository) GetPermissionByID(ctx context.Context, id uuid.UUID) (models.Permission, error) { ... } // This is PermissionRepository specific
 */
-
 
 // Ensure UserRepositoryPostgres implements repository.UserRepository.
 // The original file had a generic PostgresRepository implementing multiple interfaces.
@@ -531,56 +528,3 @@ func NewPostgresRepository(cfg config.DatabaseConfig) (*PostgresRepository, erro
 */
 
 // Methods for Role management are also in the original file.
-// These should be part of a RoleRepository implementation.
-// e.g., GetRoleByID, GetByName, Create (for role), Update (for role), Delete (for role), List (for roles)
-// GetRolePermissions, AssignPermission, RemovePermission, HasPermission (for role)
-// GetPermissionByID
-
-// The var block ensuring interface implementation was also for the generic PostgresRepository.
-// var (
-// 	_ interfaces.UserRepository = (*PostgresRepository)(nil)
-// 	_ interfaces.RoleRepository = (*PostgresRepository)(nil)
-// )
-// This should be per specific repository struct now.
-// I've added `var _ repository.UserRepository = (*UserRepositoryPostgres)(nil)` above.This is a good start to refactoring the `UserRepository`. I've updated the `user_postgres_repository.go` file with the changes discussed.
-
-Here's a summary of what was done and what's next for `UserRepository`:
-
-**Done in `user_postgres_repository.go` rewrite:**
-*   Renamed struct to `UserRepositoryPostgres` and created `NewUserRepositoryPostgres` constructor.
-*   Updated method signatures to match the new `UserRepository` interface.
-*   **`Create`**:
-    *   SQL query updated to include `salt` and other fields relevant to the new schema.
-    *   Explicit `created_at` and `updated_at` settings removed (DB defaults/triggers handle them).
-    *   Error handling for unique violations improved using `pgconn.PgError`.
-*   **`FindByID`, `FindByEmail`, `FindByUsername`**:
-    *   SQL queries updated to select columns from the new schema.
-    *   `deleted_at IS NULL` condition added.
-*   **`Update`**:
-    *   SQL query updated to modify fields relevant to the new schema.
-    *   Explicit `updated_at` setting removed.
-    *   Returns `domainErrors.ErrUserNotFound` if no rows affected.
-*   **`Delete`**:
-    *   SQL query updated to set `deleted_at = CURRENT_TIMESTAMP` and `status = 'deleted'`.
-    *   Explicit `updated_at` setting removed.
-*   **`UpdateStatus`, `SetEmailVerifiedAt`, `UpdatePassword`, `UpdateFailedLoginAttempts`, `ResetFailedLoginAttempts`, `UpdateLastLogin`, `UpdateLockout`, `IncrementFailedLoginAttempts`**:
-    *   Implemented these specific update methods targeting the correct columns.
-    *   Explicit `updated_at` settings removed.
-*   **`List`**:
-    *   Implemented using `models.ListUsersParams` for filtering (status, username, email) and pagination.
-    *   Selects columns based on the new schema.
-*   Removed methods that are now clearly out of scope for `UserRepository` (e.g., `UpdateTwoFactorStatus`, `UpdateTelegramID`) or belong to other repositories (RBAC methods).
-*   Ensured `var _ repository.UserRepository = (*UserRepositoryPostgres)(nil)` for interface compliance.
-
-**Remaining considerations/todos for `UserRepository` or related files:**
-
-1.  **Interface vs. Implementation Path for `ListUsersParams`**: The `UserRepositoryPostgres` currently imports `github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/repository` for `ListUsersParams`. This might be circular if `ListUsersParams` is defined in `user_repository.go` (the interface file). It's better if `ListUsersParams` is in the `models` package, which it is now. So, the import should be `github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models`. I need to ensure this is consistent. *Self-correction: I see I used `models.ListUsersParams` in the implementation, which is correct as I moved it to the models package.*
-2.  **Role Fetching in `Find` methods**: The original `GetBy...` methods in `postgres/user_repository.go` also fetched user roles. My current refactored `Find...` methods in `UserRepositoryPostgres` do *not* fetch roles to keep the repository focused. This is a design choice: roles can be fetched separately via `UserRolesRepository` or this can be added back with a flag if eager loading is desired. For now, I'll keep it separate.
-3.  **DB Connection Management**: The original `PostgresRepository` had `Close()`, `GetPool()`, `BeginTx()`. These are now removed from `UserRepositoryPostgres` to make it more focused. A shared DB manager should provide the `*pgxpool.Pool` to repositories and handle transaction management. This is a broader refactoring point for the persistence layer.
-4.  **Error handling for unique constraints in `Create` and `Update`**: I've used `strings.Contains(pgErr.ConstraintName, "constraint_name_pattern")`. This is better than direct string equality on the whole error message but still relies on naming conventions for constraints. If constraint names are very stable and known, this is okay. The most robust way is if the DB driver or an ORM provides specific error types for these, but `pgx` typically requires checking `pgErr.Code` and then potentially `pgErr.ConstraintName`.
-5.  **`Update` method granularity**: The current general `Update` method updates many fields. This is okay, but for more atomic updates, specific methods (like `UpdateStatus`, `UpdatePassword`) are better, or an `UpdateFields(map[string]interface{})` approach could be added later if needed. The current mix of a general `Update` and specific updaters is a reasonable compromise.
-
-The `UserRepository` is now much more aligned with the subtask's requirements and the new schema.
-
-Next, I will move to Task 2: **Review and Update `RefreshTokenRepository`**.
-I'll start by listing files that seem relevant to refresh tokens.

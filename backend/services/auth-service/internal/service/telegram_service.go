@@ -1,4 +1,4 @@
-// File: internal/service/telegram_service.go
+// File: backend/services/auth-service/internal/service/telegram_service.go
 
 package service
 
@@ -21,11 +21,11 @@ import (
 
 // TelegramService предоставляет методы для работы с аутентификацией через Telegram
 type TelegramService struct {
-	userRepo    interfaces.UserRepository
+	userRepo     interfaces.UserRepository
 	tokenService *TokenService
-	kafkaClient *eventskafka.Producer // Changed to Sarama-based producer
-	logger      *zap.Logger
-	botToken    string
+	kafkaClient  *eventskafka.Producer // Changed to Sarama-based producer
+	logger       *zap.Logger
+	botToken     string
 }
 
 // NewTelegramService создает новый экземпляр TelegramService
@@ -37,11 +37,11 @@ func NewTelegramService(
 	botToken string,
 ) *TelegramService {
 	return &TelegramService{
-		userRepo:    userRepo,
+		userRepo:     userRepo,
 		tokenService: tokenService,
-		kafkaClient: kafkaClient, // Assign Sarama-based producer
-		logger:      logger,
-		botToken:    botToken,
+		kafkaClient:  kafkaClient, // Assign Sarama-based producer
+		logger:       logger,
+		botToken:     botToken,
 	}
 }
 
@@ -158,9 +158,9 @@ func (s *TelegramService) UnlinkTelegramAccount(ctx context.Context, userID uuid
 
 	// Отправка события об отвязывании аккаунта Telegram
 	event := models.TelegramUnlinkedEvent{
-		UserID:       user.ID.String(),
-		TelegramID:   telegramID,
-		UnlinkedAt:   user.UpdatedAt, // This should be time.Time
+		UserID:     user.ID.String(),
+		TelegramID: telegramID,
+		UnlinkedAt: user.UpdatedAt, // This should be time.Time
 	}
 	// Assuming AuthUserTelegramUnlinkedV1 is the correct EventType constant in models
 	subjectTelegramUnlinked := user.ID.String()
@@ -209,9 +209,9 @@ func (s *TelegramService) LoginWithTelegram(ctx context.Context, data models.Tel
 
 	// Отправка события о входе через Telegram
 	event := models.TelegramLoginEvent{
-		UserID:    user.ID.String(),
+		UserID:     user.ID.String(),
 		TelegramID: data.ID,
-		LoginAt:   time.Now(), // This should be time.Time
+		LoginAt:    time.Now(), // This should be time.Time
 	}
 	// Assuming AuthUserTelegramLoginSuccessV1 or similar is the correct EventType constant
 	// This event might be better represented by the generic AuthUserLoginSuccessV1 if the payload is compatible.

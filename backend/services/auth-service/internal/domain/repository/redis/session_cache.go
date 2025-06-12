@@ -1,4 +1,4 @@
-// File: internal/repository/redis/session_cache.go
+// File: backend/services/auth-service/internal/domain/repository/redis/session_cache.go
 
 package redis
 
@@ -80,8 +80,8 @@ func (c *SessionCache) Set(ctx context.Context, session *models.Session) error {
 	userKey := fmt.Sprintf("user:%s:sessions", session.UserID.String())
 	err = c.client.SAdd(ctx, userKey, session.ID.String()).Err()
 	if err != nil {
-		c.logger.Error("Failed to add session to user index", 
-			zap.Error(err), 
+		c.logger.Error("Failed to add session to user index",
+			zap.Error(err),
 			zap.String("user_id", session.UserID.String()),
 			zap.String("session_id", session.ID.String()),
 		)
@@ -91,8 +91,8 @@ func (c *SessionCache) Set(ctx context.Context, session *models.Session) error {
 	// Установка TTL для индекса пользователя
 	err = c.client.Expire(ctx, userKey, ttl).Err()
 	if err != nil {
-		c.logger.Error("Failed to set TTL for user sessions index", 
-			zap.Error(err), 
+		c.logger.Error("Failed to set TTL for user sessions index",
+			zap.Error(err),
 			zap.String("user_id", session.UserID.String()),
 		)
 	}
@@ -122,8 +122,8 @@ func (c *SessionCache) Delete(ctx context.Context, id uuid.UUID) error {
 		userKey := fmt.Sprintf("user:%s:sessions", session.UserID.String())
 		err = c.client.SRem(ctx, userKey, id.String()).Err()
 		if err != nil {
-			c.logger.Error("Failed to remove session from user index", 
-				zap.Error(err), 
+			c.logger.Error("Failed to remove session from user index",
+				zap.Error(err),
 				zap.String("user_id", session.UserID.String()),
 				zap.String("session_id", id.String()),
 			)
@@ -137,7 +137,7 @@ func (c *SessionCache) Delete(ctx context.Context, id uuid.UUID) error {
 // DeleteAllByUserID удаляет все сессии пользователя из кэша
 func (c *SessionCache) DeleteAllByUserID(ctx context.Context, userID uuid.UUID) error {
 	userKey := fmt.Sprintf("user:%s:sessions", userID.String())
-	
+
 	// Получение всех ID сессий пользователя
 	sessionIDs, err := c.client.SMembers(ctx, userKey).Result()
 	if err != nil {
@@ -167,7 +167,7 @@ func (c *SessionCache) DeleteAllByUserID(ctx context.Context, userID uuid.UUID) 
 // DeactivateAllByUserID деактивирует все сессии пользователя в кэше
 func (c *SessionCache) DeactivateAllByUserID(ctx context.Context, userID uuid.UUID) error {
 	userKey := fmt.Sprintf("user:%s:sessions", userID.String())
-	
+
 	// Получение всех ID сессий пользователя
 	sessionIDs, err := c.client.SMembers(ctx, userKey).Result()
 	if err != nil {

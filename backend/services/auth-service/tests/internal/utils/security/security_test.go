@@ -94,7 +94,6 @@ func TestVerifyPassword_InvalidHashFormat_BadVersionString(t *testing.T) {
 	assert.False(t, match)
 }
 
-
 func TestVerifyPassword_InvalidHashFormat_BadParamsString(t *testing.T) {
 	invalidHash := "$argon2id$v=19$m=abc,t=def,p=ghi$somesalt$somehash"
 	match, err := security.VerifyPassword("password", invalidHash)
@@ -105,14 +104,13 @@ func TestVerifyPassword_InvalidHashFormat_BadParamsString(t *testing.T) {
 }
 
 func TestVerifyPassword_InvalidHashFormat_MissingParams(t *testing.T) {
-    // Example: missing 't' parameter
-    invalidHash := "$argon2id$v=19$m=65536,p=4$somesalt$somehash"
-    match, err := security.VerifyPassword("password", invalidHash)
-    assert.Error(t, err, "VerifyPassword should return an error for missing params")
-    assert.Contains(t, err.Error(), "input error for specifier", "Error message should indicate sscanf failure for params")
-    assert.False(t, match)
+	// Example: missing 't' parameter
+	invalidHash := "$argon2id$v=19$m=65536,p=4$somesalt$somehash"
+	match, err := security.VerifyPassword("password", invalidHash)
+	assert.Error(t, err, "VerifyPassword should return an error for missing params")
+	assert.Contains(t, err.Error(), "input error for specifier", "Error message should indicate sscanf failure for params")
+	assert.False(t, match)
 }
-
 
 func TestVerifyPassword_InvalidBase64Salt(t *testing.T) {
 	params := security.DefaultArgon2Params()
@@ -168,7 +166,6 @@ func TestGeneratePassword_CustomParams(t *testing.T) {
 	require.NoError(t, errKey)
 	assert.Len(t, key, int(customParams.KeyLength), "Key length should match custom parameter")
 
-
 	match, err := security.VerifyPassword(password, encodedHash)
 	assert.NoError(t, err)
 	assert.True(t, match, "Password should verify correctly with custom parameters hash")
@@ -214,7 +211,6 @@ func tokenPaddedForDecoding(token string) string {
 	return token
 }
 
-
 func TestGenerateRandomToken_ZeroLength(t *testing.T) {
 	token, err := security.GenerateRandomToken(0)
 	require.NoError(t, err)
@@ -254,5 +250,3 @@ func TestSanitizeInput(t *testing.T) {
 		})
 	}
 }
-
-[end of backend/services/auth-service/internal/utils/security/security_test.go]

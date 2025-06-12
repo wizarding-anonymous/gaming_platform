@@ -152,7 +152,6 @@ func TestArgon2idPasswordService_CheckPasswordHash_InvalidHashFormat_BadVersionS
 	assert.False(t, matchScan)
 }
 
-
 func TestArgon2idPasswordService_CheckPasswordHash_InvalidHashFormat_MalformedParams(t *testing.T) {
 	ps, _ := security.NewArgon2idPasswordService(defaultTestParams())
 	invalidHash := "$argon2id$v=19$m=abc,t=def,p=ghi$somesalt$somehash"
@@ -198,5 +197,3 @@ var _ service.PasswordService = (*security.Argon2idPasswordService)(nil) // This
 // type ExportedArgon2idPasswordService = security.Argon2idPasswordService
 // var _ service.PasswordService = (*ExportedArgon2idPasswordService)(nil)
 // However, it's better that it's not exported. The test is for the functionality via the interface.
-
-[end of backend/services/auth-service/internal/infrastructure/security/password_argon2_test.go]

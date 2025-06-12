@@ -1,4 +1,4 @@
-// File: internal/utils/healthcheck/healthcheck.go
+// File: backend/services/auth-service/internal/utils/healthcheck/healthcheck.go
 
 package healthcheck
 

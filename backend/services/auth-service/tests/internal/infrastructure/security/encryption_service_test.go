@@ -172,5 +172,3 @@ func TestDecrypt_WrongKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to decrypt", "Error message should indicate decryption/authentication failure")
 	assert.Contains(t, err.Error(), "message authentication failed", "Underlying error should be authentication failure")
 }
-
-[end of backend/services/auth-service/internal/infrastructure/security/encryption_service_test.go]

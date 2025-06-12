@@ -148,7 +148,6 @@ func TestVerify_InvalidBase64Hash(t *testing.T) {
 	assert.False(t, match)
 }
 
-
 func TestGenerateRandomPassword_DefaultLength(t *testing.T) {
 	lengthsToTest := []int{0, 5, -1} // Less than 8
 	expectedLength := 8
@@ -214,8 +213,8 @@ func TestIsStrongPassword(t *testing.T) {
 		{"Strong: All four types (12 chars)", "Abcdef123!@#", true},
 
 		{"Weak: Only digits and special (8 chars)", "1234!@#$", false},
-		{"Weak: Only upper and lower (10 chars)", "PasswordAA", false}, // Needs 3/4
-		{"Weak: Only upper and digits (10 chars)", "PASSWORD1234", false}, // Needs 3/4
+		{"Weak: Only upper and lower (10 chars)", "PasswordAA", false},     // Needs 3/4
+		{"Weak: Only upper and digits (10 chars)", "PASSWORD1234", false},  // Needs 3/4
 		{"Weak: Only upper and special (10 chars)", "PASSWORD!@#$", false}, // Needs 3/4
 
 		{"Strong: Example 1", "P@$$wOrd123", true},
@@ -249,4 +248,3 @@ func TestIsStrongPassword(t *testing.T) {
 	// Explicitly test "aB1!cde" (7 chars) -> false
 	assert.False(t, password.IsStrongPassword("aB1!cde"), "7 char password 'aB1!cde' should be weak")
 }
-[end of backend/services/auth-service/internal/utils/password/password_test.go]

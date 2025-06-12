@@ -1,4 +1,4 @@
-// File: internal/domain/service/captcha_service.go
+// File: backend/services/auth-service/internal/domain/service/captcha_service.go
 package service
 
 import "context"

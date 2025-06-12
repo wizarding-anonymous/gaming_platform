@@ -1,4 +1,4 @@
-// File: internal/handler/http/role_handler.go
+// File: backend/services/auth-service/internal/handler/http/role_handler.go
 
 package http
 

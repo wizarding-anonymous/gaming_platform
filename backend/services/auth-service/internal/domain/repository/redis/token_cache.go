@@ -1,4 +1,4 @@
-// File: internal/repository/redis/token_cache.go
+// File: backend/services/auth-service/internal/domain/repository/redis/token_cache.go
 
 package redis
 
@@ -111,8 +111,8 @@ func (c *TokenCache) Set(ctx context.Context, token *models.Token) error {
 	userKey := fmt.Sprintf("user:%s:tokens", token.UserID.String())
 	err = c.client.SAdd(ctx, userKey, token.ID.String()).Err()
 	if err != nil {
-		c.logger.Error("Failed to add token to user index", 
-			zap.Error(err), 
+		c.logger.Error("Failed to add token to user index",
+			zap.Error(err),
 			zap.String("user_id", token.UserID.String()),
 			zap.String("token_id", token.ID.String()),
 		)
@@ -122,8 +122,8 @@ func (c *TokenCache) Set(ctx context.Context, token *models.Token) error {
 	// Установка TTL для индекса пользователя
 	err = c.client.Expire(ctx, userKey, ttl).Err()
 	if err != nil {
-		c.logger.Error("Failed to set TTL for user tokens index", 
-			zap.Error(err), 
+		c.logger.Error("Failed to set TTL for user tokens index",
+			zap.Error(err),
 			zap.String("user_id", token.UserID.String()),
 		)
 	}
@@ -163,8 +163,8 @@ func (c *TokenCache) Delete(ctx context.Context, token *models.Token) error {
 	userKey := fmt.Sprintf("user:%s:tokens", token.UserID.String())
 	err = c.client.SRem(ctx, userKey, token.ID.String()).Err()
 	if err != nil {
-		c.logger.Error("Failed to remove token from user index", 
-			zap.Error(err), 
+		c.logger.Error("Failed to remove token from user index",
+			zap.Error(err),
 			zap.String("user_id", token.UserID.String()),
 			zap.String("token_id", token.ID.String()),
 		)
@@ -210,7 +210,7 @@ func (c *TokenCache) RevokeToken(ctx context.Context, tokenValue string) error {
 
 	// В любом случае добавляем в черный список
 	blacklistKey := fmt.Sprintf("blacklist:token:%s", tokenValue)
-	
+
 	// Определение TTL
 	ttl := c.ttl
 	if token != nil && !token.ExpiresAt.IsZero() {
@@ -232,7 +232,7 @@ func (c *TokenCache) RevokeToken(ctx context.Context, tokenValue string) error {
 // RevokeAllUserTokens отзывает все токены пользователя
 func (c *TokenCache) RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) error {
 	userKey := fmt.Sprintf("user:%s:tokens", userID.String())
-	
+
 	// Получение всех ID токенов пользователя
 	tokenIDs, err := c.client.SMembers(ctx, userKey).Result()
 	if err != nil {
@@ -269,7 +269,7 @@ func (c *TokenCache) RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) 
 
 		// Добавление в черный список
 		blacklistKey := fmt.Sprintf("blacklist:token:%s", token.TokenValue)
-		
+
 		// Определение TTL
 		ttl := c.ttl
 		if !token.ExpiresAt.IsZero() {

@@ -218,7 +218,6 @@ func TestValidateAccessToken_RS256_NotYetValid(t *testing.T) {
 	jwt.TimeFunc = time.Now // Ensure it's reset for other tests
 }
 
-
 func TestValidateAccessToken_RS256_WrongAudience(t *testing.T) {
 	privPath, pubPath := createTestRSAFiles(t, testRSAKeyBits)
 	cfg := newTestJWTConfigRSA(t, privPath, pubPath)
@@ -300,7 +299,6 @@ func TestValidateAccessToken_RS256_NoKIDInToken(t *testing.T) {
 	assert.NoError(t, err, "Validation should pass if KID is absent but signature is valid with the service's key")
 	assert.NotNil(t, validatedClaims)
 }
-
 
 func TestValidateAccessToken_RS256_Tampered(t *testing.T) {
 	privPath, pubPath := createTestRSAFiles(t, testRSAKeyBits)
@@ -387,7 +385,6 @@ func TestValidateStateJWT_HS256_Expired(t *testing.T) {
 	assert.Contains(t, err.Error(), jwt.ErrTokenExpired.Error())
 }
 
-
 func TestGetJWKS(t *testing.T) {
 	privPath, pubPath := createTestRSAFiles(t, testRSAKeyBits)
 	cfg := newTestJWTConfigRSA(t, privPath, pubPath)
@@ -428,7 +425,6 @@ func TestGenerateRefreshTokenValue(t *testing.T) {
 	// Default 32 bytes of entropy -> base64 URL encoded -> 44 chars
 	assert.Len(t, val1, 43, "Expected length 43 for 32 byte base64url encoded token (no padding)")
 
-
 	val2, err2 := tm.GenerateRefreshTokenValue()
 	require.NoError(t, err2)
 	assert.NotEmpty(t, val2)
@@ -442,5 +438,3 @@ func TestGetRefreshTokenExpiry(t *testing.T) {
 
 	assert.Equal(t, cfg.RefreshTokenTTL, tm.GetRefreshTokenExpiry())
 }
-
-[end of backend/services/auth-service/internal/infrastructure/security/rsa_jwt_service_test.go]

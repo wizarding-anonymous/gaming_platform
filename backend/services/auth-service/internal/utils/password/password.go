@@ -1,4 +1,4 @@
-// File: internal/utils/password/password.go
+// File: backend/services/auth-service/internal/utils/password/password.go
 
 package password
 

@@ -1,4 +1,4 @@
-// File: internal/utils/random/random.go
+// File: backend/services/auth-service/internal/utils/random/random.go
 
 package random
 
@@ -47,16 +47,16 @@ func GenerateRandomInt(min, max int64) (int64, error) {
 	if min == max {
 		return min, nil
 	}
-	
+
 	// Вычисляем диапазон
 	diff := big.NewInt(max - min + 1)
-	
+
 	// Генерируем случайное число в диапазоне [0, diff-1]
 	n, err := rand.Int(rand.Reader, diff)
 	if err != nil {
 		return 0, fmt.Errorf("failed to generate random int: %w", err)
 	}
-	
+
 	// Добавляем min, чтобы получить число в диапазоне [min, max]
 	return n.Int64() + min, nil
 }
@@ -85,7 +85,7 @@ func GenerateRandomStringFromCharset(length int, charset string) (string, error)
 	charsetLength := big.NewInt(int64(len(charset)))
 	result := strings.Builder{}
 	result.Grow(length)
-	
+
 	for i := 0; i < length; i++ {
 		n, err := rand.Int(rand.Reader, charsetLength)
 		if err != nil {
@@ -93,7 +93,7 @@ func GenerateRandomStringFromCharset(length int, charset string) (string, error)
 		}
 		result.WriteByte(charset[n.Int64()])
 	}
-	
+
 	return result.String(), nil
 }
 
@@ -113,11 +113,11 @@ func GenerateUUID() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to generate UUID: %w", err)
 	}
-	
+
 	// Устанавливаем версию (4) и вариант (2)
 	b[6] = (b[6] & 0x0F) | 0x40 // версия 4
 	b[8] = (b[8] & 0x3F) | 0x80 // вариант 2
-	
+
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
 }
 
@@ -126,34 +126,34 @@ func GeneratePassword(length int) (string, error) {
 	if length < 8 {
 		return "", fmt.Errorf("password length must be at least 8 characters")
 	}
-	
+
 	// Определяем наборы символов
 	lowercase := "abcdefghijklmnopqrstuvwxyz"
 	uppercase := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	digits := "0123456789"
 	special := "!@#$%^&*()-_=+[]{}|;:,.<>?"
-	
+
 	// Генерируем по одному символу из каждого набора
 	lowercaseChar, err := GenerateRandomStringFromCharset(1, lowercase)
 	if err != nil {
 		return "", err
 	}
-	
+
 	uppercaseChar, err := GenerateRandomStringFromCharset(1, uppercase)
 	if err != nil {
 		return "", err
 	}
-	
+
 	digitChar, err := GenerateRandomStringFromCharset(1, digits)
 	if err != nil {
 		return "", err
 	}
-	
+
 	specialChar, err := GenerateRandomStringFromCharset(1, special)
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Генерируем оставшиеся символы из всех наборов
 	allChars := lowercase + uppercase + digits + special
 	remainingLength := length - 4
@@ -161,10 +161,10 @@ func GeneratePassword(length int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Объединяем все символы
 	password := lowercaseChar + uppercaseChar + digitChar + specialChar + remainingChars
-	
+
 	// Перемешиваем символы
 	passwordRunes := []rune(password)
 	for i := len(passwordRunes) - 1; i > 0; i-- {
@@ -174,6 +174,6 @@ func GeneratePassword(length int) (string, error) {
 		}
 		passwordRunes[i], passwordRunes[j] = passwordRunes[j], passwordRunes[i]
 	}
-	
+
 	return string(passwordRunes), nil
 }

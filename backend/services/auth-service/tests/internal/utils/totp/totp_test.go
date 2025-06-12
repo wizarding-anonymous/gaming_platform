@@ -42,7 +42,6 @@ func TestGenerateSecret(t *testing.T) {
 		assert.True(t, isUpperAlpha || isDigit27, "Character '%c' not in base32 set", r)
 	}
 
-
 	secret2, err2 := totp.GenerateSecret()
 	require.NoError(t, err2)
 	assert.NotEmpty(t, secret2)
@@ -87,7 +86,6 @@ func TestGenerateQRCodeURL(t *testing.T) {
 		}
 	}
 	assert.Equal(t, originalPaddedSecret, urlSecret)
-
 
 	// Test with custom config
 	customConfig := &totp.Config{
@@ -194,7 +192,6 @@ func TestValidateCode_ExpiredCode_And_Skew(t *testing.T) {
 	codeJustTooOld := generateCodeAtTime(int(-config.Period*(config.Skew+1) - 1))
 	validate(codeJustTooOld, false, "Code from window just too old (outside skew) should be invalid")
 
-
 	// Too new (outside skew: current + period * (skew+1) )
 	// Code generated at +60s from now.
 	codeTooNew := generateCodeAtTime(int(config.Period * (config.Skew + 1)))
@@ -207,7 +204,6 @@ func TestValidateCode_ExpiredCode_And_Skew(t *testing.T) {
 	codeJustTooNew := generateCodeAtTime(int(config.Period*(config.Skew+1) + 1))
 	validate(codeJustTooNew, false, "Code from window just too new (outside skew) should be invalid")
 }
-
 
 func TestValidateCode_SecretPadding(t *testing.T) {
 	config := totp.DefaultConfig()
@@ -240,15 +236,14 @@ func TestValidateCode_SecretPadding(t *testing.T) {
 	assert.True(t, valid2, "Should validate with manually created unpadded secret")
 }
 
-
 func TestGenerateCode_CustomConfig(t *testing.T) {
 	secret, _ := totp.GenerateSecret()
 
 	customConfig := &totp.Config{
-		Issuer:  "MyTestApp",
-		Period:  60,
-		Digits:  otp.DigitsEight,
-		Skew:    0, // No skew for this test
+		Issuer: "MyTestApp",
+		Period: 60,
+		Digits: otp.DigitsEight,
+		Skew:   0, // No skew for this test
 	}
 
 	// Generate code with custom config
@@ -273,4 +268,3 @@ func TestGenerateCode_CustomConfig(t *testing.T) {
 		assert.False(t, validDefault, "Code generated with custom config should not be valid with default config")
 	}
 }
-[end of backend/services/auth-service/internal/utils/totp/totp_test.go]

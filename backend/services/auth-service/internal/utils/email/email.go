@@ -1,4 +1,4 @@
-// File: internal/utils/email/email.go
+// File: backend/services/auth-service/internal/utils/email/email.go
 
 package email
 
