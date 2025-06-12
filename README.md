@@ -16,7 +16,7 @@ Each service under `backend/services` is managed independently with its own Make
 
 ## Required Environment Variables
 
-The configuration in `configs/config.yaml` expects the following environment variables when running in production:
+The production configuration in `configs/config.prod.yaml` expects the following environment variables:
 
 - `VK_APP_ID` – OAuth application ID for VK
 - `VK_APP_SECRET` – OAuth secret for VK

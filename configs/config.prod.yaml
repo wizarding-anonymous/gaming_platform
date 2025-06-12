@@ -1,4 +1,4 @@
-# File: backend/services/auth-service/configs/config.yaml
+# File: configs/config.prod.yaml
 server:
   port: 8080
   read_timeout: "10s"
@@ -27,26 +27,27 @@ kafka:
     topic: "auth.events"
     role_topic: "auth-role-events"
     user_role_topic: "auth-user-role-events"
+    role_permission_topic: "auth-role-permission-events"
   consumer:
     topics: ["account-events", "admin-events"]
     group_id: "auth_service_consumer_group"
 
 jwt:
   access_token_ttl: "15m"
-  refresh_token_ttl: "720h" # Изменено с "168h"
+  refresh_token_ttl: "168h"
   email_verification_token:
     expires_in: "24h"
   password_reset_token:
     expires_in: "1h"
-  rsa_private_key_path: "configs/keys/dev_private_key.pem"
-  rsa_public_key_path: "configs/keys/dev_public_key.pem"
+  rsa_private_key_path: "${JWT_PRIVATE_KEY_PATH}"
+  rsa_public_key_path: "${JWT_PUBLIC_KEY_PATH}"
   jwks_key_id: "auth-service-main-key"
   issuer: "yourplatform.com/auth"
   audience: "yourplatform.com/api"
   refresh_token_byte_length: 32
-  hmac_secret_key: "a_secure_hmac_secret_for_internal_tokens_like_state_or_challenge"
+  hmac_secret_key: "${JWT_HMAC_SECRET_KEY}"
   oauth_state_cookie_ttl: "10m"
-  oauth_state_secret: "another_different_secure_hmac_secret_for_oauth_state_tokens"
+  oauth_state_secret: "${OAUTH_STATE_SECRET}"
   mfa_challenge_token_ttl: "5m"
 
 security:
@@ -56,16 +57,18 @@ security:
   password_hash:
     memory: 65536
     iterations: 1
-    parallelism: 4
+    parallelism: 2
     salt_length: 16
     key_length: 32
   rate_limiting:
     enabled: true
-    password_reset_per_email: # Renamed from forgot_password_email in previous thoughts to match config struct
+    # default_limit: 100 # Removed default as it might be too broad
+    # default_window: "1h"
+    password_reset_per_email:
       enabled: true
       limit: 5
       window: "1h"
-    password_reset_per_ip:    # Renamed from forgot_password_ip
+    password_reset_per_ip:
       enabled: true
       limit: 10
       window: "1h"
@@ -73,27 +76,15 @@ security:
       enabled: true
       limit: 5
       window: "15m"
-    register_ip:               # Added
+    general_auth: # For general public auth endpoints like /register, /login, /forgot-password etc.
       enabled: true
-      limit: 10
-      window: "1h"
-    login_email_ip:            # Added
-      enabled: true
-      limit: 20 # Higher limit for login attempts
-      window: "1h"
-    resend_verification_email: # Added
-      enabled: true
-      limit: 3
-      window: "24h"
-    reset_password_ip:         # Added (distinct from password_reset_per_ip for the reset action itself vs request)
-      enabled: true
-      limit: 5
-      window: "1h"
+      limit: 20 # Example: 20 requests
+      window: "1m" # Example: per minute
 
 mfa:
   enabled: true
   totp_issuer_name: "YourPlatform"
-  totp_secret_encryption_key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" # 64 hex chars for 32 bytes
+  totp_encryption_key: "${TOTP_ENCRYPTION_KEY}"
   totp_backup_code_count: 10
 
 logging:
@@ -113,8 +104,8 @@ telemetry:
 
 oauth_providers:
   vk:
-    client_id: "YOUR_VK_APP_ID"
-    client_secret: "YOUR_VK_APP_SECRET"
+    client_id: "${VK_APP_ID}"
+    client_secret: "${VK_APP_SECRET}"
     redirect_url: "http://localhost:8080/api/v1/auth/oauth/vk/callback"
     auth_url: "https://oauth.vk.com/authorize"
     token_url: "https://oauth.vk.com/access_token"
@@ -124,18 +115,15 @@ oauth_providers:
       v: "5.199"
       request_email_scope: "true"
   odnoklassniki:
-    client_id: "YOUR_OK_APP_ID"
-    client_secret: "YOUR_OK_APP_SECRET_KEY"
+    client_id: "${OK_APP_ID}"
+    client_secret: "${OK_APP_SECRET_KEY}"
     redirect_url: "http://localhost:8080/api/v1/auth/oauth/ok/callback"
     auth_url: "https://connect.ok.ru/oauth/authorize"
     token_url: "https://api.ok.ru/oauth/token.do"
     user_info_url: "https://api.ok.ru/fb.do"
     scopes: ["GET_EMAIL", "VALUABLE_ACCESS"]
     provider_specific:
-      application_public_key: "YOUR_OK_APP_PUBLIC_KEY"
+      application_public_key: "${OK_APP_PUBLIC_KEY}"
 
 telegram:
-  bot_token: "YOUR_TELEGRAM_BOT_TOKEN"
-
-oauth_error_page_url: "http://localhost:3000/oauth/error"
-oauth_success_redirect_url: "http://localhost:3000/oauth/success"
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
