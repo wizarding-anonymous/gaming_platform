@@ -152,10 +152,7 @@ func main() {
 	defer db.Close()
 	defer redisClient.Close()
 
-	kafkaProducer, err := kafka.NewProducer(cfg.Kafka)
-	if err != nil {
-		sugar.Fatalw("Failed to create Kafka producer", "error", err)
-	}
+	kafkaProducer := kafka.NewKafkaEventProducer(cfg.Kafka.Brokers, cfg.App.Name)
 	defer kafkaProducer.Close()
 
 	svcs := initServices(db, redisClient, kafkaProducer, sugar)
