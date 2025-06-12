@@ -11,7 +11,7 @@ import (
 "google.golang.org/grpc"
 "google.golang.org/grpc/credentials/insecure"
 
-pb "github.com/steamru/account-service/api/proto/notification"
+pb "github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/api/proto/notification"
 )
 
 // NotificationServiceClientImpl реализация клиента для Notification Service

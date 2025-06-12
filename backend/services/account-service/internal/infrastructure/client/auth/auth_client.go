@@ -11,8 +11,8 @@ import (
 "google.golang.org/grpc"
 "google.golang.org/grpc/credentials/insecure"
 
-"github.com/steamru/account-service/internal/app/usecase"
-pb "github.com/steamru/account-service/api/proto/auth"
+"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/app/usecase"
+pb "github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/api/proto/auth"
 )
 
 // AuthServiceClientImpl реализация клиента для Auth Service

@@ -6,7 +6,7 @@ import (
 "context"
 
 "github.com/google/uuid"
-"github.com/steamru/account-service/internal/domain/entity"
+"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
 )
 
 // ContactInfoFilter представляет фильтр для поиска контактной информации

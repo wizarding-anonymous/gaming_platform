@@ -11,7 +11,7 @@ import (
 "github.com/google/uuid"
 "github.com/segmentio/kafka-go"
 
-"github.com/steamru/account-service/internal/domain/entity"
+"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
 )
 
 // CloudEvent представляет собой структуру события в формате CloudEvents

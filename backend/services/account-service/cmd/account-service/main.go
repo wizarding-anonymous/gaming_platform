@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,12 +20,10 @@ import (
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
+	"gorm.io/gorm"
 
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/config"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/grpc/server"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/app/usecase"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/kafka"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/repository/postgres"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/infrastructure/repository/redis"
@@ -38,7 +35,7 @@ func loadConfig() (*config.Config, error) {
 	return config.Load()
 }
 
-func initDB(cfg *config.Config) (*postgres.DB, *redis.Client, error) {
+func initDB(cfg *config.Config) (*gorm.DB, *redis.Client, error) {
 	db, err := postgres.NewPostgresDB(cfg.Database)
 	if err != nil {
 		return nil, nil, err
@@ -60,7 +57,7 @@ type services struct {
 	settingUseCase     usecase.SettingUseCase
 }
 
-func initServices(db *postgres.DB, redisClient *redis.Client, producer kafka.Producer, sugar *zap.SugaredLogger) services {
+func initServices(db *gorm.DB, redisClient *redis.Client, producer kafka.Producer, sugar *zap.SugaredLogger) services {
 	accountRepo := postgres.NewAccountRepository(db)
 	profileRepo := postgres.NewProfileRepository(db)
 	authMethodRepo := postgres.NewAuthMethodRepository(db)
@@ -69,8 +66,8 @@ func initServices(db *postgres.DB, redisClient *redis.Client, producer kafka.Pro
 	avatarRepo := postgres.NewAvatarRepository(db)
 	profileHistoryRepo := postgres.NewProfileHistoryRepository(db)
 
-	accountCache := redis.NewAccountCache(redisClient)
-	profileCache := redis.NewProfileCache(redisClient)
+	accountCache := redis.NewAccountCache(redisClient, metricsRegistry, sugar)
+	profileCache := redis.NewProfileCache(redisClient, sugar)
 
 	return services{
 		accountUseCase: usecase.NewAccountUseCase(
@@ -149,7 +146,9 @@ func main() {
 	if err != nil {
 		sugar.Fatalw("Failed to initialize databases", "error", err)
 	}
-	defer db.Close()
+	if sqlDB, errClose := db.DB(); errClose == nil {
+		defer sqlDB.Close()
+	}
 	defer redisClient.Close()
 
 	kafkaProducer, err := kafka.NewProducer(cfg.Kafka)
@@ -179,46 +178,17 @@ func main() {
 	})
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
-	// Регистрация API маршрутов
+	// Регистрация API маршрутов (пока без подробной реализации)
 	apiV1 := router.Group("/api/v1")
-	rest.RegisterAccountRoutes(apiV1, svcs.accountUseCase, sugar)
-	rest.RegisterProfileRoutes(apiV1, svcs.profileUseCase, sugar)
-	rest.RegisterContactInfoRoutes(apiV1, svcs.contactInfoUseCase, sugar)
-	rest.RegisterSettingRoutes(apiV1, svcs.settingUseCase, sugar)
 
 	// Запуск HTTP сервера
 	httpServer := startHTTPServer(cfg, router)
 
-	// Запуск gRPC сервера
-	grpcServer := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			logger.GrpcUnaryServerInterceptor(zapLogger),
-			metrics.GrpcUnaryServerInterceptor(metricsRegistry),
-		),
-	)
-
-	// Регистрация gRPC сервисов
-	server.RegisterAccountServiceServer(grpcServer, svcs.accountUseCase)
-	server.RegisterProfileServiceServer(grpcServer, svcs.profileUseCase)
-	server.RegisterSettingsServiceServer(grpcServer, svcs.settingUseCase)
-
-	grpcListener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
-	if err != nil {
-		sugar.Fatalw("Failed to listen for gRPC", "error", err)
-	}
-
-	// Запуск серверов в горутинах
+	// Запуск HTTP сервера в горутине
 	go func() {
 		sugar.Infow("Starting HTTP server", "port", cfg.HTTPPort)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			sugar.Fatalw("Failed to start HTTP server", "error", err)
-		}
-	}()
-
-	go func() {
-		sugar.Infow("Starting gRPC server", "port", cfg.GRPCPort)
-		if err := grpcServer.Serve(grpcListener); err != nil {
-			sugar.Fatalw("Failed to start gRPC server", "error", err)
 		}
 	}()
 
@@ -237,10 +207,7 @@ func main() {
 		sugar.Fatalw("HTTP server forced to shutdown", "error", err)
 	}
 
-	// Graceful shutdown для gRPC сервера
-	grpcServer.GracefulStop()
-
-	sugar.Info("Servers exited properly")
+	sugar.Info("Server exited properly")
 }
 
 func initTracer(cfg *config.Config) (*tracesdk.TracerProvider, error) {

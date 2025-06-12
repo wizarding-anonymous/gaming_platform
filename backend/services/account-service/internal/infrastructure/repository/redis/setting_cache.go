@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"

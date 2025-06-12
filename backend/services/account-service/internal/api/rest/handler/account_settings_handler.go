@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/presenter"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest/middleware"
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/api/rest/presenter"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/errors"
 )
 

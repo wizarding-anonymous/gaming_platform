@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/steamru/account-service/internal/domain/entity"
-	"github.com/steamru/account-service/internal/domain/repository"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/repository"
 )
 
 // SettingModel представляет модель настроек в базе данных

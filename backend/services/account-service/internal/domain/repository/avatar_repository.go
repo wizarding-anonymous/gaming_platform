@@ -6,7 +6,7 @@ import (
 "context"
 
 "github.com/google/uuid"
-"github.com/steamru/account-service/internal/domain/entity"
+"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
 )
 
 // AvatarFilter представляет фильтр для поиска аватаров

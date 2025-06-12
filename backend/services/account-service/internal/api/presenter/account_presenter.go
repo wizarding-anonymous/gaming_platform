@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/steamru/account-service/internal/domain/entity"
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/account-service/internal/domain/entity"
 )
 
 // AccountResponse DTO для ответа с информацией об аккаунте
@@ -22,18 +22,18 @@ type AccountResponse struct {
 
 // ProfileResponse DTO для ответа с информацией о профиле
 type ProfileResponse struct {
-	ID          uuid.UUID `json:"id"`
-	AccountID   uuid.UUID `json:"account_id"`
-	Nickname    string    `json:"nickname"`
-	RealName    string    `json:"real_name,omitempty"`
-	Bio         string    `json:"bio,omitempty"`
-	Country     string    `json:"country,omitempty"`
-	City        string    `json:"city,omitempty"`
-	AvatarURL   string    `json:"avatar_url,omitempty"`
-	BannerURL   string    `json:"banner_url,omitempty"`
-	Visibility  string    `json:"visibility"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         uuid.UUID `json:"id"`
+	AccountID  uuid.UUID `json:"account_id"`
+	Nickname   string    `json:"nickname"`
+	RealName   string    `json:"real_name,omitempty"`
+	Bio        string    `json:"bio,omitempty"`
+	Country    string    `json:"country,omitempty"`
+	City       string    `json:"city,omitempty"`
+	AvatarURL  string    `json:"avatar_url,omitempty"`
+	BannerURL  string    `json:"banner_url,omitempty"`
+	Visibility string    `json:"visibility"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // ContactInfoResponse DTO для ответа с контактной информацией
@@ -109,18 +109,18 @@ func ToProfileResponse(profile *entity.Profile) *ProfileResponse {
 		return nil
 	}
 	return &ProfileResponse{
-		ID:          profile.ID,
-		AccountID:   profile.AccountID,
-		Nickname:    profile.Nickname,
-		RealName:    profile.RealName,
-		Bio:         profile.Bio,
-		Country:     profile.Country,
-		City:        profile.City,
-		AvatarURL:   profile.AvatarURL,
-		BannerURL:   profile.BannerURL,
-		Visibility:  string(profile.Visibility),
-		CreatedAt:   profile.CreatedAt,
-		UpdatedAt:   profile.UpdatedAt,
+		ID:         profile.ID,
+		AccountID:  profile.AccountID,
+		Nickname:   profile.Nickname,
+		RealName:   profile.RealName,
+		Bio:        profile.Bio,
+		Country:    profile.Country,
+		City:       profile.City,
+		AvatarURL:  profile.AvatarURL,
+		BannerURL:  profile.BannerURL,
+		Visibility: string(profile.Visibility),
+		CreatedAt:  profile.CreatedAt,
+		UpdatedAt:  profile.UpdatedAt,
 	}
 }
 
@@ -250,4 +250,3 @@ type ErrorResponse struct {
 type SuccessResponse struct {
 	Message string `json:"message"`
 }
-
