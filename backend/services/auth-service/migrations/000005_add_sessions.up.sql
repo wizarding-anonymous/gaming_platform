@@ -1,4 +1,4 @@
-// File: backend/services/auth-service/migrations/000005_add_sessions.up.sql
+-- File: backend/services/auth-service/migrations/000005_add_sessions.up.sql
 
 -- Создание таблицы сессий
 CREATE TABLE IF NOT EXISTS sessions (

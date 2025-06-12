@@ -1,6 +1,4 @@
-# File: backend/services/account-service/migrations/000005_create_settings_table.sql
--- account-service\migrations\000005_create_settings_table.sql
--- migrations/000005_create_settings_table.sql
+-- File: backend/services/account-service/migrations/000005_create_settings_table.sql
 
 -- Create settings table
 CREATE TABLE IF NOT EXISTS settings (

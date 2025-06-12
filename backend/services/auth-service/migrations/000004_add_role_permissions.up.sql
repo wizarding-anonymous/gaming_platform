@@ -1,4 +1,4 @@
-// File: backend/services/auth-service/migrations/000004_add_role_permissions.up.sql
+-- File: backend/services/auth-service/migrations/000004_add_role_permissions.up.sql
 
 -- Добавление разрешений для ролей
 CREATE TABLE IF NOT EXISTS role_permissions (

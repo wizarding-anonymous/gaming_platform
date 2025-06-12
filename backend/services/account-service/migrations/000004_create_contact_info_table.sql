@@ -1,6 +1,4 @@
-# File: backend/services/account-service/migrations/000004_create_contact_info_table.sql
--- account-service\migrations\000004_create_contact_info_table.sql
--- migrations/000004_create_contact_info_table.sql
+-- File: backend/services/account-service/migrations/000004_create_contact_info_table.sql
 
 -- Create contact_info table
 CREATE TABLE IF NOT EXISTS contact_info (

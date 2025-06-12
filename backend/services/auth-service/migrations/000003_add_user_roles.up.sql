@@ -1,4 +1,4 @@
-// File: backend/services/auth-service/migrations/000003_add_user_roles.up.sql
+-- File: backend/services/auth-service/migrations/000003_add_user_roles.up.sql
 
 -- Добавление ролей пользователей
 CREATE TABLE IF NOT EXISTS user_roles (
