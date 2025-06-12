@@ -1,4 +1,4 @@
-// File: migrations/000002_seed_initial_data.up.sql
+// File: backend/services/auth-service/migrations/000002_seed_initial_data.up.sql
 
 -- Создание базовых ролей
 INSERT INTO roles (id, name, description, created_at, updated_at)

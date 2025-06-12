@@ -1,4 +1,4 @@
-// File: api/swagger/auth.swagger.json
+// File: backend/services/auth-service/api/swagger/auth.swagger.json
 
 {
   "swagger": "2.0",

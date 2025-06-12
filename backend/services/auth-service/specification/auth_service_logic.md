@@ -1,4 +1,4 @@
-<!-- File: backend/services/auth-service/specification_final/auth_service_logic.md -->
+<!-- File: backend/services/auth-service/specification/auth_service_logic.md -->
 # Auth Service: Service Logic and Workflows
 
 **Version:** 1.0

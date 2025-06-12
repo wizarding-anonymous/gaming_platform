@@ -1,4 +1,4 @@
-// File: migrations/000002_seed_initial_data.down.sql
+// File: backend/services/auth-service/migrations/000002_seed_initial_data.down.sql
 
 -- Удаление всех связей ролей и разрешений
 DELETE FROM role_permissions;
