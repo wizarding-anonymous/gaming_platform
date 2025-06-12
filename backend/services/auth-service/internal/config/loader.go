@@ -44,12 +44,28 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// Загрузка конфигурации в структуру
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
+        var config Config
+        if err := viper.Unmarshal(&config); err != nil {
+                return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+        }
 
-	return &config, nil
+        // Load RSA keys from file paths if provided
+        if config.JWT.RSAPrivateKeyPEM == "" && config.JWT.RSAPrivateKeyPEMFile != "" {
+                keyBytes, err := os.ReadFile(config.JWT.RSAPrivateKeyPEMFile)
+                if err != nil {
+                        return nil, fmt.Errorf("failed to read RSA private key: %w", err)
+                }
+                config.JWT.RSAPrivateKeyPEM = string(keyBytes)
+        }
+        if config.JWT.RSAPublicKeyPEM == "" && config.JWT.RSAPublicKeyPEMFile != "" {
+                keyBytes, err := os.ReadFile(config.JWT.RSAPublicKeyPEMFile)
+                if err != nil {
+                        return nil, fmt.Errorf("failed to read RSA public key: %w", err)
+                }
+                config.JWT.RSAPublicKeyPEM = string(keyBytes)
+        }
+
+        return &config, nil
 }
 
 // setDefaults устанавливает значения по умолчанию для конфигурации

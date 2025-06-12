@@ -180,9 +180,14 @@ docker-compose up -d
 - `KAFKA_BROKERS` - Список брокеров Kafka
 - `JWT_PRIVATE_KEY_PATH`: Путь к приватному ключу RSA для подписи JWT-токенов.
 - `JWT_PUBLIC_KEY_PATH`: Путь к публичному ключу RSA для проверки JWT-токенов.
+- `TOTP_ENCRYPTION_KEY`: 32-байтный ключ в hex-формате для шифрования TOTP секрета.
 - `ACCESS_TOKEN_TTL` - Время жизни Access Token (в секундах)
 - `REFRESH_TOKEN_TTL` - Время жизни Refresh Token (в секундах)
 - `TELEGRAM_BOT_TOKEN` - Токен Telegram Bot API
+
+Секретные ключи (RSA и TOTP) рекомендуется хранить во внешних секрет-хранилищах
+(Vault, Kubernetes Secrets) и передавать сервису через переменные окружения или
+смонтированные файлы.
 
 ## Развертывание
 

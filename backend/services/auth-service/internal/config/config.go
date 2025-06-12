@@ -89,14 +89,16 @@ type TokenConfig struct {
 }
 
 type JWTConfig struct {
-	AccessTokenTTL         time.Duration `mapstructure:"access_token_ttl"`
-	RefreshTokenTTL        time.Duration `mapstructure:"refresh_token_ttl"`
-	EmailVerificationToken TokenConfig   `mapstructure:"email_verification_token"`
-	PasswordResetToken     TokenConfig   `mapstructure:"password_reset_token"`
-	RSAPrivateKeyPEM       string        `mapstructure:"rsa_private_key_pem"`
-	RSAPublicKeyPEM        string        `mapstructure:"rsa_public_key_pem"`
-	JWKSKeyID              string        `mapstructure:"jwks_key_id"`
-	Issuer                 string        `mapstructure:"issuer"`
+        AccessTokenTTL         time.Duration `mapstructure:"access_token_ttl"`
+        RefreshTokenTTL        time.Duration `mapstructure:"refresh_token_ttl"`
+        EmailVerificationToken TokenConfig   `mapstructure:"email_verification_token"`
+        PasswordResetToken     TokenConfig   `mapstructure:"password_reset_token"`
+        RSAPrivateKeyPEM       string        `mapstructure:"rsa_private_key_pem"`
+        RSAPrivateKeyPEMFile   string        `mapstructure:"rsa_private_key_path"`
+        RSAPublicKeyPEM        string        `mapstructure:"rsa_public_key_pem"`
+        RSAPublicKeyPEMFile    string        `mapstructure:"rsa_public_key_path"`
+        JWKSKeyID              string        `mapstructure:"jwks_key_id"`
+        Issuer                 string        `mapstructure:"issuer"`
 	Audience               string        `mapstructure:"audience"`
 	RefreshTokenByteLength uint32        `mapstructure:"refresh_token_byte_length"`
 	OAuthStateCookieTTL    time.Duration `mapstructure:"oauth_state_cookie_ttl"`

@@ -30,6 +30,11 @@ The production configuration in `configs/config.prod.yaml` expects the following
 - `OAUTH_STATE_SECRET` – HMAC secret used for OAuth state tokens
 - `TOTP_ENCRYPTION_KEY` – 32‑byte key used to encrypt TOTP secrets
 
+Secrets like RSA keys and the TOTP encryption key should be provided via secure
+stores (e.g., Kubernetes Secrets or HashiCorp Vault) rather than being committed
+directly in environment files. The service reads these values at startup using
+the environment variables above.
+
 A template for Helm secret values can be found at `backend/services/auth-service/deployments/helm/auth-service/values-secrets-template.yaml`.
 
 ## Configuring Go Modules
