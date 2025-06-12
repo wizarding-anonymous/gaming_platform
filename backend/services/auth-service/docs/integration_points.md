@@ -1,7 +1,7 @@
 <!-- File: backend/services/auth-service/docs/integration_points.md -->
 # Auth Microservice Integration Points
 
-Date: (Current Date)
+Date: 2025-06-12
 Version: Based on current implemented state and conceptual plans.
 
 This document outlines the key integration points for the Auth microservice, including its provided APIs (gRPC and REST), published events, consumed events, and any direct dependencies on other services.
