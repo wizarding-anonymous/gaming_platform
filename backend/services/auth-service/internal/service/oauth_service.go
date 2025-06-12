@@ -14,6 +14,7 @@ import (
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain"
+	domainInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/interfaces"
 	domainService "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/service"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/events/kafka"
 	repoInterfaces "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/interfaces"
@@ -29,7 +30,7 @@ type OAuthService struct {
 	transactionManager  domainService.TransactionManager
 	kafkaClient         *kafkaEvents.Producer // For publishing events
 	auditLogRecorder    domainService.AuditLogRecorder
-	oauth2Configs       map[string]*oauth2.Config
+	providers           map[string]domainInterfaces.OAuthProvider
 }
 
 func NewOAuthService(
@@ -43,18 +44,19 @@ func NewOAuthService(
 	kafkaClient *kafkaEvents.Producer,
 	auditLogRecorder domainService.AuditLogRecorder,
 ) *OAuthService {
-	oauth2Configs := make(map[string]*oauth2.Config)
-	for providerName, providerCfg := range cfg.OAuthProviders {
-		oauth2Configs[providerName] = &oauth2.Config{
-			ClientID:     providerCfg.ClientID,
-			ClientSecret: providerCfg.ClientSecret,
-			RedirectURL:  providerCfg.RedirectURL,
-			Scopes:       providerCfg.Scopes,
+	providers := make(map[string]domainInterfaces.OAuthProvider)
+	for name, cfgProvider := range cfg.OAuthProviders {
+		oauthCfg := &oauth2.Config{
+			ClientID:     cfgProvider.ClientID,
+			ClientSecret: cfgProvider.ClientSecret,
+			RedirectURL:  cfgProvider.RedirectURL,
+			Scopes:       cfgProvider.Scopes,
 			Endpoint: oauth2.Endpoint{
-				AuthURL:  providerCfg.AuthURL,
-				TokenURL: providerCfg.TokenURL,
+				AuthURL:  cfgProvider.AuthURL,
+				TokenURL: cfgProvider.TokenURL,
 			},
 		}
+		providers[name] = NewDefaultOAuthProvider(oauthCfg, cfgProvider.UserInfoURL)
 	}
 
 	return &OAuthService{
@@ -67,7 +69,7 @@ func NewOAuthService(
 		transactionManager:  transactionManager,
 		kafkaClient:         kafkaClient,
 		auditLogRecorder:    auditLogRecorder,
-		oauth2Configs:       oauth2Configs,
+		providers:           providers,
 	}
 }
 
@@ -83,7 +85,7 @@ func (s *OAuthService) hashOAuthToken(token string) *string {
 
 // InitiateOAuth starts the OAuth 2.0 flow.
 func (s *OAuthService) InitiateOAuth(ctx context.Context, provider string, w http.ResponseWriter, r *http.Request) (string, error) {
-	oauthCfg, ok := s.oauth2Configs[provider]
+	prov, ok := s.providers[provider]
 	if !ok {
 		s.logger.Warn("Invalid OAuth provider", zap.String("provider", provider))
 		return "", fmt.Errorf("invalid provider: %s", provider)
@@ -103,7 +105,10 @@ func (s *OAuthService) InitiateOAuth(ctx context.Context, provider string, w htt
 	})
 
 	// Redirect the user to the OAuth provider's authorization page.
-	authURL := oauthCfg.AuthCodeURL(state)
+	authURL, err := prov.GetAuthURL(state)
+	if err != nil {
+		return "", err
+	}
 	s.logger.Info("Redirecting to OAuth provider", zap.String("provider", provider), zap.String("url", authURL))
 	return authURL, nil
 }
@@ -133,14 +138,14 @@ func (s *OAuthService) HandleOAuthCallback(ctx context.Context, provider, code, 
 	// Clear the state cookie
 	http.SetCookie(r.Response.Writer, &http.Cookie{Name: "oauth_state", MaxAge: -1, Path: "/"})
 
-	oauthCfg, ok := s.oauth2Configs[provider]
+	prov, ok := s.providers[provider]
 	if !ok {
 		s.logger.Error("Invalid OAuth provider in callback", zap.String("provider", provider))
 		return nil, nil, nil, fmt.Errorf("invalid provider: %s", provider)
 	}
 
 	// 2. Exchange code for token
-	token, err := oauthCfg.Exchange(ctx, code)
+	token, err := prov.ExchangeCode(ctx, code)
 	if err != nil {
 		s.logger.Error("Failed to exchange OAuth code for token", zap.String("provider", provider), zap.Error(err))
 		return nil, nil, nil, fmt.Errorf("failed to exchange code: %w", err)
@@ -151,7 +156,7 @@ func (s *OAuthService) HandleOAuthCallback(ctx context.Context, provider, code, 
 	// In a real application, you'd use provider-specific APIs.
 	// Example: Google's UserInfo endpoint: https://www.googleapis.com/oauth2/v2/userinfo
 	// This is a placeholder. You need to implement actual user info fetching.
-	userInfo, err := s.fetchUserInfo(ctx, oauthCfg, token, provider)
+	userInfo, err := prov.FetchUserInfo(ctx, token)
 	if err != nil {
 		s.logger.Error("Failed to fetch user info from provider", zap.String("provider", provider), zap.Error(err))
 		return nil, nil, nil, fmt.Errorf("failed to fetch user info: %w", err)
@@ -358,57 +363,6 @@ func (s *OAuthService) HandleOAuthCallback(ctx context.Context, provider, code, 
 
 	s.logger.Info("OAuth callback handled successfully", zap.String("userID", user.ID.String()), zap.String("provider", provider))
 	return user, session, tokenPair, nil
-}
-
-// OAuthUserInfo represents standardized user information obtained from an OAuth provider.
-type OAuthUserInfo struct {
-	ProviderUserID string // Unique ID for the user on the provider's system
-	Email          string
-	Username       string // Optional: some providers might not give a username or it might not be suitable
-	// Add other fields as needed, e.g., Name, ProfilePictureURL
-}
-
-// fetchUserInfo is a placeholder for provider-specific user info fetching.
-// You MUST implement this for each OAuth provider you support.
-func (s *OAuthService) fetchUserInfo(ctx context.Context, config *oauth2.Config, token *oauth2.Token, provider string) (*OAuthUserInfo, error) {
-	// Example using Google's UserInfo endpoint.
-	// THIS IS A SIMPLIFIED EXAMPLE AND MAY NEED ADJUSTMENT FOR ERROR HANDLING, SCOPES, ETC.
-	if provider == "google" { // Assuming "google" is a key in your oauth2Configs
-		client := config.Client(ctx, token)
-		resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + token.AccessToken)
-		if err != nil {
-			s.logger.Error("Failed to get user info from Google", zap.Error(err))
-			return nil, fmt.Errorf("failed to get user info from %s: %w", provider, err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			s.logger.Error("Error status from Google user info endpoint", zap.Int("status", resp.StatusCode))
-			return nil, fmt.Errorf("error from %s user info endpoint: %s", provider, resp.Status)
-		}
-
-		var googleUser struct {
-			ID    string `json:"id"`
-			Email string `json:"email"`
-			Name  string `json:"name"` // You might want to use this for username
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&googleUser); err != nil {
-			s.logger.Error("Failed to decode user info from Google", zap.Error(err))
-			return nil, fmt.Errorf("failed to decode user info from %s: %w", provider, err)
-		}
-
-		return &OAuthUserInfo{
-			ProviderUserID: googleUser.ID,
-			Email:          googleUser.Email,
-			Username:       googleUser.Name, // Or generate/prompt for one
-		}, nil
-	}
-
-	// Add other providers here (e.g., facebook, github)
-	// if provider == "github" { ... }
-
-	s.logger.Error("Unsupported provider for fetchUserInfo", zap.String("provider", provider))
-	return nil, fmt.Errorf("unsupported provider: %s", provider)
 }
 
 // Make sure to add "encoding/json" and "time" to imports if not already there
