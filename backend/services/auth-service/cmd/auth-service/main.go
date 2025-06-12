@@ -4,12 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/config"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/domain/models"                           // For EventType constants and CloudEventSource
@@ -20,17 +15,14 @@ import (
 	authv1 "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/gen/auth/v1" // For gRPC server registration
 	grpcHandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/grpc"
 	httpHandler "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/handler/http"
-	infraDbPostgres "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/database/postgres" // For NewDBPool
-	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security"                          // For NewArgon2idPasswordService
+	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/infrastructure/security" // For NewArgon2idPasswordService
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/repository/redis"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/service"
+	shutdown "github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/shutdown"
 	"github.com/wizarding-anonymous/gaming_platform/backend/services/auth-service/internal/utils/telemetry"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/Shopify/sarama" // Added for Sarama config
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -103,7 +95,7 @@ func (kchc *KafkaConsumerHealthChecker) Healthy(ctx context.Context) error {
 
 func main() {
 	// Инициализация конфигурации
-	cfg, err := config.LoadConfig()
+	cfg, err := loadConfig()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to load config: %v", err))
 	}
@@ -129,25 +121,10 @@ func main() {
 		}
 	}
 
-	// Применение миграций
-	if cfg.Database.AutoMigrate {
-		logger.Info("Running database migrations")
-		migrationURL := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-			cfg.Database.User, cfg.Database.Password, cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName, cfg.Database.SSLMode)
-		m, err := migrate.New("file://migrations", migrationURL)
-		if err != nil {
-			logger.Fatal("Failed to create migration instance", zap.Error(err))
-		}
-		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-			logger.Fatal("Failed to apply migrations", zap.Error(err))
-		}
-		logger.Info("Migrations applied successfully")
-	}
-
-	// Инициализация подключения к PostgreSQL
-	dbPool, err := infraDbPostgres.NewDBPool(cfg.Database) // Use new package
+	// Инициализация внешних сервисов
+	dbPool, err := initDatabase(cfg, logger)
 	if err != nil {
-		logger.Fatal("Failed to initialize PostgreSQL connection pool", zap.Error(err))
+		logger.Fatal("Failed to initialize database", zap.Error(err))
 	}
 	defer dbPool.Close()
 
@@ -165,7 +142,7 @@ func main() {
 	permissionRepo := repoPostgres.NewPermissionRepositoryPostgres(dbPool)
 
 	// Инициализация подключения к Redis
-	redisClient, err := redis.NewRedisClient(cfg.Redis)
+	redisClient, err := initRedis(cfg)
 	if err != nil {
 		logger.Fatal("Failed to initialize Redis client", zap.Error(err))
 	}
@@ -176,31 +153,14 @@ func main() {
 	logger.Info("Redis Rate Limiter initialized")
 
 	// Инициализация Kafka Producer
-	// Note: NewProducer signature changed: NewProducer(brokers []string, logger logger.Logger, cloudEventSource string)
-	// Assuming the logger (*zap.Logger) from telemetry.NewLogger satisfies the logger.Logger interface expected by NewProducer.
-	// The CloudEventSource constant is from internal/events/models/cloudevent.go
-	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers, logger, "urn:service:auth")
+	kafkaProducer, err := initKafkaProducer(cfg, logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize Kafka producer", zap.Error(err))
 	}
 	defer kafkaProducer.Close()
 
 	// Инициализация Kafka Consumer (Sarama-based ConsumerGroup)
-	saramaCfg := sarama.NewConfig()
-	saramaCfg.Version = sarama.V2_8_0_0 // Example: Use your Kafka version
-	saramaCfg.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
-	saramaCfg.Consumer.Offsets.Initial = sarama.OffsetOldest // Or from config
-	saramaCfg.Consumer.Return.Errors = true                  // Important for logging consumer errors
-
-	consumerGroupCfg := kafka.NewConsumerGroupConfig{
-		Brokers:       cfg.Kafka.Brokers,
-		Topics:        cfg.Kafka.Consumer.Topics,
-		GroupID:       cfg.Kafka.Consumer.GroupID,
-		SaramaConfig:  saramaCfg,
-		Logger:        logger,              // Pass the main application logger
-		InitialOffset: sarama.OffsetOldest, // Or from cfg.Kafka.Consumer.InitialOffset if defined
-	}
-	kafkaConsumer, err := kafka.NewConsumerGroup(consumerGroupCfg)
+	kafkaConsumer, err := initKafkaConsumer(cfg, logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize Kafka consumer group", zap.Error(err))
 	}
@@ -488,25 +448,9 @@ func main() {
 		reflection.Register(grpcServer)
 	}
 
-	// Запуск HTTP сервера в отдельной горутине
-	go func() {
-		logger.Info("Starting HTTP server", zap.Int("port", cfg.Server.Port))
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to start HTTP server", zap.Error(err))
-		}
-	}()
-
-	// Запуск gRPC сервера в отдельной горутине
-	go func() {
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPC.Port))
-		if err != nil {
-			logger.Fatal("Failed to listen for gRPC", zap.Error(err))
-		}
-		logger.Info("Starting gRPC server", zap.Int("port", cfg.GRPC.Port))
-		if err := grpcServer.Serve(lis); err != nil {
-			logger.Fatal("Failed to start gRPC server", zap.Error(err))
-		}
-	}()
+	// Запуск HTTP и gRPC серверов
+	httpServer := startHTTPServer(cfg, router, logger)
+	startGRPCServer(cfg, grpcServer, logger)
 
 	// Запуск сервера метрик Prometheus в отдельной горутине
 	if cfg.Telemetry.Metrics.Enabled {
@@ -520,22 +464,5 @@ func main() {
 	}
 
 	// Ожидание сигнала для graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	logger.Info("Shutting down servers...")
-
-	// Создание контекста с таймаутом для graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
-
-	// Graceful shutdown HTTP сервера
-	if err := httpServer.Shutdown(ctx); err != nil {
-		logger.Error("HTTP server forced to shutdown", zap.Error(err))
-	}
-
-	// Graceful shutdown gRPC сервера
-	grpcServer.GracefulStop()
-
-	logger.Info("Servers exited properly")
+	shutdown.Wait(httpServer, grpcServer, cfg.Server.ShutdownTimeout, logger)
 }
